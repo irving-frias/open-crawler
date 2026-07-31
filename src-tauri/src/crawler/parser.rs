@@ -1068,9 +1068,9 @@ mod tests {
         let issues = parser.analyze_semantics(&document);
 
         let nesting_issues: Vec<_> = issues.iter()
-            .filter(|i| i.issue_type == "invalid_nesting")
+            .filter(|i| i.issue_type == "context_nesting")
             .collect();
-        assert!(!nesting_issues.is_empty(), "Should detect p inside a");
+        assert!(!nesting_issues.is_empty(), "Should detect p inside a as context-dependent");
     }
 
     #[test]
