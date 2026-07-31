@@ -58,7 +58,6 @@
   let activeFilters = $state<FilterState>({
     statusCodes: [],
     severities: [],
-    domain: '',
     depth: undefined,
   });
 
