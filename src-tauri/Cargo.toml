@@ -1,0 +1,45 @@
+[package]
+name = "open-crawler"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "open_crawler_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli"] }
+scraper = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+csv = "1"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+ahash = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+lru = "0.12"
+quick-xml = "0.36"
+flate2 = "1"
+base64 = "0.22"
+futures = "0.3"
+tempfile = "3"
+rust_xlsxwriter = "0.80"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

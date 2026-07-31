@@ -1,0 +1,76 @@
+use serde::{Deserialize, Serialize};
+
+pub const IMPLICIT_USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 OpenCrawler/1.0";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrawlConfig {
+    pub id: Option<String>,
+    pub project_id: Option<String>,
+    pub seed_urls: Vec<String>,
+    #[serde(default = "default_max_depth")]
+    pub max_depth: u32,
+    #[serde(default = "default_true")]
+    pub respect_robots: bool,
+    #[serde(default)]
+    pub render_js: bool,
+    #[serde(default = "default_concurrency")]
+    pub concurrency: u32,
+    #[serde(default = "default_delay_ms")]
+    pub delay_ms: u64,
+    #[serde(default = "default_max_body_size")]
+    pub max_body_size: usize,
+    #[serde(default = "default_true")]
+    pub same_origin_only: bool,
+    #[serde(default = "default_true")]
+    pub check_sitemap: bool,
+    #[serde(default = "default_max_crawl_secs")]
+    pub max_crawl_time_secs: u64,
+    #[serde(default = "default_true")]
+    pub check_semantics: bool,
+}
+
+fn default_max_depth() -> u32 {
+    10
+}
+fn default_true() -> bool {
+    true
+}
+fn default_concurrency() -> u32 {
+    10
+}
+fn default_delay_ms() -> u64 {
+    100
+}
+fn default_max_body_size() -> usize {
+    5 * 1024 * 1024 // 5MB
+}
+fn default_max_crawl_secs() -> u64 {
+    3600 // 1 hour
+}
+
+impl CrawlConfig {
+    pub fn user_agent(&self) -> &str {
+        IMPLICIT_USER_AGENT
+    }
+}
+
+impl Default for CrawlConfig {
+    fn default() -> Self {
+        Self {
+            id: None,
+            project_id: None,
+            seed_urls: Vec::new(),
+            max_depth: default_max_depth(),
+            respect_robots: default_true(),
+            render_js: false,
+            concurrency: default_concurrency(),
+            delay_ms: default_delay_ms(),
+            max_body_size: default_max_body_size(),
+            same_origin_only: true,
+            check_sitemap: true,
+            max_crawl_time_secs: default_max_crawl_secs(),
+            check_semantics: true,
+        }
+    }
+}

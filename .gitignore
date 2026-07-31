@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+bun.lock
+bun.lockb
+
+# Build outputs
+dist/
+target/
+*.bundle
+
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Secrets (never commit private keys)
+.secrets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# TypeScript
+*.tsbuildinfo
