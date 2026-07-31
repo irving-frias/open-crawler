@@ -69,11 +69,16 @@ jobs:
           sudo apt-get install -y libssl-dev clang lld
           echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
 
+      - name: Install Android NDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;25.1.8937393"
+
       - name: Setup Android toolchain paths
         run: |
-          NDK_PATH="${ANDROID_HOME}/ndk/25.1.8937393"
+          NDK_PATH="$ANDROID_HOME/ndk/25.1.8937393"
           if [ ! -d "$NDK_PATH" ]; then
-            NDK_PATH="${ANDROID_HOME}/ndk-bundle"
+            NDK_PATH="$ANDROID_HOME/ndk-bundle"
           fi
           if [ ! -d "$NDK_PATH" ]; then
             echo "::error::Android NDK not found at $NDK_PATH"
