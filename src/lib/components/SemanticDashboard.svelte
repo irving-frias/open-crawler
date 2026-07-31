@@ -233,7 +233,7 @@
     font-size: 0.8rem;
     cursor: pointer;
   }
-  .btn-clear:hover { background: #4a4d54; }
+  .btn-clear:hover { background: var(--bg-hover); }
 
   .dashboard-loading, .dashboard-error, .dashboard-empty {
     padding: 24px;
@@ -326,7 +326,7 @@
   .issue-card.active {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
-    background: #1e2030;
+    background: var(--bg-card);
   }
 
   .card-icon {
@@ -365,9 +365,9 @@
     padding: 1px 6px;
     border-radius: 4px;
   }
-  .count-badge.error { background: #3d1f1f; color: var(--danger); }
-  .count-badge.warning { background: #3d3520; color: var(--warning); }
-  .count-badge.info { background: #1a2a3a; color: var(--info); }
+  .count-badge.error { background: var(--bg-issue-error); color: var(--danger); }
+  .count-badge.warning { background: var(--bg-issue-warning); color: var(--warning); }
+  .count-badge.info { background: var(--bg-issue-info); color: var(--info); }
 
   .count-total {
     font-size: 0.75rem;

@@ -1,33 +1,31 @@
 /* ============================================
    Open Crawler — Design Tokens
+   Theme: light / dark / system (auto)
    ============================================ */
 
-:root {
-  /* ---- Backgrounds ---- */
+/* ---- Dark theme (default fallback) ---- */
+:root,
+[data-theme="dark"] {
   --bg-deep: #1a1b1e;
   --bg-card: #25262b;
   --bg-hover: #2c2e33;
   --bg-input: #1a1b1e;
   --bg-sidebar: #1e1f23;
 
-  /* ---- Borders ---- */
   --border: #373a40;
   --border-muted: #5c5f66;
   --border-focus: #667eea;
 
-  /* ---- Text ---- */
   --text: #e1e3e6;
   --text-secondary: #a6a7ab;
   --text-muted: #5c5f66;
   --text-inverse: #1a1b1e;
 
-  /* ---- Accent ---- */
   --accent: #667eea;
   --accent-hover: #7c8ef0;
   --accent-subtle: rgba(102, 126, 234, 0.12);
   --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 
-  /* ---- Semantic ---- */
   --success: #51cf66;
   --success-subtle: rgba(81, 207, 102, 0.12);
   --warning: #ffd43b;
@@ -40,7 +38,142 @@
   --purple-subtle: rgba(177, 151, 252, 0.12);
   --orange: #ff922b;
 
-  /* ---- Spacing ---- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* ---- Semantic backgrounds ---- */
+  --bg-issue-error: #3d1f1f;
+  --bg-issue-warning: #3d3520;
+  --bg-issue-info: #1a2a3a;
+  --bg-status-2xx: #1a3a2a;
+  --bg-status-3xx: #3d3520;
+  --bg-status-4xx: #3d2a1a;
+  --bg-status-5xx: #3d1f1f;
+  --bg-link-internal: #1a2a3a;
+  --bg-link-external: #2a1a3a;
+  --bg-mark: #fef08a;
+  --bg-secondary: #f9fafb;
+
+  color-scheme: dark;
+}
+
+/* ---- Light theme ---- */
+[data-theme="light"] {
+  --bg-deep: #f8f9fa;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f3f5;
+  --bg-input: #ffffff;
+  --bg-sidebar: #f3f4f6;
+
+  --border: #dee2e6;
+  --border-muted: #ced4da;
+  --border-focus: #4c6ef5;
+
+  --text: #212529;
+  --text-secondary: #495057;
+  --text-muted: #adb5bd;
+  --text-inverse: #ffffff;
+
+  --accent: #4c6ef5;
+  --accent-hover: #3b5bdb;
+  --accent-subtle: rgba(76, 110, 245, 0.08);
+  --accent-gradient: linear-gradient(135deg, #4c6ef5 0%, #7950f2 100%);
+
+  --success: #2f9e44;
+  --success-subtle: rgba(47, 158, 68, 0.08);
+  --warning: #e67700;
+  --warning-subtle: rgba(230, 119, 0, 0.08);
+  --danger: #e03131;
+  --danger-subtle: rgba(224, 49, 49, 0.08);
+  --info: #1971c2;
+  --info-subtle: rgba(25, 113, 194, 0.08);
+  --purple: #7048e8;
+  --purple-subtle: rgba(112, 72, 232, 0.08);
+  --orange: #e8590c;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* ---- Semantic backgrounds ---- */
+  --bg-issue-error: #ffe3e3;
+  --bg-issue-warning: #fff3bf;
+  --bg-issue-info: #d0ebff;
+  --bg-status-2xx: #d3f9d8;
+  --bg-status-3xx: #fff3bf;
+  --bg-status-4xx: #ffe3e3;
+  --bg-status-5xx: #ffc9c9;
+  --bg-link-internal: #d0ebff;
+  --bg-link-external: #e5dbff;
+  --bg-mark: #ffe066;
+  --bg-secondary: #f1f3f5;
+
+  color-scheme: light;
+}
+
+/* ---- System preference (auto) ---- */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    --bg-deep: #f8f9fa;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f3f5;
+    --bg-input: #ffffff;
+    --bg-sidebar: #f3f4f6;
+
+    --border: #dee2e6;
+    --border-muted: #ced4da;
+    --border-focus: #4c6ef5;
+
+    --text: #212529;
+    --text-secondary: #495057;
+    --text-muted: #adb5bd;
+    --text-inverse: #ffffff;
+
+    --accent: #4c6ef5;
+    --accent-hover: #3b5bdb;
+    --accent-subtle: rgba(76, 110, 245, 0.08);
+    --accent-gradient: linear-gradient(135deg, #4c6ef5 0%, #7950f2 100%);
+
+    --success: #2f9e44;
+    --success-subtle: rgba(47, 158, 68, 0.08);
+    --warning: #e67700;
+    --warning-subtle: rgba(230, 119, 0, 0.08);
+    --danger: #e03131;
+    --danger-subtle: rgba(224, 49, 49, 0.08);
+    --info: #1971c2;
+    --info-subtle: rgba(25, 113, 194, 0.08);
+    --purple: #7048e8;
+    --purple-subtle: rgba(112, 72, 232, 0.08);
+    --orange: #e8590c;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+    --bg-issue-error: #ffe3e3;
+    --bg-issue-warning: #fff3bf;
+    --bg-issue-info: #d0ebff;
+    --bg-status-2xx: #d3f9d8;
+    --bg-status-3xx: #fff3bf;
+    --bg-status-4xx: #ffe3e3;
+    --bg-status-5xx: #ffc9c9;
+    --bg-link-internal: #d0ebff;
+    --bg-link-external: #e5dbff;
+    --bg-mark: #ffe066;
+    --bg-secondary: #f1f3f5;
+
+    color-scheme: light;
+  }
+}
+
+/* ---- Shared tokens (theme-independent) ---- */
+
+:root {
+  /* Spacing */
   --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
@@ -49,7 +182,7 @@
   --space-xl: 32px;
   --space-2xl: 48px;
 
-  /* ---- Radii ---- */
+  /* Radii */
   --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -57,14 +190,10 @@
   --radius-xl: 14px;
   --radius-pill: 100px;
 
-  /* ---- Shadows ---- */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  /* Shadows (shared focus) */
   --shadow-focus: 0 0 0 2px var(--accent);
 
-  /* ---- Typography ---- */
+  /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -84,24 +213,18 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* ---- Transitions ---- */
+  /* Transitions */
   --transition-fast: 0.1s ease;
   --transition-base: 0.15s ease;
   --transition-slow: 0.25s ease;
 
-  /* ---- Z-index ---- */
+  /* Z-index */
   --z-sidebar: 10;
   --z-header: 20;
   --z-overlay: 200;
   --z-modal: 300;
 
-  /* ---- Breakpoints (for reference, use in @media) ---- */
-  /* mobile:  base (0 - 767px)   */
-  /* tablet:  768px+              */
-  /* desktop: 1024px+             */
-  /* wide:    1440px+             */
-
-  /* ---- Responsive spacing ---- */
+  /* Responsive spacing */
   --page-padding: var(--space-sm);
   --section-padding: var(--space-md);
   --sidebar-width: 0px;

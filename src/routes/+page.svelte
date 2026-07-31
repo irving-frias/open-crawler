@@ -922,7 +922,7 @@
   }
 
   .btn-mini:hover {
-    background: #4a4d54;
+    background: var(--bg-hover);
     color: var(--text);
   }
 
@@ -1142,7 +1142,7 @@
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #4a4d54;
+    background: var(--bg-hover);
   }
 
   .btn-danger {
@@ -1151,7 +1151,8 @@
   }
 
   .btn-danger:hover:not(:disabled) {
-    background: #ff5252;
+    background: var(--danger);
+    filter: brightness(1.15);
   }
 
   .progress-section {

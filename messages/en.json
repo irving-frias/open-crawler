@@ -155,5 +155,10 @@
 
   "severity.error": "Error",
   "severity.warning": "Warning",
-  "severity.info": "Info"
+  "severity.info": "Info",
+
+  "theme.label": "Theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "System"
 }

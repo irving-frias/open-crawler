@@ -328,9 +328,9 @@
     font-size: 0.75rem;
     font-weight: 600;
   }
-  .issue-error { background: #3d1f1f; color: var(--danger); border: 1px solid var(--danger); }
-  .issue-warning { background: #3d3520; color: var(--warning); border: 1px solid var(--warning); }
-  .issue-info { background: #1a2a3a; color: var(--info); border: 1px solid var(--info); }
+  .issue-error { background: var(--bg-issue-error); color: var(--danger); border: 1px solid var(--danger); }
+  .issue-warning { background: var(--bg-issue-warning); color: var(--warning); border: 1px solid var(--warning); }
+  .issue-info { background: var(--bg-issue-info); color: var(--info); border: 1px solid var(--info); }
   .no-issues { color: var(--success); font-size: 0.85rem; font-weight: 500; }
 
   .issue-detail {
@@ -349,9 +349,9 @@
     font-size: 0.85rem;
   }
 
-  .issue-item.issue-error { background: #3d1f1f; }
-  .issue-item.issue-warning { background: #3d3520; }
-  .issue-item.issue-info { background: #1a2a3a; }
+  .issue-item.issue-error { background: var(--bg-issue-error); }
+  .issue-item.issue-warning { background: var(--bg-issue-warning); }
+  .issue-item.issue-info { background: var(--bg-issue-info); }
 
   .issue-icon { font-size: 0.9rem; }
   .issue-element { font-weight: 600; color: var(--text); min-width: 80px; }
@@ -534,7 +534,7 @@
   }
 
   :global(.table-wrapper mark) {
-    background: #fef08a;
+    background: var(--bg-mark);
     color: inherit;
     padding: 0 1px;
     border-radius: 2px;

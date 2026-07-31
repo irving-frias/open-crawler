@@ -7,6 +7,18 @@
 
   $effect(() => {
     document.documentElement.lang = getLocale();
+
+    const savedTheme = localStorage.getItem('theme') || 'system';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    function onSystemChange() {
+      if ((localStorage.getItem('theme') || 'system') === 'system') {
+        document.documentElement.setAttribute('data-theme', 'system');
+      }
+    }
+    mq.addEventListener('change', onSystemChange);
+    return () => mq.removeEventListener('change', onSystemChange);
   });
 </script>
 

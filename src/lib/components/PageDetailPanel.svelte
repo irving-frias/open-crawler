@@ -286,7 +286,7 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .btn-back:hover { background: #4a4d54; }
+  .btn-back:hover { background: var(--bg-hover); }
 
   .page-url {
     margin: 0;
@@ -311,10 +311,10 @@
     padding: 2px 8px;
     border-radius: 4px;
   }
-  .status-2xx { background: #1a3a2a; color: var(--success); }
-  .status-3xx { background: #3d3520; color: var(--warning); }
-  .status-4xx { background: #3d2a1a; color: var(--orange); }
-  .status-5xx { background: #3d1f1f; color: var(--danger); }
+  .status-2xx { background: var(--bg-status-2xx); color: var(--success); }
+  .status-3xx { background: var(--bg-status-3xx); color: var(--warning); }
+  .status-4xx { background: var(--bg-status-4xx); color: var(--orange); }
+  .status-5xx { background: var(--bg-status-5xx); color: var(--danger); }
 
   .header-meta {
     font-size: 0.8rem;
@@ -499,7 +499,7 @@
   .issue-detail code {
     font-family: 'SF Mono', 'Fira Code', monospace;
     color: var(--info);
-    background: #1a2a3a;
+    background: var(--bg-issue-info);
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.72rem;
@@ -603,8 +603,8 @@
     text-transform: uppercase;
     text-align: center;
   }
-  .link-type-internal { background: #1a2a3a; color: var(--info); }
-  .link-type-external { background: #2a1a3a; color: var(--purple); }
+  .link-type-internal { background: var(--bg-link-internal); color: var(--info); }
+  .link-type-external { background: var(--bg-link-external); color: var(--purple); }
 
   .link-url {
     color: var(--text-secondary);

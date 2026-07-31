@@ -52,24 +52,24 @@
   }
 
   .toast-success {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+    background: var(--success-subtle);
+    color: var(--success);
+    border: 1px solid var(--success);
   }
   .toast-error {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+    background: var(--danger-subtle);
+    color: var(--danger);
+    border: 1px solid var(--danger);
   }
   .toast-warning {
-    background: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeeba;
+    background: var(--warning-subtle);
+    color: var(--warning);
+    border: 1px solid var(--warning);
   }
   .toast-info {
-    background: #d1ecf1;
-    color: #0c5460;
-    border: 1px solid #bee5eb;
+    background: var(--info-subtle);
+    color: var(--info);
+    border: 1px solid var(--info);
   }
 
   .toast-icon {

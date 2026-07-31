@@ -12,6 +12,7 @@
   } = $props();
 
   let language = $state(getLocale());
+  let theme = $state('system');
   let pageSize = $state('50');
   let maxDepth = $state('10');
   let respectRobots = $state(true);
@@ -28,6 +29,7 @@
     try {
       const settings = await invoke<Record<string, string>>('get_settings');
       if (settings.language) language = settings.language as Locale;
+      if (settings.theme) theme = settings.theme;
       if (settings.page_size) pageSize = settings.page_size;
       if (settings.max_depth) maxDepth = settings.max_depth;
       if (settings.respect_robots) respectRobots = settings.respect_robots === 'true';
@@ -44,6 +46,7 @@
     try {
       const settings: Record<string, string> = {
         language,
+        theme,
         page_size: pageSize,
         max_depth: maxDepth.toString(),
         respect_robots: respectRobots.toString(),
@@ -53,6 +56,7 @@
       };
       await invoke('save_settings', { settings });
       setLocale(language as Locale);
+      applyTheme(theme);
       onsave?.(settings);
       open = false;
     } catch (e) {
@@ -64,6 +68,11 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') open = false;
+  }
+
+  function applyTheme(t: string) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
   }
 </script>
 
@@ -85,6 +94,15 @@
           <select id="lang" bind:value={language}>
             <option value="en">{m["language.en"]()}</option>
             <option value="es">{m["language.es"]()}</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label for="theme">{m["theme.label"]()}</label>
+          <select id="theme" bind:value={theme}>
+            <option value="system">{m["theme.system"]()}</option>
+            <option value="light">{m["theme.light"]()}</option>
+            <option value="dark">{m["theme.dark"]()}</option>
           </select>
         </div>
 
@@ -307,6 +325,6 @@
     color: var(--text);
   }
   .btn-secondary:hover:not(:disabled) {
-    background: #4a4d54;
+    background: var(--bg-hover);
   }
 </style>
