@@ -54,42 +54,6 @@ jobs:
       - name: Add Android target
         run: rustup target add aarch64-linux-android
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Setup Android NDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: 25.1.8937393
-          api-level: 34
-
-      - name: Install OpenSSL and cross-compilation toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev clang lld
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-
-      - name: Install Android NDK
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;25.1.8937393"
-
-      - name: Setup Android toolchain paths
-        run: |
-          NDK_PATH="$ANDROID_HOME/ndk/25.1.8937393"
-          if [ ! -d "$NDK_PATH" ]; then
-            NDK_PATH="$ANDROID_HOME/ndk-bundle"
-          fi
-          if [ ! -d "$NDK_PATH" ]; then
-            echo "::error::Android NDK not found at $NDK_PATH"
-            exit 1
-          fi
-          echo "NDK_PATH=$NDK_PATH" >> $GITHUB_ENV
-          echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-          echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/arm64/bin" >> $GITHUB_PATH
-          echo "CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang" >> $GITHUB_ENV
-          echo "CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang++" >> $GITHUB_ENV
-
       - name: Setup Keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/opencrawler.keystore
@@ -105,7 +69,6 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
