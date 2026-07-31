@@ -40,11 +40,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Setup Java JDK
-        uses: actions/setup-java@v4
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          ndk-version: r25b
+          link-to-sdk: true
+
+      - name: Setup NDK environment
+        run: |
+          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      - name: Install Android cross-compilation toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld libssl-dev
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -65,10 +77,15 @@ jobs:
       - name: Build Tauri App
         run: pnpm tauri build --target aarch64-linux-android
         env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
           ANDROID_KEY_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          RING_PREGENERATE_ASM: 1
+          CC: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+          CXX: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
