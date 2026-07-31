@@ -722,7 +722,7 @@ impl<'a> CrawlRepo<'a> {
              ORDER BY crawl_timestamp DESC",
         )?;
         let results = stmt
-            .query_map(params![project_id], |row| Self::row_to_result(row))?
+            .query_map(params![project_id], Self::row_to_result)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(results)
     }

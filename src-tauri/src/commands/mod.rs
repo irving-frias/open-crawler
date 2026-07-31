@@ -819,7 +819,7 @@ fn export_xlsx(
         if let Some(ref js) = p.semantic_issues_json {
             if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) {
                 for iss in &issues {
-                    let f = if ir % 2 == 0 { Some(&alt) } else { None };
+                    let f = if ir.is_multiple_of(2) { Some(&alt) } else { None };
                     xlsx_str(wi, ir, 0, &p.url, f)?;
                     xlsx_str(wi, ir, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), f)?;
                     xlsx_str(wi, ir, 2, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;

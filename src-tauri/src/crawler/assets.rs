@@ -100,7 +100,7 @@ async fn fetch_assets(asset_urls: &[(String, String)]) -> HashMap<String, String
 
         let results = futures::future::join_all(futures).await;
 
-        for ((url, _), result) in chunk.iter().zip(results.into_iter()) {
+        for ((url, _), result) in chunk.iter().zip(results) {
             if let Ok(data_uri) = result {
                 data_uris.insert(url.clone(), data_uri);
             }
