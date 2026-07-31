@@ -21,7 +21,9 @@ jobs:
           cache: 'pnpm'
 
       - name: Setup pnpm
-        run: corepack enable
+        run: |
+          corepack enable
+          corepack prepare pnpm@8 --activate
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
