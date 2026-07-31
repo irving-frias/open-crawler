@@ -63,6 +63,12 @@ jobs:
           ndk-version: 25.1.8937393
           api-level: 34
 
+      - name: Setup Android cross-compilation environment
+        uses: fwalch/setup-android-ndk-env@v1
+        with:
+          ndk-version: 25.1.8937393
+          api-level: 34
+
       - name: Install OpenSSL for Android
         run: |
           sudo apt-get update
