@@ -7,6 +7,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+  PNPM_VERSION: 8
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -18,12 +22,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'pnpm'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store/v3
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
