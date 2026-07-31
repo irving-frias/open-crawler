@@ -82,7 +82,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -101,11 +101,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Build frontend (generates Paraglide files)
+        run: pnpm build
+
       - name: Svelte check
         run: npx svelte-check --tsconfig ./tsconfig.json
-
-      - name: Build frontend
-        run: pnpm build
 
   build-tauri:
     name: Build (${{ matrix.platform }})
@@ -144,7 +144,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
