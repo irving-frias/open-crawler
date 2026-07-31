@@ -63,17 +63,25 @@ jobs:
           ndk-version: 25.1.8937393
           api-level: 34
 
-      - name: Setup Android cross-compilation environment
-        uses: fwalch/setup-android-ndk-env@v1
-        with:
-          ndk-version: 25.1.8937393
-          api-level: 34
-
-      - name: Install OpenSSL for Android
+      - name: Install OpenSSL and cross-compilation toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install -y libssl-dev clang lld
           echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+
+      - name: Setup Android toolchain paths
+        run: |
+          NDK_PATH=$(find $ANDROID_HOME/ndk -maxdepth 1 -type d -name "*25.1.8937393*" | head -n 1)
+          if [ -z "$NDK_PATH" ]; then
+            NDK_PATH=$(find $ANDROID_HOME -maxdepth 2 -type d -name "25.1.8937393" | head -n 1)
+          fi
+          if [ -z "$NDK_PATH" ]; then
+            echo "::error::Android NDK not found"
+            exit 1
+          fi
+          echo "NDK_PATH=$NDK_PATH" >> $GITHUB_ENV
+          echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/arm64/bin" >> $GITHUB_PATH
 
       - name: Setup Keystore
         run: |
