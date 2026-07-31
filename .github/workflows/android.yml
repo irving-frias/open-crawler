@@ -82,6 +82,8 @@ jobs:
           echo "NDK_PATH=$NDK_PATH" >> $GITHUB_ENV
           echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
           echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/arm64/bin" >> $GITHUB_PATH
+          echo "CC=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang" >> $GITHUB_ENV
+          echo "CXX=$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang++" >> $GITHUB_ENV
 
       - name: Setup Keystore
         run: |
