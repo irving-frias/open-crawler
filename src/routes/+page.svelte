@@ -6,6 +6,7 @@
   import PageDetailPanel from '$lib/components/PageDetailPanel.svelte';
   import SemanticDashboard from '$lib/components/SemanticDashboard.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
+  import Toast from '$lib/components/Toast.svelte';
   import { m } from '$lib/paraglide/messages.js';
 
   // Project state
@@ -58,6 +59,18 @@
 
   // Settings modal
   let settingsModalOpen = $state(false);
+
+  // Toast notifications
+  let toasts = $state<Array<{ id: number; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([]);
+  let toastCounter = $state(0);
+  function showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') {
+    const id = ++toastCounter;
+    toasts = [...toasts, { id, message, type }];
+    setTimeout(() => { toasts = toasts.filter((t) => t.id !== id); }, 5000);
+  }
+  function dismissToast(id: number) {
+    toasts = toasts.filter((t) => t.id !== id);
+  }
 
   let unlistenFns: UnlistenFn[] = [];
 
@@ -316,6 +329,7 @@
     } catch (e) {
       status = 'error';
       error = String(e);
+      showToast(String(e), 'error');
     }
   }
 
@@ -331,8 +345,10 @@
     if (!selectedProjectId) return;
     try {
       await invoke('stop_crawl', { projectId: selectedProjectId });
+      showToast(m["progress.title"]() + ': stopped', 'info');
     } catch (e) {
       error = String(e);
+      showToast(String(e), 'error');
     }
   }
 
@@ -410,8 +426,10 @@
         filePath: path,
         format,
       });
+      showToast(`Exported to ${path.split(/[/\\]/).pop()}`, 'success');
     } catch (e) {
       error = String(e);
+      showToast(String(e), 'error');
     }
   }
 
@@ -430,6 +448,8 @@
 </script>
 
 <div class="app-layout">
+  <Toast {toasts} onDismiss={dismissToast} />
+
   <!-- Mobile hamburger -->
   <button class="hamburger" onclick={() => sidebarOpen = !sidebarOpen} aria-label="Toggle menu">
     {sidebarOpen ? '✕' : '☰'}

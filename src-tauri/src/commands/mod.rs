@@ -690,6 +690,7 @@ fn export_csv_files(
         wtr.write_record([
             "URL",
             "Issue Type",
+            "Severity",
             "Message",
             "Element",
             "Selector",
@@ -700,6 +701,7 @@ fn export_csv_files(
                 if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
                     for issue in &issues {
                         let issue_type = issue.get("issue_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let severity = issue.get("severity").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let message = issue.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let element = issue.get("element").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let selector = issue.get("css_selector").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -707,6 +709,7 @@ fn export_csv_files(
                         wtr.write_record([
                             &page.url,
                             &issue_type,
+                            &severity,
                             &message,
                             &element,
                             &selector,
@@ -853,27 +856,37 @@ fn export_xlsx(
     } else {
         all_issues.chunks(MAX_ROWS_PER_SHEET as usize).collect()
     };
+    let err_fmt = Format::new().set_background_color(0xFFE0E0).set_font_color(0x721C24);
+    let warn_fmt = Format::new().set_background_color(0xFFF3CD).set_font_color(0x856404);
+    let info_fmt = Format::new().set_background_color(0xD1ECF1).set_font_color(0x0C5460);
     let issue_sheets = issue_chunks.len().max(1);
     for (chunk_idx, chunk) in issue_chunks.iter().enumerate() {
         let wi = workbook.add_worksheet();
         wi.set_name(sheet_name("Issues", chunk_idx, issue_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
-        for (col, h) in ["URL","Issue Type","Message","Element","Selector","XPath"].iter().enumerate() {
+        for (col, h) in ["URL","Issue Type","Severity","Message","Element","Selector","XPath"].iter().enumerate() {
             xlsx_str(wi, 0, col as u16, h, Some(&header_fmt))?;
         }
         for (i, (url, iss)) in chunk.iter().enumerate() {
             let r = (i + 1) as u32;
-            let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
-            xlsx_str(wi, r, 0, url, f)?;
-            xlsx_str(wi, r, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-            xlsx_str(wi, r, 2, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;
-            xlsx_str(wi, r, 3, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-            xlsx_str(wi, r, 4, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-            xlsx_str(wi, r, 5, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), f)?;
+            xlsx_str(wi, r, 0, url, None)?;
+            xlsx_str(wi, r, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+            let sev = iss.get("severity").and_then(|v| v.as_str()).unwrap_or("");
+            let sev_fmt = match sev {
+                "error" => Some(&err_fmt),
+                "warning" => Some(&warn_fmt),
+                "info" => Some(&info_fmt),
+                _ => None,
+            };
+            xlsx_str(wi, r, 2, sev, sev_fmt)?;
+            xlsx_str(wi, r, 3, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;
+            xlsx_str(wi, r, 4, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+            xlsx_str(wi, r, 5, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+            xlsx_str(wi, r, 6, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), None)?;
         }
-        finalize_sheet(wi, chunk.len() as u32, 6)?;
-        wi.set_column_width(2, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-        wi.set_column_width(4, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        finalize_sheet(wi, chunk.len() as u32, 7)?;
+        wi.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
         wi.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        wi.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
     }
 
     // === Links sheets (split if > 1,048,575 links) ===

@@ -6,11 +6,45 @@
     items,
     expandedUrl = $bindable(''),
     onDetail,
+    searchQuery = '',
   }: {
     items: any[];
     expandedUrl: string;
     onDetail?: (pageId: string) => void;
+    searchQuery?: string;
   } = $props();
+
+  let localSearch = $state('');
+  let debouncedSearch = $state('');
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    localSearch = searchQuery;
+    debouncedSearch = searchQuery;
+  });
+
+  function onSearchInput(e: Event) {
+    const val = (e.target as HTMLInputElement).value;
+    localSearch = val;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { debouncedSearch = val; }, 300);
+  }
+
+  const filteredItems = $derived(() => {
+    if (!debouncedSearch) return items;
+    const q = debouncedSearch.toLowerCase();
+    return items.filter((p: any) =>
+      p.url?.toLowerCase().includes(q) ||
+      p.title?.toLowerCase().includes(q) ||
+      p.h1?.toLowerCase().includes(q)
+    );
+  });
+
+  function highlight(text: string | null, query: string): string {
+    if (!query || !text) return text ?? '';
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  }
 
   function parseIssues(issuesJson: string | null): any[] {
     if (!issuesJson) return [];
@@ -44,6 +78,19 @@
 </script>
 
 <div class="table-wrapper">
+  <div class="search-bar">
+    <span class="search-icon">&#x1F50D;</span>
+    <input
+      type="text"
+      class="search-input"
+      placeholder="Search by URL, title, or H1..."
+      value={localSearch}
+      oninput={onSearchInput}
+    />
+    {#if localSearch}
+      <span class="search-count">{filteredItems().length} of {items.length}</span>
+    {/if}
+  </div>
   <table class="header-table">
     <thead>
       <tr>
@@ -61,9 +108,11 @@
 
   {#if items.length === 0}
     <div class="empty-state">{m["results.no_results"]()}</div>
+  {:else if filteredItems().length === 0 && debouncedSearch}
+    <div class="empty-state">No results match "{debouncedSearch}"</div>
   {:else}
     <div class="rows-body">
-      {#each items as page (page.id)}
+      {#each filteredItems() as page (page.id)}
         {@const issues = parseIssues(page.semantic_issues_json)}
         {@const issueCounts = getIssueCounts(issues)}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -82,7 +131,7 @@
         >
           <div class="col-url">
             <a href={page.url} target="_blank" onclick={(e) => e.stopPropagation()}>
-              {page.url}
+              {@html highlight(page.url, debouncedSearch)}
             </a>
             {#if onDetail}
               <button
@@ -95,9 +144,9 @@
           <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
             {page.status_code}
           </div>
-          <div class="col-title">{page.title || '-'}</div>
+          <div class="col-title">{@html highlight(page.title, debouncedSearch) || '-'}</div>
           <div class="col-desc">{page.meta_description || '-'}</div>
-          <div class="col-h1">{page.h1 || '-'}</div>
+          <div class="col-h1">{@html highlight(page.h1, debouncedSearch) || '-'}</div>
           <div class="col-lang">{page.html_lang || '-'}</div>
           <div class="col-hreflang">
             {#each parseHreflang(page.hreflang_json) as hl}
@@ -422,5 +471,47 @@
     .col-hreflang {
       display: block;
     }
+  }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm, 0.5rem);
+    padding: var(--space-sm, 0.5rem) var(--space-md, 1rem);
+    border-bottom: 1px solid var(--border, #e0e0e0);
+    background: var(--bg-secondary, #f9fafb);
+  }
+
+  .search-icon {
+    font-size: 0.9rem;
+    opacity: 0.5;
+  }
+
+  .search-input {
+    flex: 1;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: var(--radius-sm, 4px);
+    padding: 6px 10px;
+    font-size: 0.875rem;
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary, #111);
+    outline: none;
+  }
+  .search-input:focus {
+    border-color: var(--accent, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+  }
+
+  .search-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #6b7280);
+    white-space: nowrap;
+  }
+
+  :global(.table-wrapper mark) {
+    background: #fef08a;
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
   }
 </style>
