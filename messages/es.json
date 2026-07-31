@@ -70,6 +70,7 @@
   "filter.error": "Error",
   "filter.warning": "Advertencia",
   "filter.info": "Info",
+  "filter.no_options": "Sin opciones disponibles",
 
   "detail.back": "← Resultados",
   "detail.loading": "Cargando detalles de la página...",
@@ -100,7 +101,7 @@
   "detail.hreflang": "Hreflang",
 
   "detail.semantic_issues": "Problemas Semánticos ({count})",
-  "detail.copy_selector": "Copiar selector",
+  "detail.copy_xpath": "Copiar XPath",
   "detail.copied": "¡Copiado!",
 
   "detail.links_type": "Tipo",

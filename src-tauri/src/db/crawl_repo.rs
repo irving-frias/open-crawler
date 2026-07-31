@@ -3,9 +3,45 @@ use tracing::info;
 
 use crate::error::AppError;
 use crate::models::{CrawlConfig, CrawlResult, IssueCount, PageLink, Project};
+use crate::ResultsCacheKey;
+
+fn compress_gzip(data: &[u8]) -> Vec<u8> {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data).unwrap();
+    encoder.finish().unwrap()
+}
+
+fn decompress_gzip(data: &[u8]) -> Vec<u8> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    let mut decoder = GzDecoder::new(data);
+    let mut out = Vec::new();
+    decoder.read_to_end(&mut out).unwrap();
+    out
+}
+
+fn compress_html_body(html: &Option<String>) -> Option<String> {
+    html.as_ref().map(|s| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, compress_gzip(s.as_bytes())))
+}
+
+fn decompress_html_body(encoded: &Option<String>) -> Option<String> {
+    encoded.as_ref().and_then(|e| base64::Engine::decode(&base64::engine::general_purpose::STANDARD, e).ok()).and_then(|bytes| String::from_utf8(decompress_gzip(&bytes)).ok())
+}
+
+fn compress_png(png: &Option<Vec<u8>>) -> Option<Vec<u8>> {
+    png.as_ref().map(|data| compress_gzip(data))
+}
+
+fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
+    data.as_ref().map(|bytes| decompress_gzip(bytes))
+}
 
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
+    results_cache: Option<std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<CrawlResult>, u32)>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,8 +59,8 @@ pub struct CrawlSessionInfo {
 }
 
 impl<'a> CrawlRepo<'a> {
-    pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+    pub fn new(conn: &'a Connection, results_cache: Option<std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<CrawlResult>, u32)>>>>) -> Self {
+        Self { conn, results_cache }
     }
 
     // ==================== PROJECT CRUD ====================
@@ -49,9 +85,9 @@ impl<'a> CrawlRepo<'a> {
     }
 
     pub fn list_projects(&self) -> Result<Vec<Project>, AppError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, name, created_at, updated_at FROM projects ORDER BY created_at DESC")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, created_at, updated_at FROM projects ORDER BY created_at DESC",
+        )?;
 
         let projects = stmt
             .query_map([], |row| {
@@ -142,6 +178,9 @@ impl<'a> CrawlRepo<'a> {
 
         tx.commit()?;
         info!("Deleted project {}", id);
+
+        self.invalidate_cache_for_project(id);
+
         Ok(())
     }
 
@@ -225,7 +264,7 @@ impl<'a> CrawlRepo<'a> {
                 result.html_lang,
                 result.hreflang_json,
                 result.semantic_issues_json,
-                result.html_body,
+                compress_html_body(&result.html_body),
             ],
         )?;
 
@@ -282,13 +321,19 @@ impl<'a> CrawlRepo<'a> {
                     result.html_lang,
                     result.hreflang_json,
                     result.semantic_issues_json,
-                    result.html_body,
+                    compress_html_body(&result.html_body),
                 ])?;
             }
         }
 
         tx.commit()?;
         info!("Batch saved {} results", results.len());
+
+        let project_ids: std::collections::HashSet<String> = results.iter().map(|r| r.project_id.clone()).collect();
+        for project_id in project_ids {
+            self.invalidate_cache_for_project(&project_id);
+        }
+
         Ok(())
     }
 
@@ -320,6 +365,12 @@ impl<'a> CrawlRepo<'a> {
 
         tx.commit()?;
         info!("Batch saved {} links", links.len());
+
+        let project_ids: std::collections::HashSet<String> = links.iter().map(|l| l.project_id.clone()).collect();
+        for project_id in project_ids {
+            self.invalidate_cache_for_project(&project_id);
+        }
+
         Ok(())
     }
 
@@ -345,6 +396,25 @@ impl<'a> CrawlRepo<'a> {
         domain_filter: Option<&str>,
         depth_filter: Option<u32>,
     ) -> Result<(Vec<CrawlResult>, u32), AppError> {
+        let cache_key = ResultsCacheKey {
+            project_id: project_id.to_string(),
+            page,
+            page_size,
+            semantic_issue_type: semantic_issue_type.map(|s| s.to_string()),
+            search: search.map(|s| s.to_string()),
+            status_filter: status_filter.unwrap_or_default().iter().cloned().collect(),
+            severity_filter: severity_filter.unwrap_or_default().iter().cloned().collect(),
+            domain_filter: domain_filter.map(|s| s.to_string()),
+            depth_filter,
+        };
+
+        if let Some(ref cache_arc) = self.results_cache {
+            let mut cache = cache_arc.lock().unwrap();
+            if let Some(cached) = cache.get(&cache_key) {
+                return Ok(cached.clone());
+            }
+        }
+
         let offset = (page - 1) * page_size;
 
         let mut where_clauses = vec!["project_id = ?1".to_string()];
@@ -370,22 +440,28 @@ impl<'a> CrawlRepo<'a> {
 
         if let Some(statuses) = status_filter {
             if !statuses.is_empty() {
-                let placeholders: Vec<String> = statuses.iter().map(|_| {
-                    let idx = param_index;
-                    param_index += 1;
-                    format!("?{}", idx)
-                }).collect();
+                let placeholders: Vec<String> = statuses
+                    .iter()
+                    .map(|_| {
+                        let idx = param_index;
+                        param_index += 1;
+                        format!("?{}", idx)
+                    })
+                    .collect();
                 where_clauses.push(format!("status_code IN ({})", placeholders.join(",")));
             }
         }
 
         if let Some(severities) = severity_filter {
             if !severities.is_empty() {
-                let placeholders: Vec<String> = severities.iter().map(|_| {
-                    let idx = param_index;
-                    param_index += 1;
-                    format!("?{}", idx)
-                }).collect();
+                let placeholders: Vec<String> = severities
+                    .iter()
+                    .map(|_| {
+                        let idx = param_index;
+                        param_index += 1;
+                        format!("?{}", idx)
+                    })
+                    .collect();
                 where_clauses.push(format!(
                     "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.severity' IN ({}))",
                     placeholders.join(",")
@@ -395,7 +471,11 @@ impl<'a> CrawlRepo<'a> {
 
         if let Some(domain) = domain_filter {
             if !domain.is_empty() {
-                where_clauses.push(format!("(url LIKE ?{} OR url LIKE ?{})", param_index, param_index + 1));
+                where_clauses.push(format!(
+                    "(url LIKE ?{} OR url LIKE ?{})",
+                    param_index,
+                    param_index + 1
+                ));
                 param_index += 2;
             }
         }
@@ -445,8 +525,6 @@ impl<'a> CrawlRepo<'a> {
         if let Some(depth) = depth_filter {
             count_params.push(Box::new(depth as i32));
         }
-        count_params.push(Box::new(page_size as i32));
-        count_params.push(Box::new(offset as i32));
 
         let total: u32 = self.conn.query_row(
             &count_sql,
@@ -489,12 +567,28 @@ impl<'a> CrawlRepo<'a> {
 
         let mut stmt = self.conn.prepare(&query_sql)?;
         let results = stmt
-            .query_map(rusqlite::params_from_iter(query_params.iter().map(|p| p.as_ref())), |row| {
-                Self::row_to_result(row)
-            })?
+            .query_map(
+                rusqlite::params_from_iter(query_params.iter().map(|p| p.as_ref())),
+                |row| Self::row_to_result(row),
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
+        if let Some(ref cache_arc) = self.results_cache {
+            let mut cache = cache_arc.lock().unwrap();
+            cache.put(cache_key, (results.clone(), total));
+        }
+
         Ok((results, total))
+    }
+
+    fn invalidate_cache_for_project(&self, project_id: &str) {
+        if let Some(ref cache_arc) = self.results_cache {
+            let mut cache = cache_arc.lock().unwrap();
+            let keys_to_remove: Vec<ResultsCacheKey> = cache.iter().filter(|(k, _)| k.project_id == project_id).map(|(k, _)| k.clone()).collect();
+            for key in keys_to_remove {
+                cache.pop(&key);
+            }
+        }
     }
 
     fn row_to_result(row: &rusqlite::Row) -> Result<CrawlResult, rusqlite::Error> {
@@ -518,7 +612,7 @@ impl<'a> CrawlRepo<'a> {
             html_lang: row.get(15)?,
             hreflang_json: row.get(16)?,
             semantic_issues_json: row.get(17)?,
-            html_body: row.get(18)?,
+            html_body: decompress_html_body(&row.get(18)?),
         })
     }
 
@@ -558,13 +652,13 @@ impl<'a> CrawlRepo<'a> {
             params![page_id],
             |row| row.get(0),
         )?;
-        Ok(html)
+        Ok(decompress_html_body(&html).or(html))
     }
 
     pub fn save_screenshot(&self, page_id: &str, png_data: &[u8]) -> Result<(), AppError> {
         self.conn.execute(
             "UPDATE crawled_pages SET screenshot_png = ?1 WHERE id = ?2",
-            params![png_data, page_id],
+            params![compress_png(&Some(png_data.to_vec())).as_ref().map(|v| v.as_slice()), page_id],
         )?;
         Ok(())
     }
@@ -575,7 +669,7 @@ impl<'a> CrawlRepo<'a> {
             params![page_id],
             |row| row.get(0),
         )?;
-        Ok(data)
+        Ok(decompress_png(&data))
     }
 
     pub fn get_semantic_issue_counts(&self, project_id: &str) -> Result<Vec<IssueCount>, AppError> {
@@ -638,7 +732,10 @@ impl<'a> CrawlRepo<'a> {
             params![session_id, project_id, config_json, seed_urls, now, now],
         )?;
 
-        info!("Created crawl session: {} for project: {}", session_id, project_id);
+        info!(
+            "Created crawl session: {} for project: {}",
+            session_id, project_id
+        );
         Ok(session_id)
     }
 
@@ -664,13 +761,21 @@ impl<'a> CrawlRepo<'a> {
             params![now, session_id],
         )?;
         // Clear queue since crawl is done
-        self.conn
-            .execute("DELETE FROM crawl_queue WHERE session_id = ?1", params![session_id])?;
+        self.conn.execute(
+            "DELETE FROM crawl_queue WHERE session_id = ?1",
+            params![session_id],
+        )?;
         info!("Completed crawl session: {}", session_id);
         Ok(())
     }
 
-    pub fn interrupt_session(&self, session_id: &str, pages_crawled: u32, errors: u32, elapsed_secs: u64) -> Result<(), AppError> {
+    pub fn interrupt_session(
+        &self,
+        session_id: &str,
+        pages_crawled: u32,
+        errors: u32,
+        elapsed_secs: u64,
+    ) -> Result<(), AppError> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(
             "UPDATE crawl_sessions SET status = 'interrupted', pages_crawled = ?1, errors = ?2, elapsed_secs = ?3, updated_at = ?4 WHERE id = ?5",
@@ -731,7 +836,11 @@ impl<'a> CrawlRepo<'a> {
 
     // ==================== CRAWL QUEUE (RESUME) ====================
 
-    pub fn save_queue_batch(&self, session_id: &str, urls: &[(String, u32)]) -> Result<(), AppError> {
+    pub fn save_queue_batch(
+        &self,
+        session_id: &str,
+        urls: &[(String, u32)],
+    ) -> Result<(), AppError> {
         if urls.is_empty() {
             return Ok(());
         }
@@ -749,7 +858,11 @@ impl<'a> CrawlRepo<'a> {
         }
 
         tx.commit()?;
-        info!("Saved {} queue entries for session: {}", urls.len(), session_id);
+        info!(
+            "Saved {} queue entries for session: {}",
+            urls.len(),
+            session_id
+        );
         Ok(())
     }
 
@@ -764,20 +877,26 @@ impl<'a> CrawlRepo<'a> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        info!("Loaded {} queue entries for session: {}", entries.len(), session_id);
+        info!(
+            "Loaded {} queue entries for session: {}",
+            entries.len(),
+            session_id
+        );
         Ok(entries)
     }
 
     pub fn clear_queue(&self, session_id: &str) -> Result<(), AppError> {
-        self.conn
-            .execute("DELETE FROM crawl_queue WHERE session_id = ?1", params![session_id])?;
+        self.conn.execute(
+            "DELETE FROM crawl_queue WHERE session_id = ?1",
+            params![session_id],
+        )?;
         Ok(())
     }
 
     pub fn get_visited_urls_for_project(&self, project_id: &str) -> Result<Vec<String>, AppError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT url FROM crawled_pages WHERE project_id = ?1")?;
+            .prepare("SELECT url FROM crawled_pages WHERE project_id = ?1 LIMIT 100000")?;
 
         let urls = stmt
             .query_map(params![project_id], |row| row.get::<_, String>(0))?
@@ -812,27 +931,26 @@ impl<'a> CrawlRepo<'a> {
     }
 
     pub fn get_all_settings(&self) -> Result<std::collections::HashMap<String, String>, AppError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT key, value FROM settings")?;
+        let mut stmt = self.conn.prepare("SELECT key, value FROM settings")?;
         let settings = stmt
             .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                ))
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
             .filter_map(|r| r.ok())
             .collect();
         Ok(settings)
     }
 
-    pub fn get_all_results(&self, project_id: &str) -> Result<Vec<CrawlResult>, AppError> {
-        let mut stmt = self.conn.prepare(
+    pub fn get_all_results(&self, project_id: &str, max_results: Option<u32>) -> Result<Vec<CrawlResult>, AppError> {
+        let limit = max_results.unwrap_or(100000);
+        let query = format!(
             "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body
              FROM crawled_pages WHERE project_id = ?1
-             ORDER BY crawl_timestamp DESC",
-        )?;
+             ORDER BY crawl_timestamp DESC
+             LIMIT {}",
+            limit
+        );
+        let mut stmt = self.conn.prepare(&query)?;
         let results = stmt
             .query_map(params![project_id], Self::row_to_result)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -842,7 +960,8 @@ impl<'a> CrawlRepo<'a> {
     pub fn get_links_for_project(&self, project_id: &str) -> Result<Vec<PageLink>, AppError> {
         let mut stmt = self.conn.prepare(
             "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
-             FROM page_links WHERE project_id = ?1",
+             FROM page_links WHERE project_id = ?1
+             LIMIT 100000",
         )?;
         let links = stmt
             .query_map(params![project_id], |row| {

@@ -70,6 +70,7 @@
   "filter.error": "Error",
   "filter.warning": "Warning",
   "filter.info": "Info",
+  "filter.no_options": "No options available",
 
   "detail.back": "← Results",
   "detail.loading": "Loading page details...",
@@ -100,7 +101,7 @@
   "detail.hreflang": "Hreflang",
 
   "detail.semantic_issues": "Semantic Issues ({count})",
-  "detail.copy_selector": "Copy selector",
+  "detail.copy_xpath": "Copy XPath",
   "detail.copied": "Copied!",
 
   "detail.links_type": "Type",

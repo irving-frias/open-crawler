@@ -1,8 +1,8 @@
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::LazyLock;
 use url::Url;
+
+use crate::nesting_table::{can_include, NestingStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HreflangLink {
@@ -28,66 +28,6 @@ pub struct SemanticIssue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column: Option<u32>,
 }
-
-// Static lookup: (child_tag, parent_tag) -> is_invalid
-// Covers flow/block elements inside phrasing-only parents per HTML spec
-static NESTING_RULES: LazyLock<HashMap<(&'static str, &'static str), bool>> = LazyLock::new(|| {
-    let mut m = HashMap::new();
-
-    // Flow elements that CANNOT go inside phrasing-only parents
-    let flow_children = &[
-        "div", "p", "section", "article", "aside", "header", "footer",
-        "nav", "main", "h1", "h2", "h3", "h4", "h5", "h6",
-        "ul", "ol", "dl", "table", "form", "figure", "blockquote",
-        "pre", "hr", "details", "dialog", "video", "audio",
-    ];
-
-    // Phrasing-only parents (only accept phrasing content)
-    let phrasing_parents = &[
-        "span", "a", "em", "strong", "small", "mark", "del", "ins",
-        "sub", "sup", "code", "label", "button", "select", "textarea",
-        "abbr", "cite", "dfn", "kbd", "samp", "var", "output",
-        "progress", "meter", "time", "b", "i", "u", "s", "q",
-        "ruby", "rt", "rp", "bdi", "bdo", "br", "wbr", "data",
-        "map", "object",
-    ];
-
-    for &child in flow_children {
-        for &parent in phrasing_parents {
-            m.insert((child, parent), true);
-        }
-    }
-
-    // Specific additional invalid combos
-    let extra_invalid = &[
-        // Table elements inside phrasing
-        ("caption", "span"), ("caption", "a"), ("caption", "code"),
-        ("thead", "span"), ("tbody", "span"), ("tfoot", "span"),
-        ("tr", "span"), ("td", "span"), ("th", "span"),
-        ("colgroup", "span"), ("col", "span"),
-        // List items inside phrasing
-        ("li", "span"), ("li", "a"), ("li", "code"),
-        ("dt", "span"), ("dd", "span"),
-        // Heading inside phrasing
-        ("h1", "a"), ("h2", "a"), ("h3", "a"), ("h4", "a"),
-        ("h5", "a"), ("h6", "a"),
-        // Block inside <a> (very common mistake)
-        ("div", "a"), ("p", "a"), ("section", "a"), ("article", "a"),
-        ("ul", "a"), ("ol", "a"), ("table", "a"), ("form", "a"),
-        // Block inside <button>
-        ("div", "button"), ("p", "button"), ("section", "button"),
-        ("ul", "button"), ("table", "button"),
-        // Block inside <label>
-        ("div", "label"), ("p", "label"), ("section", "label"),
-        ("ul", "label"), ("table", "label"),
-    ];
-
-    for &(child, parent) in extra_invalid {
-        m.insert((child, parent), true);
-    }
-
-    m
-});
 
 #[derive(Debug, Clone)]
 pub struct SeoData {
@@ -117,7 +57,6 @@ pub struct OutgoingLink {
 fn build_absolute_xpath(el: &scraper::ElementRef) -> String {
     let tag = el.value().name().to_string();
 
-    // If has id, return absolute id-based path
     if let Some(id) = el.value().id() {
         return format!("/html/body//*[@id='{}']", id);
     }
@@ -155,8 +94,57 @@ fn build_absolute_xpath(el: &scraper::ElementRef) -> String {
     }
 }
 
+fn collect_upward(el: &scraper::ElementRef, out: &mut Vec<String>) {
+    let tag = el.value().name().to_string();
+
+    let position = el
+        .parent()
+        .map(|parent| {
+            parent
+                .children()
+                .filter_map(|c| c.value().as_element())
+                .filter(|e| e.name() == el.value().name())
+                .take_while(|e| *e != el.value())
+                .count()
+                + 1
+        })
+        .unwrap_or(1);
+
+    let step = if position > 1 {
+        format!("{}[{}]", tag, position)
+    } else {
+        tag
+    };
+
+    out.push(step);
+
+    if let Some(id) = el.value().id() {
+        out.push(format!("//*[@id='{}']", id));
+        return;
+    }
+
+    if let Some(parent) = el.parent().and_then(scraper::ElementRef::wrap) {
+        collect_upward(&parent, out);
+    }
+}
+
+fn build_accessible_xpath(el: &scraper::ElementRef) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    collect_upward(el, &mut parts);
+
+    if parts.len() >= 2 && parts.last().map(|s| s.starts_with("//*[@id='")) == Some(true) {
+        parts.reverse();
+        if parts.len() > 4 {
+            parts.truncate(4);
+        }
+        parts.join("/")
+    } else {
+        build_absolute_xpath(el)
+    }
+}
+
 pub fn compute_xpath(element: &scraper::ElementRef) -> String {
-    build_absolute_xpath(element)
+    build_accessible_xpath(element)
 }
 
 /// Full absolute XPath: always /html/body/...
@@ -569,22 +557,25 @@ impl SeoParser {
             *type_counts.entry(issue.issue_type.clone()).or_insert(0) += 1;
         }
 
-        // For element-level issues: full XPath if multiple of same type, short if unique
+        // For element-level issues: use accessible XPath anchored at nearest ancestor with id
+        // Limit to element + up to 3 ancestor steps, e.g. //*[@id='x']/div[1]/a/article
         for issue in &mut issues {
             if issue.xpath.is_some() {
-                let count = type_counts.get(&issue.issue_type).copied().unwrap_or(0);
-                if count == 1 {
-                    // Unique issue type — use short XPath (id-based if available)
-                    if let Some(ref full) = issue.xpath.clone() {
+                if let Some(ref full) = issue.xpath.clone() {
+                    if full.starts_with("/") {
                         if let Some(id_pos) = full.rfind("[@id='") {
                             if let Some(end) = full[id_pos..].find("']") {
                                 let id_val = &full[id_pos + 7..id_pos + end + 2];
-                                issue.xpath = Some(format!("//*[@id='{}']", id_val));
+                                let from_id = &full[id_pos..];
+                                let mut segments: Vec<&str> = from_id.split('/').collect();
+                                if segments.len() > 4 {
+                                    segments.truncate(4);
+                                }
+                                issue.xpath = Some(format!("//*[@id='{}']{}", id_val, segments.join("/")));
                             }
                         }
                     }
                 }
-                // count > 1: keep full XPath (already set by compute_xpath_full)
             }
         }
 
@@ -758,31 +749,26 @@ impl SeoParser {
         count
     }
 
-    /// Check for invalid element nesting (flow/block inside phrasing-only parents).
-    /// Uses static lookup table first, then falls back to the caninclude API for unknown pairs.
+    /// Check for invalid element nesting using the static caninclude table.
+    /// Reports "cant" as error, "doubt" as warning.
     fn check_element_nesting(&self, document: &Html) -> Vec<SemanticIssue> {
         let mut issues = Vec::new();
-        let mut unknown_pairs: Vec<(String, String)> = Vec::new();
         let mut seen_pairs: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
 
-        // Walk all elements and check parent-child relationships
         let all_selector = Selector::parse("*").unwrap();
         for element in document.select(&all_selector) {
             let child_tag = element.value().name();
 
-            // Walk up to find the parent element
             if let Some(parent_ref) = self.find_parent_element(element) {
                 let parent_tag = parent_ref.value().name();
                 let pair = (child_tag.to_string(), parent_tag.to_string());
 
-                // Skip if we already reported or checked this pair
                 if seen_pairs.contains(&pair) {
                     continue;
                 }
 
-                // Check static table first
-                if let Some(&is_invalid) = NESTING_RULES.get(&(child_tag, parent_tag)) {
-                    if is_invalid {
+                match can_include(parent_tag, child_tag) {
+                    Some(NestingStatus::Cant) => {
                         seen_pairs.insert(pair.clone());
                         let selector = compute_css_selector(&element);
                         let xpath = compute_xpath_full(&element);
@@ -791,76 +777,33 @@ impl SeoParser {
                             severity: "error".to_string(),
                             element: format!("<{}> in <{}>", child_tag, parent_tag),
                             message: format!(
-                                "<{}> cannot be a child of <{}> (phrasing-only parent)",
+                                "<{}> cannot be a child of <{}>",
                                 child_tag, parent_tag
                             ),
                             selector: Some(selector),
                             xpath: Some(xpath),
-                        ..Default::default()
-            });
+                            ..Default::default()
+                        });
                     }
-                } else {
-                    // Unknown pair - collect for API fallback
-                    unknown_pairs.push(pair);
-                }
-            }
-        }
-
-        // API fallback for unknown pairs (max 10 to avoid excessive calls)
-        // Only runs inside a tokio runtime (gracefully skips in unit tests)
-        if !unknown_pairs.is_empty() {
-            let api_result = tokio::runtime::Handle::try_current().ok().map(|handle| {
-                let mut api_cache: HashMap<(String, String), bool> = HashMap::new();
-                let mut api_issues = Vec::new();
-
-                for (child, parent) in unknown_pairs.iter().take(10) {
-                    let cache_key = (child.clone(), parent.clone());
-                    if api_cache.contains_key(&cache_key) {
-                        continue;
-                    }
-
-                    let url = format!(
-                        "https://caninclude.onrender.com/api/caninclude?child={}&parent={}",
-                        child, parent
-                    );
-
-                    let is_invalid = tokio::task::block_in_place(|| {
-                        handle.block_on(async {
-                            let client = reqwest::Client::builder()
-                                .timeout(std::time::Duration::from_secs(3))
-                                .build()
-                                .ok()?;
-
-                            let resp = client.get(&url).send().await.ok()?;
-                            let json: serde_json::Value = resp.json().await.ok()?;
-                            Some(json["include"]["can"].as_str() == Some("cant"))
-                        })
-                    })
-                    .unwrap_or(false);
-
-                    api_cache.insert(cache_key.clone(), is_invalid);
-
-                    if is_invalid && !seen_pairs.contains(&cache_key) {
-                        seen_pairs.insert(cache_key);
-                        api_issues.push(SemanticIssue {
-                            issue_type: "invalid_nesting".to_string(),
-                            severity: "error".to_string(),
-                            element: format!("<{}> in <{}>", child, parent),
+                    Some(NestingStatus::Doubt) => {
+                        seen_pairs.insert(pair.clone());
+                        let selector = compute_css_selector(&element);
+                        let xpath = compute_xpath_full(&element);
+                        issues.push(SemanticIssue {
+                            issue_type: "context_nesting".to_string(),
+                            severity: "info".to_string(),
+                            element: format!("<{}> in <{}>", child_tag, parent_tag),
                             message: format!(
-                                "<{}> cannot be a child of <{}> (phrasing-only parent)",
-                                child, parent
+                                "<{}> nesting in <{}> depends on context",
+                                child_tag, parent_tag
                             ),
-                            selector: Some(format!("{} > {}", parent, child)),
-                        ..Default::default()
-            });
+                            selector: Some(selector),
+                            xpath: Some(xpath),
+                            ..Default::default()
+                        });
                     }
+                    _ => {} // Can or unknown
                 }
-
-                api_issues
-            });
-
-            if let Some(api_issues) = api_result {
-                issues.extend(api_issues);
             }
         }
 
@@ -1216,18 +1159,20 @@ mod tests {
     }
 
     #[test]
-    fn test_static_nesting_table_covers_common_cases() {
-        // Verify the static table has entries for the most common violations
-        assert!(NESTING_RULES.get(&("div", "span")).copied().unwrap_or(false));
-        assert!(NESTING_RULES.get(&("p", "a")).copied().unwrap_or(false));
-        assert!(NESTING_RULES.get(&("table", "span")).copied().unwrap_or(false));
-        assert!(NESTING_RULES.get(&("ul", "code")).copied().unwrap_or(false));
-        assert!(NESTING_RULES.get(&("section", "label")).copied().unwrap_or(false));
+    fn test_nesting_table_covers_common_cases() {
+        use crate::nesting_table::{can_include, NestingStatus};
 
-        // Valid combos should NOT be in the table
-        assert!(!NESTING_RULES.get(&("div", "div")).copied().unwrap_or(false));
-        assert!(!NESTING_RULES.get(&("span", "div")).copied().unwrap_or(false));
-        assert!(!NESTING_RULES.get(&("li", "ul")).copied().unwrap_or(false));
-        assert!(!NESTING_RULES.get(&("td", "tr")).copied().unwrap_or(false));
+        // Invalid combinations should return Cant
+        assert_eq!(can_include("span", "div"), Some(NestingStatus::Cant));
+        assert_eq!(can_include("span", "table"), Some(NestingStatus::Cant));
+        assert_eq!(can_include("code", "ul"), Some(NestingStatus::Cant));
+        assert_eq!(can_include("label", "section"), Some(NestingStatus::Cant));
+
+        // Valid combinations should return Can
+        assert_eq!(can_include("div", "div"), Some(NestingStatus::Can));
+        assert_eq!(can_include("div", "span"), Some(NestingStatus::Can));
+        assert_eq!(can_include("ul", "li"), Some(NestingStatus::Can));
+        assert_eq!(can_include("tr", "td"), Some(NestingStatus::Can));
+        assert_eq!(can_include("table", "tr"), Some(NestingStatus::Can));
     }
 }

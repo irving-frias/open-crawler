@@ -154,7 +154,7 @@ impl CrawlEngine {
                 .db
                 .lock()
                 .map_err(|e| AppError::Crawl(e.to_string()))?;
-            let repo = CrawlRepo::new(&db);
+            let repo = CrawlRepo::new(&db, None);
 
             if let Some(interrupted) = repo.get_interrupted_session(&project_id)? {
                 info!(
@@ -248,7 +248,7 @@ impl CrawlEngine {
                 .db
                 .lock()
                 .map_err(|e| AppError::Crawl(e.to_string()))?;
-            let repo = CrawlRepo::new(&db);
+            let repo = CrawlRepo::new(&db, None);
             repo.save_config(&config)?;
             config.id.clone().unwrap_or_else(|| "default".to_string())
         };
@@ -480,7 +480,7 @@ impl CrawlEngine {
                         // Now do DB operations (no await needed)
                         if let Ok(state_read) = state.try_read() {
                             if let Ok(db) = state_read.db.lock() {
-                                let repo = CrawlRepo::new(&db);
+                                let repo = CrawlRepo::new(&db, None);
                                 let _ = repo.update_session_progress(
                                     &session_id,
                                     pages_crawled,
@@ -546,7 +546,7 @@ impl CrawlEngine {
         // Update session status
         let state_read = state.read().await;
         if let Ok(db) = state_read.db.lock() {
-            let repo = CrawlRepo::new(&db);
+            let repo = CrawlRepo::new(&db, None);
             let _ = repo.complete_session(&session_id);
         }
         drop(state_read);
@@ -697,6 +697,11 @@ impl CrawlEngine {
             }
             if !outgoing_url.starts_with("http://") && !outgoing_url.starts_with("https://") {
                 continue;
+            }
+            if let Ok(parsed) = Url::parse(outgoing_url) {
+                if !parsed.query().unwrap_or("").is_empty() {
+                    continue;
+                }
             }
             // Skip non-page files (assets, documents, media)
             if is_static_asset(outgoing_url) {

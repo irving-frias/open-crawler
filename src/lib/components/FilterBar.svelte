@@ -14,34 +14,47 @@
   export type FilterState = {
     statusCodes: number[];
     severities: string[];
-    domain: string;
     depth: number | undefined;
   };
 
   let selectedStatuses = $state<number[]>([]);
   let selectedSeverities = $state<string[]>([]);
-  let selectedDomain = $state('');
   let maxDepth = $state<number | undefined>(undefined);
 
   let isOpen = $state(false);
 
-  const AVAILABLE_STATUSES = [200, 301, 302, 404, 500, 502, 503];
-
-  const domains = $derived.by(() => {
-    const domainSet = new Set<string>();
+  const AVAILABLE_STATUSES = $derived.by(() => {
+    let statusCount: Record<number, number> = {};
     for (const page of items) {
-      try {
-        const url = new URL(page.url);
-        domainSet.add(url.hostname);
-      } catch {}
+      if (page.status_code) {
+        statusCount[page.status_code] = (statusCount[page.status_code] || 0) + 1;
+      }
     }
-    return Array.from(domainSet).sort();
+    return Object.entries(statusCount)
+      .map(([code, _]) => parseInt(code))
+      .sort((a, b) => a - b);
+  });
+
+  const availableSeverities = $derived.by(() => {
+    let sevCount: Record<string, number> = {};
+    for (const page of items) {
+      if (page.semantic_issues_json) {
+        try {
+          const issues = JSON.parse(page.semantic_issues_json);
+          for (const issue of issues) {
+            if (issue.severity) {
+              sevCount[issue.severity] = (sevCount[issue.severity] || 0) + 1;
+            }
+          }
+        } catch {}
+      }
+    }
+    return Object.keys(sevCount).sort();
   });
 
   const activeFilterCount = $derived(
     selectedStatuses.length +
     selectedSeverities.length +
-    (selectedDomain ? 1 : 0) +
     (maxDepth !== undefined ? 1 : 0)
   );
 
@@ -63,11 +76,6 @@
     emitFilter();
   }
 
-  function handleDomainChange(e: Event) {
-    selectedDomain = (e.target as HTMLSelectElement).value;
-    emitFilter();
-  }
-
   function handleDepthChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value);
     maxDepth = isNaN(val) ? undefined : val;
@@ -77,7 +85,6 @@
   function clearAll() {
     selectedStatuses = [];
     selectedSeverities = [];
-    selectedDomain = '';
     maxDepth = undefined;
     emitFilter();
   }
@@ -86,7 +93,6 @@
     onFilter({
       statusCodes: selectedStatuses,
       severities: selectedSeverities,
-      domain: selectedDomain,
       depth: maxDepth,
     });
   }
@@ -106,7 +112,7 @@
   {#if isOpen}
     <div class="filter-panel">
       <div class="filter-group">
-        <label class="filter-label">{m["filter.status"]()}</label>
+        <div class="filter-label">{m["filter.status"]()}</div>
         <div class="filter-chips">
           {#each AVAILABLE_STATUSES as code}
             <button
@@ -117,50 +123,32 @@
               {code}
             </button>
           {/each}
+          {#if AVAILABLE_STATUSES.length === 0}
+            <span class="filter-empty">{m["filter.no_options"]()}</span>
+          {/if}
         </div>
       </div>
 
       <div class="filter-group">
-        <label class="filter-label">{m["filter.severity"]()}</label>
+        <div class="filter-label">{m["filter.severity"]()}</div>
         <div class="filter-chips">
-          <button
-            class="chip chip-error"
-            class:active={selectedSeverities.includes('error')}
-            onclick={() => toggleSeverity('error')}
-          >
-            {m["filter.error"]()}
-          </button>
-          <button
-            class="chip chip-warning"
-            class:active={selectedSeverities.includes('warning')}
-            onclick={() => toggleSeverity('warning')}
-          >
-            {m["filter.warning"]()}
-          </button>
-          <button
-            class="chip chip-info"
-            class:active={selectedSeverities.includes('info')}
-            onclick={() => toggleSeverity('info')}
-          >
-            {m["filter.info"]()}
-          </button>
+          {#each availableSeverities as severity}
+            <button
+              class="chip chip-{severity}"
+              class:active={selectedSeverities.includes(severity)}
+              onclick={() => toggleSeverity(severity)}
+            >
+              {severity}
+            </button>
+          {/each}
+          {#if availableSeverities.length === 0}
+            <span class="filter-empty">{m["filter.no_options"]()}</span>
+          {/if}
         </div>
       </div>
 
-      {#if domains.length > 0}
-        <div class="filter-group">
-          <label class="filter-label">{m["filter.domain"]()}</label>
-          <select class="filter-select" value={selectedDomain} onchange={handleDomainChange}>
-            <option value="">{m["filter.all_domains"]()}</option>
-            {#each domains as domain}
-              <option value={domain}>{domain}</option>
-            {/each}
-          </select>
-        </div>
-      {/if}
-
       <div class="filter-group">
-        <label class="filter-label">{m["filter.depth"]()}</label>
+        <div class="filter-label">{m["filter.depth"]()}</div>
         <div class="depth-slider">
           <input
             type="range"

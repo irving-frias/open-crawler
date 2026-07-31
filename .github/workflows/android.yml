@@ -1,0 +1,81 @@
+name: Android APK
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: 25.1.8937393
+          api-level: 34
+
+      - name: Install OpenSSL for Android
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+
+      - name: Setup Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/opencrawler.keystore
+          echo "KEYSTORE_PATH=android/opencrawler.keystore" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
+
+      - name: Build Tauri App
+        run: pnpm tauri build --target aarch64-linux-android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          ANDROID_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencrawler-android-apk
+          path: src-tauri/target/android/arm64-v8a/release/apk/*.apk
+          retention-days: 30
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencrawler-android-aab
+          path: src-tauri/target/android/arm64-v8a/release/aab/*.aab
+          retention-days: 30

@@ -117,13 +117,17 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
 
             CREATE INDEX IF NOT EXISTS idx_config_project ON crawl_config(project_id);
             CREATE INDEX IF NOT EXISTS idx_pages_project ON crawled_pages(project_id);
+            CREATE INDEX IF NOT EXISTS idx_pages_project_ts ON crawled_pages(project_id, crawl_timestamp);
             CREATE INDEX IF NOT EXISTS idx_links_project ON page_links(project_id);
+            CREATE INDEX IF NOT EXISTS idx_links_from_url ON page_links(from_url);
             CREATE INDEX IF NOT EXISTS idx_errors_project ON crawl_errors(project_id);
+            CREATE INDEX IF NOT EXISTS idx_errors_url ON crawl_errors(url);
             CREATE INDEX IF NOT EXISTS idx_pages_config ON crawled_pages(config_id);
             CREATE INDEX IF NOT EXISTS idx_pages_url ON crawled_pages(url);
             CREATE INDEX IF NOT EXISTS idx_sessions_project ON crawl_sessions(project_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_status ON crawl_sessions(status);
-            CREATE INDEX IF NOT EXISTS idx_queue_session ON crawl_queue(session_id);",
+            CREATE INDEX IF NOT EXISTS idx_queue_session ON crawl_queue(session_id);
+            CREATE INDEX IF NOT EXISTS idx_queue_url ON crawl_queue(url);",
         )?;
 
         conn.execute_batch(
@@ -255,6 +259,25 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
                 ('check_sitemap', 'true'),
                 ('check_semantics', 'true'),
                 ('max_crawl_time', '3600');",
+        )?;
+    }
+
+    // Migration v8: missing indexes for query performance
+    let idx_pages_project_ts: bool = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_pages_project_ts'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .is_ok();
+
+    if !idx_pages_project_ts {
+        info!("Creating missing indexes for query performance");
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_pages_project_ts ON crawled_pages(project_id, crawl_timestamp);
+             CREATE INDEX IF NOT EXISTS idx_links_from_url ON page_links(from_url);
+             CREATE INDEX IF NOT EXISTS idx_errors_url ON crawl_errors(url);
+             CREATE INDEX IF NOT EXISTS idx_queue_url ON crawl_queue(url);",
         )?;
     }
 

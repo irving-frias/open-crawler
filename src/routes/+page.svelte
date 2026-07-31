@@ -4,11 +4,30 @@
   import { confirm } from '@tauri-apps/plugin-dialog';
   import ResultsTable from '$lib/components/ResultsTable.svelte';
   import FilterBar, { type FilterState } from '$lib/components/FilterBar.svelte';
-  import PageDetailPanel from '$lib/components/PageDetailPanel.svelte';
-  import SemanticDashboard from '$lib/components/SemanticDashboard.svelte';
-  import SettingsModal from '$lib/components/SettingsModal.svelte';
   import Toast from '$lib/components/Toast.svelte';
   import { m } from '$lib/paraglide/messages.js';
+
+  let PageDetailPanel = $state<typeof import('$lib/components/PageDetailPanel.svelte').default | null>(null);
+  let SemanticDashboard = $state<typeof import('$lib/components/SemanticDashboard.svelte').default | null>(null);
+  let SettingsModal = $state<typeof import('$lib/components/SettingsModal.svelte').default | null>(null);
+
+  $effect(() => {
+    if (detailPageId && !PageDetailPanel) {
+      import('$lib/components/PageDetailPanel.svelte').then(m => PageDetailPanel = m.default);
+    }
+  });
+
+  $effect(() => {
+    if (activeTab === 'dashboard' && !SemanticDashboard) {
+      import('$lib/components/SemanticDashboard.svelte').then(m => SemanticDashboard = m.default);
+    }
+  });
+
+  $effect(() => {
+    if (settingsModalOpen && !SettingsModal) {
+      import('$lib/components/SettingsModal.svelte').then(m => SettingsModal = m.default);
+    }
+  });
 
   // Project state
   let projects = $state<any[]>([]);
@@ -25,6 +44,8 @@
   let checkSitemap = $state(true);
   let checkSemantics = $state(true);
   let maxCrawlTime = $state(3600);
+
+  let seedUrlsByProject = $state<Record<string, string>>({});
 
   // Crawl state
   let status = $state<'idle' | 'running' | 'paused' | 'completed' | 'error'>('idle');
@@ -62,9 +83,6 @@
 
   // Detail panel
   let detailPageId = $state('');
-
-  // Mobile sidebar
-  let sidebarOpen = $state(false);
 
   // Search
   let searchQuery = $state('');
@@ -124,8 +142,11 @@
   }
 
   function selectProject(id: string) {
+    if (selectedProjectId && selectedProjectId !== id) {
+      seedUrlsByProject[selectedProjectId] = seedUrl;
+    }
     selectedProjectId = id;
-    sidebarOpen = false;
+    seedUrl = seedUrlsByProject[id] ?? '';
     status = 'idle';
     progress = { crawled: 0, queued: 0, current: '', errors: 0 };
     results = { items: [], total: 0, page: 1, page_size: 50 };
@@ -484,37 +505,29 @@
 <div class="app-layout">
   <Toast {toasts} onDismiss={dismissToast} />
 
-  <!-- Mobile hamburger -->
-  <button class="hamburger" onclick={() => sidebarOpen = !sidebarOpen} aria-label="Toggle menu">
-    {sidebarOpen ? '✕' : '☰'}
-  </button>
-
-  <!-- Sidebar overlay (mobile) -->
-  {#if sidebarOpen}
-    <div class="sidebar-overlay" onclick={() => sidebarOpen = false} role="presentation"></div>
-  {/if}
-
-  <!-- Sidebar -->
-  <aside class="sidebar" class:open={sidebarOpen}>
-    <div class="sidebar-header">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-left">
       <h1 class="logo">{m["app.title"]()}</h1>
       <button class="btn-settings" onclick={() => settingsModalOpen = true} aria-label="Settings">⚙️</button>
     </div>
 
-    <div class="project-create">
-      <input
-        type="text"
-        bind:value={newProjectName}
-        placeholder={m["sidebar.new_project_placeholder"]()}
-        onkeydown={(e) => e.key === 'Enter' && createProject()}
-      />
-      <button class="btn-icon" onclick={createProject} disabled={!newProjectName.trim()}>+</button>
+    <div class="header-center">
+      <div class="project-create">
+        <input
+          type="text"
+          bind:value={newProjectName}
+          placeholder={m["sidebar.new_project_placeholder"]()}
+          onkeydown={(e) => e.key === 'Enter' && createProject()}
+        />
+        <button class="btn-icon" onclick={createProject} disabled={!newProjectName.trim()}>+</button>
+      </div>
     </div>
 
-    <nav class="project-list">
+    <nav class="project-list-header">
       {#each projects as project (project.id)}
         <div
-          class="project-item"
+          class="project-chip"
           class:selected={project.id === selectedProjectId}
           role="button"
           tabindex="0"
@@ -535,9 +548,6 @@
             />
           {:else}
             <span class="project-name">{project.name}</span>
-            <span class="project-date">
-              {new Date(project.created_at).toLocaleDateString()}
-            </span>
             <div class="project-actions">
               <button
                 class="btn-mini"
@@ -563,7 +573,7 @@
         <div class="empty-projects">{m["sidebar.no_projects"]()}</div>
       {/if}
     </nav>
-  </aside>
+  </header>
 
   <!-- Main content -->
   <main class="main-content">
@@ -770,11 +780,13 @@
               </div>
             {/if}
           {:else}
-            <SemanticDashboard
-              projectId={selectedProjectId}
-              onFilterIssueType={handleFilterIssueType}
-              bind:activeFilter={semanticFilter}
-            />
+            {#if SemanticDashboard}
+              <SemanticDashboard
+                projectId={selectedProjectId}
+                onFilterIssueType={handleFilterIssueType}
+                bind:activeFilter={semanticFilter}
+              />
+            {/if}
           {/if}
         </section>
       {/if}
@@ -782,34 +794,159 @@
   </main>
 </div>
 
-<PageDetailPanel bind:pageId={detailPageId} onClose={() => detailPageId = ''} />
+{#if PageDetailPanel}
+  <PageDetailPanel bind:pageId={detailPageId} onClose={() => detailPageId = ''} />
+{/if}
 
-<SettingsModal bind:open={settingsModalOpen} />
+{#if SettingsModal}
+  <SettingsModal bind:open={settingsModalOpen} />
+{/if}
 
 <style>
   .app-layout {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     overflow: hidden;
   }
 
-  /* Sidebar */
-  .sidebar {
-    width: 350px;
-    min-width: 350px;
-    background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
+  /* Header */
+  .app-header {
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    z-index: 20;
   }
 
-  .sidebar-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--bg-hover);
+  .header-left {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .header-center {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .project-create {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .project-create input {
+    flex: 1;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font-size: 0.85rem;
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .project-create input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-subtle);
+  }
+
+  .project-list-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    padding: 6px 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-muted) transparent;
+  }
+
+  .project-list-header::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .project-list-header::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+
+  .project-list-header::-webkit-scrollbar-thumb {
+    background: var(--border-muted);
+    border-radius: 3px;
+  }
+
+  .project-list-header::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+
+  .project-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    min-height: 44px;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+    border-left: 4px solid transparent;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    scroll-snap-align: start;
+    flex-shrink: 0;
+    font-size: 0.9rem;
+  }
+
+  .project-chip:hover {
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+  }
+
+  .project-chip:active {
+    transform: translateY(0);
+  }
+
+  .project-chip.selected {
+    background: var(--bg-hover);
+    border-left: 4px solid var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-subtle);
+  }
+
+  .project-name {
+    font-size: 0.9rem;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+
+  .project-actions {
+    display: none;
+    gap: 6px;
+  }
+
+  .project-chip:hover .project-actions {
+    display: flex;
+  }
+
+  .empty-projects {
+    padding: 10px 12px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
   }
 
   .btn-settings {
@@ -828,36 +965,13 @@
   }
 
   .logo {
-    font-size: 1.3rem;
+    font-size: 1.1rem;
     font-weight: 700;
     background: var(--accent-gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
-  }
-
-  .project-create {
-    display: flex;
-    gap: 6px;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--bg-hover);
-  }
-
-  .project-create input {
-    flex: 1;
-    padding: 8px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: 0.85rem;
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
-  }
-
-  .project-create input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-subtle);
+    white-space: nowrap;
   }
 
   .btn-icon {
@@ -885,54 +999,6 @@
   .btn-icon:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-  }
-
-  .project-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-  }
-
-  .project-item {
-    padding: 10px 12px;
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    margin-bottom: 4px;
-    transition: background var(--transition-base), border-color var(--transition-base);
-    border-left: 3px solid transparent;
-  }
-
-  .project-item:hover {
-    background: var(--bg-card);
-  }
-
-  .project-item.selected {
-    background: var(--bg-hover);
-    border-left: 3px solid var(--accent);
-  }
-
-  .project-name {
-    display: block;
-    font-size: 0.9rem;
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .project-date {
-    display: block;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
-  .project-actions {
-    display: none;
-    gap: 4px;
-    margin-top: 6px;
-  }
-
-  .project-item:hover .project-actions {
-    display: flex;
   }
 
   .btn-mini {
@@ -965,21 +1031,11 @@
     font-size: 0.9rem;
   }
 
-  .empty-projects {
-    padding: 20px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-
   /* Main content */
   .main-content {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 32px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    padding: var(--space-md);
   }
 
   .no-project {
@@ -1353,54 +1409,47 @@
      Base = mobile (≤ 767px)
      ========================================== */
 
-  /* --- Hamburger (mobile only) --- */
-  .hamburger {
-    display: none;
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    z-index: calc(var(--z-sidebar) + 2);
-    width: 40px;
-    height: 40px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: 1.2rem;
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--transition-base);
-  }
-  .hamburger:hover { background: var(--bg-hover); }
-
-  .sidebar-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: calc(var(--z-sidebar) - 1);
+  /* Header mobile: stacked layout */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
   }
 
-  /* --- Mobile base (≤ 767px) --- */
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 280px;
-    z-index: var(--z-sidebar);
-    transform: translateX(-100%);
-    transition: transform var(--transition-base);
-    background: var(--bg-sidebar);
+  .header-left {
+    width: 100%;
+    justify-content: space-between;
   }
-  .sidebar.open {
-    transform: translateX(0);
+
+  .header-center {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .project-list-header {
+    width: 100%;
+    overflow-x: auto;
+    padding: 4px 2px;
+  }
+
+  .project-chip {
+    padding: 8px 14px;
+    min-height: 42px;
+    font-size: 0.85rem;
+  }
+
+  .project-name {
+    max-width: 140px;
+    font-size: 0.85rem;
+  }
+
+  .btn-mini {
+    padding: 4px 10px;
+    font-size: 0.85rem;
   }
 
   .main-content {
     padding: var(--space-md);
-    padding-top: 60px;
   }
 
   .form-row {
@@ -1455,22 +1504,44 @@
 
   /* --- Tablet (768px+) --- */
   @media (min-width: 768px) {
-    .hamburger {
-      display: none;
+    .app-header {
+      flex-wrap: nowrap;
+      gap: 16px;
+      padding: 12px 20px;
     }
 
-    .sidebar {
-      position: fixed;
-      transform: translateX(-100%);
-      transition: transform var(--transition-base);
+    .header-left {
+      width: auto;
     }
-    .sidebar.open {
-      transform: translateX(0);
+
+    .header-center {
+      flex: 0 1 420px;
+    }
+
+    .project-list-header {
+      width: auto;
+      overflow-x: auto;
+      padding: 4px 2px;
+    }
+
+    .project-chip {
+      padding: 10px 16px;
+      min-height: 44px;
+      font-size: 0.9rem;
+    }
+
+    .project-name {
+      max-width: 180px;
+      font-size: 0.9rem;
+    }
+
+    .btn-mini {
+      padding: 4px 10px;
+      font-size: 0.85rem;
     }
 
     .main-content {
       padding: var(--space-lg);
-      padding-top: var(--space-lg);
     }
 
     .form-row {
@@ -1497,47 +1568,32 @@
 
   /* --- Desktop (1024px+) --- */
   @media (min-width: 1024px) {
-    .hamburger {
-      display: none;
+    .app-header {
+      padding: 14px 24px;
+      gap: 20px;
     }
 
-    .sidebar-overlay {
-      display: none;
+    .header-center {
+      flex: 0 1 520px;
     }
 
-    .sidebar {
-      position: relative;
-      transform: none;
-      width: 300px;
-      min-width: 300px;
+    .project-create {
+      max-width: 520px;
     }
 
     .main-content {
       padding: var(--space-lg);
-      padding-top: var(--space-lg);
     }
   }
 
   /* --- Wide (1440px+) --- */
   @media (min-width: 1440px) {
-    .sidebar {
-      width: 350px;
-      min-width: 350px;
+    .app-header {
+      padding: 16px 32px;
     }
 
     .main-content {
       padding: var(--space-lg) var(--space-xl);
-    }
-  }
-
-  /* --- Mobile only: show hamburger --- */
-  @media (max-width: 767px) {
-    .hamburger {
-      display: flex;
-    }
-
-    .sidebar-overlay {
-      display: block;
     }
   }
 </style>

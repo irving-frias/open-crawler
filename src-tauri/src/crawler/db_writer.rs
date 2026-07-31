@@ -10,7 +10,9 @@ use crate::models::{CrawlResult, PageLink};
 use crate::AppState;
 
 const DEFAULT_BATCH_SIZE: usize = 50;
+const MAX_BATCH_SIZE: usize = 500;
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2000;
+const BATCH_EVENT_INTERVAL: u32 = 500;
 
 pub enum CrawlResultMsg {
     Page(Box<CrawlResult>),
@@ -38,6 +40,7 @@ pub struct DbWriter {
     project_id: String,
     total_crawled: u32,
     total_errors: u32,
+    last_event_count: u32,
 }
 
 impl DbWriter {
@@ -59,6 +62,7 @@ impl DbWriter {
             project_id,
             total_crawled: 0,
             total_errors: 0,
+            last_event_count: 0,
         }
     }
 
@@ -84,9 +88,15 @@ impl DbWriter {
                         Some(CrawlResultMsg::Page(result)) => {
                             self.total_crawled += 1;
                             self.batch_results.push(*result);
+                            if self.batch_results.len() >= self.batch_size {
+                                self.flush().await;
+                            }
                         }
                         Some(CrawlResultMsg::Links(links)) => {
                             self.batch_links.extend(links);
+                            if self.batch_links.len() >= self.batch_size * 5 {
+                                self.flush().await;
+                            }
                         }
                         Some(CrawlResultMsg::Error { url, config_id, project_id, error_type, message }) => {
                             self.total_errors += 1;
@@ -117,7 +127,10 @@ impl DbWriter {
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                    // Check for flush interval
+                    if self.last_flush.elapsed() >= self.flush_interval
+                        && (!self.batch_results.is_empty() || !self.batch_links.is_empty()) {
+                        self.flush().await;
+                    }
                 }
             }
         }
@@ -153,7 +166,7 @@ impl DbWriter {
             }
         };
 
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
 
         // Batch insert pages
         if let Err(e) = repo.save_results_batch(&results) {
@@ -169,20 +182,21 @@ impl DbWriter {
 
         self.last_flush = Instant::now();
 
-        // Emit crawl-batch event for real-time frontend updates
-        if count > 0 {
-            let batch_items: Vec<serde_json::Value> = results
-                .iter()
-                .map(|r| {
-                    serde_json::to_value(r).unwrap_or(serde_json::Value::Null)
-                })
-                .collect();
+        // Adaptive batch sizing: increase batch size when throughput is high
+        if count >= self.batch_size && self.batch_size < MAX_BATCH_SIZE {
+            self.batch_size = (self.batch_size * 2).min(MAX_BATCH_SIZE);
+        } else if count < self.batch_size / 2 && self.batch_size > DEFAULT_BATCH_SIZE {
+            self.batch_size = (self.batch_size / 2).max(DEFAULT_BATCH_SIZE);
+        }
 
+        // Emit crawl-batch event for real-time frontend updates (throttled)
+        if count > 0 && self.total_crawled - self.last_event_count >= BATCH_EVENT_INTERVAL {
+            self.last_event_count = self.total_crawled;
             if let Err(e) = self.app_handle.emit(
                 "crawl-batch",
                 serde_json::json!({
                     "project_id": &self.project_id,
-                    "items": batch_items,
+                    "count": count,
                     "total": self.total_crawled,
                     "errors": self.total_errors,
                 }),
@@ -207,7 +221,7 @@ impl DbWriter {
     ) {
         if let Ok(state_read) = self.state.try_read() {
             if let Ok(db) = state_read.db.lock() {
-                let repo = CrawlRepo::new(&db);
+                let repo = CrawlRepo::new(&db, None);
                 if let Err(e) = repo.save_error(url, config_id, project_id, error_type, message) {
                     error!("Failed to save error for {}: {}", url, e);
                 }

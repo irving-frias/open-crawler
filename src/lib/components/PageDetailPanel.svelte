@@ -195,19 +195,19 @@
                         {#if issue.element}
                           <span class="issue-detail"><code>{issue.element}</code></span>
                         {/if}
-                        {#if issue.selector && !issue.issue_type.startsWith('missing_')}
+                        {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
                           <button
-                            class="issue-detail issue-selector copy-btn"
-                            class:copied={copiedField === `sel-${issue.selector}`}
-                            onclick={() => copyToClipboard(issue.selector, `sel-${issue.selector}`)}
-                            title={m["detail.copy_selector"]()}
+                            class="issue-detail issue-xpath copy-btn"
+                            class:copied={copiedField === `xpath-${issue.xpath}`}
+                            onclick={() => copyToClipboard(issue.xpath, `xpath-${issue.xpath}`)}
+                            title={m["detail.copy_xpath"]()}
                           >
-                            <span class="copy-icon">{copiedField === `sel-${issue.selector}` ? '✓' : '⎘'}</span>
-                            <span class="copy-text">{copiedField === `sel-${issue.selector}` ? m["detail.copied"]() : m["detail.copy_selector"]()}</span>
-                            <code class="copy-value">{issue.selector}</code>
+                            <span class="copy-icon">{copiedField === `xpath-${issue.xpath}` ? '✓' : '⎘'}</span>
+                            <span class="copy-text">{copiedField === `xpath-${issue.xpath}` ? m["detail.copied"]() : m["detail.copy_xpath"]()}</span>
+                            <code class="copy-value">{issue.xpath}</code>
                           </button>
-                        {:else if issue.selector}
-                          <span class="issue-detail issue-selector">{issue.selector}</span>
+                        {:else if issue.xpath}
+                          <span class="issue-detail issue-xpath">{issue.xpath}</span>
                         {/if}
                       </div>
                     </div>

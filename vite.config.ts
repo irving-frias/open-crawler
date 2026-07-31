@@ -18,4 +18,7 @@ export default defineConfig({
     },
   },
   clearScreen: false,
+  build: {
+    cssCodeSplit: true,
+  },
 });

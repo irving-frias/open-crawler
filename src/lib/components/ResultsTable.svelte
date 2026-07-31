@@ -1,7 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
-  import { Virtualizer } from '@tanstack/virtual-core';
 
   let {
     items,
@@ -22,41 +21,6 @@
 
   $effect(() => {
     localSearch = searchQuery;
-  });
-
-  $effect(() => {
-    if (scrollContainer) {
-      virtualizer.scrollToIndex(0);
-    }
-  });
-
-  // Count virtual items: each page = 1 row, if expanded add 1 detail row
-  let virtualItems = $derived.by(() => {
-    const result: { index: number; type: 'row' | 'detail'; page: any }[] = [];
-    let idx = 0;
-    for (const page of items) {
-      result.push({ index: idx, type: 'row', page });
-      idx++;
-      if (expandedUrl === page.url) {
-        result.push({ index: idx, type: 'detail', page });
-        idx++;
-      }
-    }
-    return result;
-  });
-
-  const virtualizer = new Virtualizer({
-    count: 0,
-    getScrollElement: () => scrollContainer,
-    estimateSize: () => 48,
-    overscan: 5,
-  });
-
-  $effect(() => {
-    const newCount = virtualItems.length;
-    if (virtualizer.options.count !== newCount) {
-      virtualizer.setOptions({ count: newCount });
-    }
   });
 
   function handleInput(e: Event) {
@@ -99,10 +63,21 @@
 
   function toggleIssues(url: string) {
     expandedUrl = expandedUrl === url ? '' : url;
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollContainer.scrollTop;
+    }
   }
 
-  function getVirtualRows() {
-    return virtualizer.getVirtualItems();
+  function truncateWords(text: string, maxLength: number = 160) {
+    if (!text || text.length <= maxLength) return text?.trim() || "";
+
+    let truncated = text.slice(0, maxLength);
+    // Busca el último espacio para no cortar palabras
+    let lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > 0) {
+      truncated = truncated.slice(0, lastSpace);
+    }
+    return truncated.trim() + "...";
   }
 </script>
 
@@ -125,20 +100,11 @@
       <span class="search-count">{items.length} result{items.length !== 1 ? 's' : ''}</span>
     {/if}
   </div>
-  <table class="header-table">
-    <thead>
-      <tr>
-        <th class="col-url">{m["results.col.url"]()}</th>
-        <th class="col-status">{m["results.col.status"]()}</th>
-        <th class="col-title">{m["results.col.title"]()}</th>
-        <th class="col-desc">{m["results.col.description"]()}</th>
-        <th class="col-h1">{m["results.col.h1"]()}</th>
-        <th class="col-lang">{m["results.col.lang"]()}</th>
-        <th class="col-hreflang">{m["results.col.hreflang"]()}</th>
-        <th class="col-issues">{m["results.col.issues"]()}</th>
-      </tr>
-    </thead>
-  </table>
+  <div class="header-row">
+    <div class="col-url">{m["results.col.title"]()}</div>
+    <div class="col-status">{m["results.col.status"]()}</div>
+    <div class="col-issues">{m["results.col.issues"]()}</div>
+  </div>
 
   {#if items.length === 0 && localSearch}
     <div class="empty-state">No results match "{localSearch}"</div>
@@ -146,96 +112,69 @@
     <div class="empty-state">{m["results.no_results"]()}</div>
   {:else}
     <div class="rows-body" bind:this={scrollContainer}>
-      <div style="height: {virtualizer.getTotalSize()}px; width: 100%; position: relative;">
-        {#each getVirtualRows() as virtualRow (virtualRow.key)}
-          {@const item = virtualItems[virtualRow.index]}
-          {#if item.type === 'row'}
-            {@const page = item.page}
-            {@const issues = parseIssues(page.semantic_issues_json)}
-            {@const issueCounts = getIssueCounts(issues)}
-            <div
-              class="table-row main-row"
-              class:has-issues={issues.length > 0}
-              role={issues.length > 0 ? 'button' : undefined}
-              tabindex={issues.length > 0 ? 0 : undefined}
-              onclick={() => issues.length > 0 && toggleIssues(page.url)}
-              onkeydown={(e) => {
-                if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
-                  e.preventDefault();
-                  toggleIssues(page.url);
-                }
-              }}
-              style="position: absolute; top: 0; left: 0; width: 100%; transform: translateY({virtualRow.start}px);"
-            >
-              <div class="col-url">
-                <a href={page.url} target="_blank" onclick={(e) => e.stopPropagation()}>
-                  {@html highlight(page.url, localSearch)}
-                </a>
-                {#if onDetail}
-                  <button
-                    class="btn-detail"
-                    title="View page details"
-                    onclick={(e) => { e.stopPropagation(); onDetail(page.id); }}
-                  >&#8599;</button>
+      {#each items as page (page.id)}
+        {@const issues = parseIssues(page.semantic_issues_json)}
+        {@const issueCounts = getIssueCounts(issues)}
+        <div
+          class="table-row main-row"
+          class:has-issues={issues.length > 0}
+          role={issues.length > 0 ? 'button' : undefined}
+          tabindex={issues.length > 0 ? 0 : undefined}
+          onclick={() => issues.length > 0 && toggleIssues(page.url)}
+          onkeydown={(e) => {
+            if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              toggleIssues(page.url);
+            }
+          }}
+        >
+          <div class="col-url">
+            <button class="btn-title" onclick={() => onDetail?.(page.id)} title="View details">
+              {@html highlight(page.title || 'Sin título', localSearch)}
+            </button>
+          </div>
+          <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
+            {page.status_code}
+          </div>
+          <div class="col-issues">
+            {#if issues.length > 0}
+              <div class="issue-badges">
+                {#if issueCounts.errors > 0}
+                  <span class="issue-badge issue-error">{issueCounts.errors}</span>
+                {/if}
+                {#if issueCounts.warnings > 0}
+                  <span class="issue-badge issue-warning">{issueCounts.warnings}</span>
+                {/if}
+                {#if issueCounts.infos > 0}
+                  <span class="issue-badge issue-info">{issueCounts.infos}</span>
                 {/if}
               </div>
-              <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
-                {page.status_code}
-              </div>
-              <div class="col-title">{@html highlight(page.title, localSearch) || '-'}</div>
-              <div class="col-desc">{page.meta_description || '-'}</div>
-              <div class="col-h1">{@html highlight(page.h1, localSearch) || '-'}</div>
-              <div class="col-lang">{page.html_lang || '-'}</div>
-              <div class="col-hreflang">
-                {#each parseHreflang(page.hreflang_json) as hl}
-                  <span class="hreflang-badge">{hl.lang}</span>
-                {/each}
-                {#if !page.hreflang_json}
-                  -
-                {/if}
-              </div>
-              <div class="col-issues">
-                {#if issues.length > 0}
-                  <div class="issue-badges">
-                    {#if issueCounts.errors > 0}
-                      <span class="issue-badge issue-error">{issueCounts.errors}</span>
-                    {/if}
-                    {#if issueCounts.warnings > 0}
-                      <span class="issue-badge issue-warning">{issueCounts.warnings}</span>
-                    {/if}
-                    {#if issueCounts.infos > 0}
-                      <span class="issue-badge issue-info">{issueCounts.infos}</span>
-                    {/if}
-                  </div>
-                {:else}
-                  <span class="no-issues">{m["results.ok"]()}</span>
-                {/if}
-              </div>
+            {:else}
+              <span class="no-issues">{m["results.ok"]()}</span>
+            {/if}
+          </div>
+        </div>
+        {#if expandedUrl === page.url}
+          {@const issues = parseIssues(page.semantic_issues_json)}
+          <div class="table-row detail-row">
+            <div class="issue-detail">
+              {#each issues as issue}
+                {@const params = parseIssueParams(issue.message, issue.issue_type)}
+                <div class="issue-item issue-{issue.severity}">
+                  <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
+                  <span class="issue-element">{issue.element}</span>
+                  <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
+                  {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
+                    <code class="issue-selector">{issue.xpath}</code>
+                  {:else if issue.xpath}
+                    <span class="issue-detail issue-selector">{issue.xpath}</span>
+                  {/if}
+                </div>
+              {/each}
             </div>
-          {:else}
-            {@const page = item.page}
-            {@const issues = parseIssues(page.semantic_issues_json)}
-            <div
-              class="table-row detail-row"
-              style="position: absolute; top: 0; left: 0; width: 100%; transform: translateY({virtualRow.start}px);"
-            >
-              <div class="issue-detail">
-                {#each issues as issue}
-                  {@const params = parseIssueParams(issue.message, issue.issue_type)}
-                  <div class="issue-item issue-{issue.severity}">
-                    <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
-                    <span class="issue-element">{issue.element}</span>
-                    <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
-                    {#if issue.selector}
-                      <code class="issue-selector">{issue.selector}</code>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        {/each}
-      </div>
+          </div>
+        {/if}
+      {/each}
     </div>
   {/if}
 </div>
@@ -245,34 +184,83 @@
     overflow-x: auto;
   }
 
-  .header-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
+  .table-wrapper {
+    overflow: auto;
+    max-height: 600px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
   }
 
-  .header-table th {
-    padding: 12px 16px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    background: var(--bg-card);
+  .header-row {
+    display: grid;
+    grid-template-columns: 70% 10% 20%;
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 10;
+    background: var(--bg-card);
+    border-bottom: 2px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  .header-row > div {
+    padding: 14px 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+  }
+
+  .header-row > div:last-child {
+    border-right: none;
+  }
+
+  .header-row > div:first-child {
+    border-top-left-radius: 8px;
+  }
+
+  .header-row > div:last-child {
+    border-top-right-radius: 8px;
+  }
+
+  [data-theme="dark"] .header-row {
+    background: #2f323a;
+    border-bottom-color: #5c5f66;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  }
+
+  [data-theme="dark"] .header-row > div {
+    color: #f1f3f5;
+    border-right-color: #5c5f66;
+  }
+
+  [data-theme="dark"] .table-row {
+    border-bottom-color: #5c5f66;
+  }
+
+  [data-theme="dark"] .main-row:hover {
+    background: #3a3d47;
+    box-shadow: inset 0 0 0 1px #5c5f66;
+  }
+
+  [data-theme="dark"] .detail-row {
+    border-bottom-color: #5c5f66;
+    background: #1a1b1e;
   }
 
   .rows-body {
-    max-height: 600px;
-    overflow-y: auto;
+    overflow: visible;
   }
 
   .table-row {
     display: grid;
-    grid-template-columns: 30% 6% 14% 16% 10% 5% 8% 11%;
+    grid-template-columns: 70% 10% 20%;
     grid-template-rows: auto;
     min-height: 48px;
     padding: 0 16px;
@@ -290,52 +278,58 @@
     background: var(--bg-hover);
   }
 
+  [data-theme="dark"] .main-row:hover {
+    background: #353840;
+  }
+
   .detail-row {
     display: block;
     background: var(--bg-deep);
     border-bottom: 2px solid var(--border);
     padding: 0;
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  [data-theme="dark"] .detail-row {
+    background: #1e2028;
+    border-bottom-color: #4a4d55;
   }
 
   .col-url {
-    width: 30%;
+    width: 70%;
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
   }
 
-  .col-url a {
+  .btn-title {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    font-weight: 500;
+    line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
+    max-width: 100%;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    transition: text-decoration-color 0.15s;
   }
 
-  .btn-detail {
-    flex-shrink: 0;
-    width: 22px;
-    height: 22px;
-    background: var(--border);
-    border: none;
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.15s;
+  .btn-title:hover {
+    text-decoration-color: var(--accent);
+    color: var(--accent-hover);
   }
-  .main-row:hover .btn-detail { opacity: 1; }
-  .btn-detail:hover { background: var(--accent); color: white; }
-  .col-status { width: 6%; }
-  .col-title { width: 14%; }
-  .col-desc { width: 16%; }
-  .col-h1 { width: 10%; }
-  .col-lang { width: 5%; }
-  .col-hreflang { width: 8%; }
-  .col-issues { width: 11%; }
+
+  .col-status { width: 10%; }
+  .col-issues { width: 20%; }
 
   .empty-state {
     padding: 40px;
@@ -388,6 +382,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px 16px;
+    width: 100%;
   }
 
   .issue-item {
@@ -420,7 +415,7 @@
      ========================================== */
 
   /* Mobile base (<= 767px): card layout, minimal columns */
-  .header-table { display: none; }
+  .header-row { display: none; }
 
   .table-row {
     display: flex;
@@ -475,20 +470,22 @@
     min-width: 60px;
   }
 
-  /* Tablet (768px+): show more columns */
+  /* Tablet (768px+): show 3-column table */
   @media (min-width: 768px) {
-    .header-table {
-      display: table;
+    .header-row {
+      display: grid;
+      grid-template-columns: 70% 10% 20%;
     }
 
     .table-row {
       display: grid;
-      grid-template-columns: 28% 8% 20% 14% 12% 18%;
+      grid-template-columns: 70% 10% 20%;
       min-height: 48px;
       padding: 0 16px;
       align-items: center;
     }
 
+    .col-title,
     .col-desc,
     .col-h1,
     .col-lang,
@@ -498,21 +495,22 @@
 
     .col-url { width: auto; }
     .col-status { width: auto; position: static; }
-    .col-title { width: auto; font-size: 0.9rem; }
     .col-issues { width: auto; }
   }
 
-  /* Desktop (1024px+): show all columns */
+  /* Desktop (1024px+): keep 3 columns */
   @media (min-width: 1024px) {
+    .header-row,
     .table-row {
-      grid-template-columns: 30% 6% 14% 16% 10% 5% 8% 11%;
+      grid-template-columns: 70% 10% 20%;
     }
 
+    .col-title,
     .col-desc,
     .col-h1,
     .col-lang,
     .col-hreflang {
-      display: block;
+      display: none;
     }
   }
 

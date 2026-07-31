@@ -23,7 +23,7 @@ pub async fn create_project(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let project = repo.create_project(&request.name)?;
     Ok(project)
 }
@@ -35,7 +35,7 @@ pub async fn list_projects(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let projects = repo.list_projects()?;
     Ok(projects)
 }
@@ -48,7 +48,7 @@ pub async fn get_project(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let project = repo
         .get_project(&id)?
         .ok_or_else(|| AppError::Crawl(format!("Project not found: {}", id)))?;
@@ -63,7 +63,7 @@ pub async fn rename_project(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     repo.rename_project(&request.id, &request.name)?;
     Ok(())
 }
@@ -87,7 +87,7 @@ pub async fn delete_project(
 
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     repo.delete_project(&id)?;
     Ok(())
 }
@@ -100,7 +100,7 @@ pub async fn get_project_stats(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let stats = repo.get_project_stats(&project_id)?;
     Ok(stats)
 }
@@ -115,7 +115,7 @@ pub async fn check_resumable_crawl(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
 
     match repo.get_interrupted_session(&project_id)? {
         Some(session) => {
@@ -290,7 +290,7 @@ pub async fn get_page_detail(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let result = repo.get_page_detail(&page_id)?;
     Ok(result)
 }
@@ -303,7 +303,7 @@ pub async fn get_semantic_issue_counts(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let counts = repo.get_semantic_issue_counts(&project_id)?;
     Ok(counts)
 }
@@ -316,7 +316,7 @@ pub async fn get_page_html(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     let html = repo.get_page_html(&page_id)?;
     Ok(html)
 }
@@ -341,7 +341,7 @@ pub async fn recrawl_page(
     let (original, _links) = {
         let state_read = state.read().await;
         let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
         repo.get_page_detail(&page_id)?
     };
 
@@ -429,7 +429,7 @@ pub async fn recrawl_page(
     {
         let state_read = state.read().await;
         let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
         repo.save_result(&result)?;
         if let Some(ref png) = screenshot_png {
             repo.save_screenshot(&page_id, png)?;
@@ -451,7 +451,7 @@ pub async fn capture_page_screenshot(
     {
         let state_read = state.read().await;
         let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
         if let Some(png) = repo.get_screenshot(&page_id)? {
             use base64::Engine;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
@@ -463,7 +463,7 @@ pub async fn capture_page_screenshot(
     let url = {
         let state_read = state.read().await;
         let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
         let (detail, _) = repo.get_page_detail(&page_id)?;
         detail.url
     };
@@ -483,7 +483,7 @@ pub async fn capture_page_screenshot(
     {
         let state_read = state.read().await;
         let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db);
+        let repo = CrawlRepo::new(&db, None);
         repo.save_screenshot(&page_id, &png_data)?;
     }
 
@@ -512,7 +512,7 @@ pub async fn get_results(
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
     let (items, total) = repo.get_results(
         &project_id,
         page,
@@ -543,7 +543,7 @@ pub async fn export_csv(
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
     let (items, _) = repo.get_results(&project_id, 1, 10000, None, None, None, None, None, None)?;
 
     let mut wtr = csv::Writer::from_path(&file_path)?;
@@ -591,7 +591,7 @@ pub async fn get_settings(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     repo.get_all_settings()
 }
 
@@ -603,7 +603,7 @@ pub async fn save_settings(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
     for (key, value) in &settings {
         repo.set_setting(key, value)?;
     }
@@ -622,9 +622,9 @@ pub async fn export_full(
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db);
+    let repo = CrawlRepo::new(&db, None);
 
-    let pages = repo.get_all_results(&project_id)?;
+    let pages = repo.get_all_results(&project_id, None)?;
     let links = repo.get_links_for_project(&project_id)?;
 
     if pages.len() > 100_000 {

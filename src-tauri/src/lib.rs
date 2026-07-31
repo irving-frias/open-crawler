@@ -3,14 +3,29 @@ pub mod crawler;
 pub mod db;
 pub mod error;
 pub mod models;
+pub mod nesting_table;
 
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::models::CrawlProgress;
+
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub struct ResultsCacheKey {
+    pub project_id: String,
+    pub page: u32,
+    pub page_size: u32,
+    pub semantic_issue_type: Option<String>,
+    pub search: Option<String>,
+    pub status_filter: Vec<u32>,
+    pub severity_filter: Vec<String>,
+    pub domain_filter: Option<String>,
+    pub depth_filter: Option<u32>,
+}
 
 pub struct CrawlState {
     pub cancellation: tokio_util::sync::CancellationToken,
@@ -20,6 +35,7 @@ pub struct CrawlState {
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub crawls: Arc<RwLock<HashMap<String, CrawlState>>>,
+    pub results_cache: Arc<Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -71,6 +87,7 @@ pub fn run() {
             let state = AppState {
                 db: Mutex::new(conn),
                 crawls: Arc::new(RwLock::new(HashMap::new())),
+                results_cache: Arc::new(Mutex::new(lru::LruCache::new(NonZeroUsize::new(512).unwrap()))),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
