@@ -112,11 +112,64 @@ pub struct OutgoingLink {
 }
 
 /// Compute XPath for a scraper ElementRef
+/// Build an absolute XPath path from /html root to the element.
+/// Uses `ElementRef::wrap` to walk the DOM tree (same pattern as `compute_css_selector`).
+fn build_absolute_xpath(el: &scraper::ElementRef) -> String {
+    let tag = el.value().name().to_string();
+
+    // If has id, return absolute id-based path
+    if let Some(id) = el.value().id() {
+        return format!("/html/body//*[@id='{}']", id);
+    }
+
+    let position = el
+        .parent()
+        .map(|parent| {
+            parent
+                .children()
+                .filter_map(|c| c.value().as_element())
+                .filter(|e| e.name() == el.value().name())
+                .take_while(|e| *e != el.value())
+                .count()
+                + 1
+        })
+        .unwrap_or(1);
+
+    let current = if position > 1 {
+        format!("{}[{}]", tag, position)
+    } else {
+        tag
+    };
+
+    match el.parent() {
+        Some(parent) if parent.value().is_element() => {
+            match scraper::ElementRef::wrap(parent) {
+                Some(pe) => {
+                    let parent_path = build_absolute_xpath(&pe);
+                    format!("{}/{}", parent_path, current)
+                }
+                None => current,
+            }
+        }
+        _ => format!("/html/body/{}", current),
+    }
+}
+
 pub fn compute_xpath(element: &scraper::ElementRef) -> String {
+    build_absolute_xpath(element)
+}
+
+/// Full absolute XPath: always /html/body/...
+pub fn compute_xpath_full(element: &scraper::ElementRef) -> String {
+    build_absolute_xpath(element)
+}
+
+/// Short XPath: //tag[@id='x'] if has id, otherwise relative path from parent
+pub fn compute_xpath_short(element: &scraper::ElementRef) -> String {
     let tag = element.value().name().to_string();
 
     if let Some(id) = element.value().id() {
-        return format!("//{}[@id='{}']", tag, id);
+        return format!("//*[@id='{}']", id);
     }
 
     let position = element
@@ -132,12 +185,16 @@ pub fn compute_xpath(element: &scraper::ElementRef) -> String {
         })
         .unwrap_or(1);
 
-    let classes: Vec<&str> = element.value().classes().collect();
-    if !classes.is_empty() {
-        let class_pred: Vec<String> = classes.iter().map(|c| format!("contains(@class,'{}')", c)).collect();
-        format!("//{}[{}][{}]", tag, class_pred.join(" and "), position)
+    let current = if position > 1 {
+        format!("{}[{}]", tag, position)
     } else {
-        format!("//{}[{}]", tag, position)
+        tag.clone()
+    };
+
+    if tag == "html" || tag == "body" || tag == "head" {
+        format!("/{}", current)
+    } else {
+        format!("//{}/{}", tag, current)
     }
 }
 
@@ -505,6 +562,32 @@ impl SeoParser {
         let nesting_issues = self.check_element_nesting(document);
         issues.extend(nesting_issues);
 
+        // Post-process: assign context-aware XPath
+        // Count issues by type to decide full vs short XPath
+        let mut type_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for issue in &issues {
+            *type_counts.entry(issue.issue_type.clone()).or_insert(0) += 1;
+        }
+
+        // For element-level issues: full XPath if multiple of same type, short if unique
+        for issue in &mut issues {
+            if issue.xpath.is_some() {
+                let count = type_counts.get(&issue.issue_type).copied().unwrap_or(0);
+                if count == 1 {
+                    // Unique issue type — use short XPath (id-based if available)
+                    if let Some(ref full) = issue.xpath.clone() {
+                        if let Some(id_pos) = full.rfind("[@id='") {
+                            if let Some(end) = full[id_pos..].find("']") {
+                                let id_val = &full[id_pos + 7..id_pos + end + 2];
+                                issue.xpath = Some(format!("//*[@id='{}']", id_val));
+                            }
+                        }
+                    }
+                }
+                // count > 1: keep full XPath (already set by compute_xpath_full)
+            }
+        }
+
         issues
     }
 
@@ -702,6 +785,7 @@ impl SeoParser {
                     if is_invalid {
                         seen_pairs.insert(pair.clone());
                         let selector = compute_css_selector(&element);
+                        let xpath = compute_xpath_full(&element);
                         issues.push(SemanticIssue {
                             issue_type: "invalid_nesting".to_string(),
                             severity: "error".to_string(),
@@ -711,6 +795,7 @@ impl SeoParser {
                                 child_tag, parent_tag
                             ),
                             selector: Some(selector),
+                            xpath: Some(xpath),
                         ..Default::default()
             });
                     }

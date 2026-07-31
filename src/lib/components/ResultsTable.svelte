@@ -1,5 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
+  import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
 
   let {
     items,
@@ -129,10 +130,11 @@
           <div class="table-row detail-row">
             <div class="issue-detail">
               {#each issues as issue}
+                {@const params = parseIssueParams(issue.message, issue.issue_type)}
                 <div class="issue-item issue-{issue.severity}">
-                  <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
-                  <span class="issue-element">{issue.element}</span>
-                  <span class="issue-message">{issue.message}</span>
+          <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
+          <span class="issue-element">{issue.element}</span>
+          <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
                   {#if issue.selector}
                     <code class="issue-selector">{issue.selector}</code>
                   {/if}

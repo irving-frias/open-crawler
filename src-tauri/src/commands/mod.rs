@@ -763,6 +763,45 @@ fn xlsx_num(ws: &mut rust_xlsxwriter::Worksheet, row: u32, col: u16, val: f64, f
     Ok(())
 }
 
+const MAX_ROWS_PER_SHEET: u32 = 1_048_575;
+
+fn sheet_name(base: &str, index: usize, total: usize) -> String {
+    if total <= 1 {
+        base.to_string()
+    } else {
+        format!("{} {}", base, index + 1)
+    }
+}
+
+fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::models::CrawlResult, alt: &rust_xlsxwriter::Format, wrap: &rust_xlsxwriter::Format) -> Result<(), AppError> {
+    let f = if row.is_multiple_of(2) { Some(alt) } else { None };
+    xlsx_str(ws, row, 0, &p.url, f)?;
+    xlsx_num(ws, row, 1, p.status_code.unwrap_or(0) as f64, f)?;
+    xlsx_str(ws, row, 2, p.title.as_deref().unwrap_or(""), Some(wrap))?;
+    xlsx_str(ws, row, 3, p.meta_description.as_deref().unwrap_or(""), Some(wrap))?;
+    xlsx_str(ws, row, 4, p.h1.as_deref().unwrap_or(""), f)?;
+    xlsx_str(ws, row, 5, p.canonical.as_deref().unwrap_or(""), f)?;
+    xlsx_str(ws, row, 6, p.html_lang.as_deref().unwrap_or(""), f)?;
+    let idx = p.is_indexable.map(|v| if v {"Yes"} else {"No"}).unwrap_or("Unknown");
+    xlsx_str(ws, row, 7, idx, f)?;
+    xlsx_num(ws, row, 8, p.depth as f64, f)?;
+    xlsx_str(ws, row, 9, p.parent_url.as_deref().unwrap_or(""), f)?;
+    xlsx_num(ws, row, 10, p.size_bytes.unwrap_or(0) as f64, f)?;
+    xlsx_num(ws, row, 11, p.load_time_ms.unwrap_or(0) as f64, f)?;
+    Ok(())
+}
+
+fn finalize_sheet(ws: &mut rust_xlsxwriter::Worksheet, data_rows: u32, num_cols: u16) -> Result<(), AppError> {
+    ws.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    if num_cols > 2 { ws.set_column_width(2, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?; }
+    if num_cols > 3 { ws.set_column_width(3, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?; }
+    if data_rows > 0 {
+        ws.autofilter(0, 0, data_rows, num_cols - 1).map_err(|e| AppError::Crawl(e.to_string()))?;
+    }
+    ws.set_freeze_panes(1, 0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    Ok(())
+}
+
 fn export_xlsx(
     pages: &[crate::models::CrawlResult],
     links: &[crate::models::PageLink],
@@ -779,84 +818,89 @@ fn export_xlsx(
     let alt = Format::new().set_background_color(0xF8F9FA);
     let wrap = Format::new().set_text_wrap();
 
-    // Pages sheet
-    let ws = workbook.add_worksheet();
-    ws.set_name("Pages").map_err(|e| AppError::Crawl(e.to_string()))?;
-    for (col, h) in ["URL","Status Code","Title","Meta Description","H1","Canonical","HTML Lang","Indexable","Depth","Parent URL","Size (bytes)","Load Time (ms)"].iter().enumerate() {
-        xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+    // === Pages sheets (split if > 1,048,575 pages) ===
+    let page_chunks: Vec<&[crate::models::CrawlResult]> = if pages.is_empty() {
+        vec![]
+    } else {
+        pages.chunks(MAX_ROWS_PER_SHEET as usize).collect()
+    };
+    let page_sheets = page_chunks.len().max(1);
+    for (chunk_idx, chunk) in page_chunks.iter().enumerate() {
+        let ws = workbook.add_worksheet();
+        ws.set_name(sheet_name("Pages", chunk_idx, page_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in ["URL","Status Code","Title","Meta Description","H1","Canonical","HTML Lang","Indexable","Depth","Parent URL","Size (bytes)","Load Time (ms)"].iter().enumerate() {
+            xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+        }
+        for (i, p) in chunk.iter().enumerate() {
+            write_page_row(ws, (i + 1) as u32, p, &alt, &wrap)?;
+        }
+        finalize_sheet(ws, chunk.len() as u32, 12)?;
     }
-    for (i, p) in pages.iter().enumerate() {
-        let r = (i + 1) as u32;
-        let f = if i % 2 == 1 { Some(&alt) } else { None };
-        xlsx_str(ws, r, 0, &p.url, f)?;
-        xlsx_num(ws, r, 1, p.status_code.unwrap_or(0) as f64, f)?;
-        xlsx_str(ws, r, 2, p.title.as_deref().unwrap_or(""), Some(&wrap))?;
-        xlsx_str(ws, r, 3, p.meta_description.as_deref().unwrap_or(""), Some(&wrap))?;
-        xlsx_str(ws, r, 4, p.h1.as_deref().unwrap_or(""), f)?;
-        xlsx_str(ws, r, 5, p.canonical.as_deref().unwrap_or(""), f)?;
-        xlsx_str(ws, r, 6, p.html_lang.as_deref().unwrap_or(""), f)?;
-        let idx = p.is_indexable.map(|v| if v {"Yes"} else {"No"}).unwrap_or("Unknown");
-        xlsx_str(ws, r, 7, idx, f)?;
-        xlsx_num(ws, r, 8, p.depth as f64, f)?;
-        xlsx_str(ws, r, 9, p.parent_url.as_deref().unwrap_or(""), f)?;
-        xlsx_num(ws, r, 10, p.size_bytes.unwrap_or(0) as f64, f)?;
-        xlsx_num(ws, r, 11, p.load_time_ms.unwrap_or(0) as f64, f)?;
-    }
-    ws.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    ws.set_column_width(2, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    ws.set_column_width(3, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    ws.autofilter(0, 0, (pages.len() as u32).max(1), 11).map_err(|e| AppError::Crawl(e.to_string()))?;
-    ws.set_freeze_panes(1, 0).map_err(|e| AppError::Crawl(e.to_string()))?;
 
-    // Issues sheet
-    let wi = workbook.add_worksheet();
-    wi.set_name("Issues").map_err(|e| AppError::Crawl(e.to_string()))?;
-    for (col, h) in ["URL","Issue Type","Message","Element","Selector","XPath"].iter().enumerate() {
-        xlsx_str(wi, 0, col as u16, h, Some(&header_fmt))?;
-    }
-    let mut ir: u32 = 1;
+    // === Issues sheets (split if > 1,048,575 issues) ===
+    let mut all_issues: Vec<(String, serde_json::Value)> = Vec::new();
     for p in pages {
         if let Some(ref js) = p.semantic_issues_json {
             if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) {
-                for iss in &issues {
-                    let f = if ir.is_multiple_of(2) { Some(&alt) } else { None };
-                    xlsx_str(wi, ir, 0, &p.url, f)?;
-                    xlsx_str(wi, ir, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-                    xlsx_str(wi, ir, 2, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;
-                    xlsx_str(wi, ir, 3, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-                    xlsx_str(wi, ir, 4, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-                    xlsx_str(wi, ir, 5, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), f)?;
-                    ir += 1;
+                for iss in issues {
+                    all_issues.push((p.url.clone(), iss));
                 }
             }
         }
     }
-    wi.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    wi.set_column_width(2, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    wi.set_column_width(4, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    wi.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    if ir > 1 { wi.autofilter(0, 0, ir - 1, 5).map_err(|e| AppError::Crawl(e.to_string()))?; }
-    wi.set_freeze_panes(1, 0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    let issue_chunks: Vec<&[(String, serde_json::Value)]> = if all_issues.is_empty() {
+        vec![]
+    } else {
+        all_issues.chunks(MAX_ROWS_PER_SHEET as usize).collect()
+    };
+    let issue_sheets = issue_chunks.len().max(1);
+    for (chunk_idx, chunk) in issue_chunks.iter().enumerate() {
+        let wi = workbook.add_worksheet();
+        wi.set_name(sheet_name("Issues", chunk_idx, issue_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in ["URL","Issue Type","Message","Element","Selector","XPath"].iter().enumerate() {
+            xlsx_str(wi, 0, col as u16, h, Some(&header_fmt))?;
+        }
+        for (i, (url, iss)) in chunk.iter().enumerate() {
+            let r = (i + 1) as u32;
+            let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
+            xlsx_str(wi, r, 0, url, f)?;
+            xlsx_str(wi, r, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), f)?;
+            xlsx_str(wi, r, 2, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;
+            xlsx_str(wi, r, 3, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), f)?;
+            xlsx_str(wi, r, 4, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), f)?;
+            xlsx_str(wi, r, 5, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), f)?;
+        }
+        finalize_sheet(wi, chunk.len() as u32, 6)?;
+        wi.set_column_width(2, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        wi.set_column_width(4, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        wi.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    }
 
-    // Links sheet
-    let wl = workbook.add_worksheet();
-    wl.set_name("Links").map_err(|e| AppError::Crawl(e.to_string()))?;
-    for (col, h) in ["From URL","To URL","Link Type","Anchor Text","Follow"].iter().enumerate() {
-        xlsx_str(wl, 0, col as u16, h, Some(&header_fmt))?;
+    // === Links sheets (split if > 1,048,575 links) ===
+    let link_chunks: Vec<&[crate::models::PageLink]> = if links.is_empty() {
+        vec![]
+    } else {
+        links.chunks(MAX_ROWS_PER_SHEET as usize).collect()
+    };
+    let link_sheets = link_chunks.len().max(1);
+    for (chunk_idx, chunk) in link_chunks.iter().enumerate() {
+        let wl = workbook.add_worksheet();
+        wl.set_name(sheet_name("Links", chunk_idx, link_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in ["From URL","To URL","Link Type","Anchor Text","Follow"].iter().enumerate() {
+            xlsx_str(wl, 0, col as u16, h, Some(&header_fmt))?;
+        }
+        for (i, lk) in chunk.iter().enumerate() {
+            let r = (i + 1) as u32;
+            let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
+            xlsx_str(wl, r, 0, &lk.from_url, f)?;
+            xlsx_str(wl, r, 1, &lk.to_url, f)?;
+            xlsx_str(wl, r, 2, &lk.link_type, f)?;
+            xlsx_str(wl, r, 3, lk.anchor_text.as_deref().unwrap_or(""), f)?;
+            xlsx_str(wl, r, 4, if lk.is_follow {"Yes"} else {"No"}, f)?;
+        }
+        finalize_sheet(wl, chunk.len() as u32, 5)?;
+        wl.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
     }
-    for (i, lk) in links.iter().enumerate() {
-        let r = (i + 1) as u32;
-        let f = if i % 2 == 1 { Some(&alt) } else { None };
-        xlsx_str(wl, r, 0, &lk.from_url, f)?;
-        xlsx_str(wl, r, 1, &lk.to_url, f)?;
-        xlsx_str(wl, r, 2, &lk.link_type, f)?;
-        xlsx_str(wl, r, 3, lk.anchor_text.as_deref().unwrap_or(""), f)?;
-        xlsx_str(wl, r, 4, if lk.is_follow {"Yes"} else {"No"}, f)?;
-    }
-    wl.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    wl.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    if !links.is_empty() { wl.autofilter(0, 0, links.len() as u32, 4).map_err(|e| AppError::Crawl(e.to_string()))?; }
-    wl.set_freeze_panes(1, 0).map_err(|e| AppError::Crawl(e.to_string()))?;
 
     workbook.save(file_path).map_err(|e| AppError::Crawl(e.to_string()))?;
     Ok(())
