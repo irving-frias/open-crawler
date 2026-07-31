@@ -501,13 +501,14 @@ pub async fn get_results(
     page: u32,
     page_size: u32,
     semantic_issue_type: Option<String>,
+    search: Option<String>,
 ) -> Result<PaginatedResults, AppError> {
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
     let repo = CrawlRepo::new(&db);
-    let (items, total) = repo.get_results(&project_id, page, page_size, semantic_issue_type.as_deref())?;
+    let (items, total) = repo.get_results(&project_id, page, page_size, semantic_issue_type.as_deref(), search.as_deref())?;
 
     Ok(PaginatedResults {
         items,
@@ -528,7 +529,7 @@ pub async fn export_csv(
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
     let repo = CrawlRepo::new(&db);
-    let (items, _) = repo.get_results(&project_id, 1, 10000, None)?;
+    let (items, _) = repo.get_results(&project_id, 1, 10000, None, None)?;
 
     let mut wtr = csv::Writer::from_path(&file_path)?;
 

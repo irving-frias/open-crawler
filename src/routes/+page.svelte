@@ -57,6 +57,21 @@
   // Mobile sidebar
   let sidebarOpen = $state(false);
 
+  // Search
+  let searchQuery = $state('');
+  let debouncedSearch = $state('');
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function onSearchInput(query: string) {
+    searchQuery = query;
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      debouncedSearch = query;
+      currentPage = 1;
+      loadResults(1);
+    }, 400);
+  }
+
   // Settings modal
   let settingsModalOpen = $state(false);
 
@@ -361,6 +376,7 @@
         page: currentPage,
         pageSize: pageSize,
         semanticIssueType: semanticFilter || null,
+        search: debouncedSearch || null,
       });
       results = data;
     } catch (e) {
@@ -696,6 +712,8 @@
               bind:expandedUrl={expandedIssueUrl}
               items={results.items}
               onDetail={openDetail}
+              searchQuery={debouncedSearch}
+              onSearch={onSearchInput}
             />
 
             {#if totalPages > 1}

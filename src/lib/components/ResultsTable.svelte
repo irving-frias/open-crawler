@@ -7,38 +7,26 @@
     expandedUrl = $bindable(''),
     onDetail,
     searchQuery = '',
+    onSearch,
   }: {
     items: any[];
     expandedUrl: string;
     onDetail?: (pageId: string) => void;
     searchQuery?: string;
+    onSearch?: (query: string) => void;
   } = $props();
 
   let localSearch = $state('');
-  let debouncedSearch = $state('');
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
     localSearch = searchQuery;
-    debouncedSearch = searchQuery;
   });
 
-  function onSearchInput(e: Event) {
+  function handleInput(e: Event) {
     const val = (e.target as HTMLInputElement).value;
     localSearch = val;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => { debouncedSearch = val; }, 300);
+    onSearch?.(val);
   }
-
-  const filteredItems = $derived(() => {
-    if (!debouncedSearch) return items;
-    const q = debouncedSearch.toLowerCase();
-    return items.filter((p: any) =>
-      p.url?.toLowerCase().includes(q) ||
-      p.title?.toLowerCase().includes(q) ||
-      p.h1?.toLowerCase().includes(q)
-    );
-  });
 
   function highlight(text: string | null, query: string): string {
     if (!query || !text) return text ?? '';
@@ -79,16 +67,21 @@
 
 <div class="table-wrapper">
   <div class="search-bar">
-    <span class="search-icon">&#x1F50D;</span>
-    <input
-      type="text"
-      class="search-input"
-      placeholder="Search by URL, title, or H1..."
-      value={localSearch}
-      oninput={onSearchInput}
-    />
+    <div class="search-input-wrap">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search URL, title, or H1..."
+        value={localSearch}
+        oninput={handleInput}
+      />
+      {#if localSearch}
+        <button class="search-clear" onclick={() => { localSearch = ''; onSearch?.(''); }} aria-label="Clear search">&times;</button>
+      {/if}
+    </div>
     {#if localSearch}
-      <span class="search-count">{filteredItems().length} of {items.length}</span>
+      <span class="search-count">{items.length} result{items.length !== 1 ? 's' : ''}</span>
     {/if}
   </div>
   <table class="header-table">
@@ -106,13 +99,13 @@
     </thead>
   </table>
 
-  {#if items.length === 0}
+  {#if items.length === 0 && localSearch}
+    <div class="empty-state">No results match "{localSearch}"</div>
+  {:else if items.length === 0}
     <div class="empty-state">{m["results.no_results"]()}</div>
-  {:else if filteredItems().length === 0 && debouncedSearch}
-    <div class="empty-state">No results match "{debouncedSearch}"</div>
   {:else}
     <div class="rows-body">
-      {#each filteredItems() as page (page.id)}
+      {#each items as page (page.id)}
         {@const issues = parseIssues(page.semantic_issues_json)}
         {@const issueCounts = getIssueCounts(issues)}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -131,7 +124,7 @@
         >
           <div class="col-url">
             <a href={page.url} target="_blank" onclick={(e) => e.stopPropagation()}>
-              {@html highlight(page.url, debouncedSearch)}
+              {@html highlight(page.url, localSearch)}
             </a>
             {#if onDetail}
               <button
@@ -144,9 +137,9 @@
           <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
             {page.status_code}
           </div>
-          <div class="col-title">{@html highlight(page.title, debouncedSearch) || '-'}</div>
+          <div class="col-title">{@html highlight(page.title, localSearch) || '-'}</div>
           <div class="col-desc">{page.meta_description || '-'}</div>
-          <div class="col-h1">{@html highlight(page.h1, debouncedSearch) || '-'}</div>
+          <div class="col-h1">{@html highlight(page.h1, localSearch) || '-'}</div>
           <div class="col-lang">{page.html_lang || '-'}</div>
           <div class="col-hreflang">
             {#each parseHreflang(page.hreflang_json) as hl}
@@ -482,30 +475,62 @@
     background: var(--bg-secondary, #f9fafb);
   }
 
+  .search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: var(--radius-md, 8px);
+    padding: 6px 10px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-input-wrap:focus-within {
+    border-color: var(--accent, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+
   .search-icon {
-    font-size: 0.9rem;
-    opacity: 0.5;
+    flex-shrink: 0;
+    color: var(--text-secondary, #9ca3af);
   }
 
   .search-input {
     flex: 1;
-    border: 1px solid var(--border, #d1d5db);
-    border-radius: var(--radius-sm, 4px);
-    padding: 6px 10px;
+    border: none;
+    background: transparent;
     font-size: 0.875rem;
-    background: var(--bg-primary, #fff);
     color: var(--text-primary, #111);
     outline: none;
+    padding: 0;
   }
-  .search-input:focus {
-    border-color: var(--accent, #3b82f6);
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+  .search-input::placeholder {
+    color: var(--text-secondary, #9ca3af);
+  }
+
+  .search-clear {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--text-secondary, #9ca3af);
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .search-clear:hover {
+    color: var(--text-primary, #374151);
   }
 
   .search-count {
     font-size: 0.8rem;
     color: var(--text-secondary, #6b7280);
     white-space: nowrap;
+    padding: 2px 8px;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: var(--radius-sm, 4px);
   }
 
   :global(.table-wrapper mark) {

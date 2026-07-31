@@ -338,48 +338,82 @@ impl<'a> CrawlRepo<'a> {
         page: u32,
         page_size: u32,
         semantic_issue_type: Option<&str>,
+        search: Option<&str>,
     ) -> Result<(Vec<CrawlResult>, u32), AppError> {
         let offset = (page - 1) * page_size;
 
-        let (count_sql, query_sql) = match semantic_issue_type {
-            Some(_) => (
-                "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1
-                 AND EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.issue_type' = ?2)",
-                "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body
-                 FROM crawled_pages WHERE project_id = ?1
-                 AND EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.issue_type' = ?4)
-                 ORDER BY crawl_timestamp DESC
-                 LIMIT ?2 OFFSET ?3",
-            ),
-            None => (
-                "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1",
-                "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body
-                 FROM crawled_pages WHERE project_id = ?1
-                 ORDER BY crawl_timestamp DESC
-                 LIMIT ?2 OFFSET ?3",
-            ),
+        let has_search = search.map(|s| !s.is_empty()).unwrap_or(false);
+        let has_issue_type = semantic_issue_type.is_some();
+
+        let mut where_clauses = vec!["project_id = ?1".to_string()];
+        let mut param_index = 2u32;
+
+        if has_issue_type {
+            where_clauses.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.issue_type' = ?{})",
+                param_index
+            ));
+            param_index += 1;
+        }
+
+        if has_search {
+            where_clauses.push(format!(
+                "(url LIKE ?{} OR title LIKE ?{} OR h1 LIKE ?{})",
+                param_index, param_index, param_index
+            ));
+            param_index += 1;
+        }
+
+        let where_sql = where_clauses.join(" AND ");
+        let count_sql = format!("SELECT COUNT(*) FROM crawled_pages WHERE {}", where_sql);
+        let query_sql = format!(
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body
+             FROM crawled_pages WHERE {}
+             ORDER BY crawl_timestamp DESC
+             LIMIT ?{} OFFSET ?{}",
+            where_sql, param_index, param_index + 1
+        );
+
+        let total: u32 = if has_issue_type && has_search {
+            let search_pat = format!("%{}%", search.unwrap_or(""));
+            let issuetype = semantic_issue_type.unwrap();
+            self.conn.query_row(&count_sql, params![project_id, issuetype, search_pat], |row| row.get(0))?
+        } else if has_issue_type {
+            let issuetype = semantic_issue_type.unwrap();
+            self.conn.query_row(&count_sql, params![project_id, issuetype], |row| row.get(0))?
+        } else if has_search {
+            let search_pat = format!("%{}%", search.unwrap_or(""));
+            self.conn.query_row(&count_sql, params![project_id, search_pat], |row| row.get(0))?
+        } else {
+            self.conn.query_row(&count_sql, params![project_id], |row| row.get(0))?
         };
 
-        let total: u32 = match semantic_issue_type {
-            Some(issuetype) => self.conn.query_row(count_sql, params![project_id, issuetype], |row| row.get(0))?,
-            None => self.conn.query_row(count_sql, params![project_id], |row| row.get(0))?,
-        };
+        let mut stmt = self.conn.prepare(&query_sql)?;
 
-        let mut stmt = self.conn.prepare(query_sql)?;
-
-        let results = match semantic_issue_type {
-            Some(issuetype) => {
-                stmt.query_map(params![project_id, page_size, offset, issuetype], |row| {
-                    Self::row_to_result(row)
-                })?
-                .collect::<Result<Vec<_>, _>>()?
-            }
-            None => {
-                stmt.query_map(params![project_id, page_size, offset], |row| {
-                    Self::row_to_result(row)
-                })?
-                .collect::<Result<Vec<_>, _>>()?
-            }
+        let results = if has_issue_type && has_search {
+            let search_pat = format!("%{}%", search.unwrap_or(""));
+            let issuetype = semantic_issue_type.unwrap();
+            stmt.query_map(params![project_id, issuetype, search_pat, page_size, offset], |row| {
+                Self::row_to_result(row)
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+        } else if has_issue_type {
+            let issuetype = semantic_issue_type.unwrap();
+            stmt.query_map(params![project_id, issuetype, page_size, offset], |row| {
+                Self::row_to_result(row)
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+        } else if has_search {
+            let search_pat = format!("%{}%", search.unwrap_or(""));
+            stmt.query_map(params![project_id, search_pat, page_size, offset], |row| {
+                Self::row_to_result(row)
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+        } else {
+            stmt.query_map(params![project_id, page_size, offset], |row| {
+                Self::row_to_result(row)
+            })?
+            .collect::<Result<Vec<_>, _>>()?
         };
 
         Ok((results, total))
