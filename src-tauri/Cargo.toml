@@ -39,6 +39,7 @@ base64 = "0.22"
 futures = "0.3"
 tempfile = "3"
 rust_xlsxwriter = "0.80"
+glob = "0.3"
 
 [features]
 default = ["custom-protocol"]

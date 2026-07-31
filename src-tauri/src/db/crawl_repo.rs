@@ -332,6 +332,7 @@ impl<'a> CrawlRepo<'a> {
         Ok(exists)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_results(
         &self,
         project_id: &str,
@@ -339,16 +340,17 @@ impl<'a> CrawlRepo<'a> {
         page_size: u32,
         semantic_issue_type: Option<&str>,
         search: Option<&str>,
+        status_filter: Option<&[u32]>,
+        severity_filter: Option<&[String]>,
+        domain_filter: Option<&str>,
+        depth_filter: Option<u32>,
     ) -> Result<(Vec<CrawlResult>, u32), AppError> {
         let offset = (page - 1) * page_size;
-
-        let has_search = search.map(|s| !s.is_empty()).unwrap_or(false);
-        let has_issue_type = semantic_issue_type.is_some();
 
         let mut where_clauses = vec!["project_id = ?1".to_string()];
         let mut param_index = 2u32;
 
-        if has_issue_type {
+        if let Some(_issue_type) = semantic_issue_type {
             where_clauses.push(format!(
                 "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.issue_type' = ?{})",
                 param_index
@@ -356,11 +358,50 @@ impl<'a> CrawlRepo<'a> {
             param_index += 1;
         }
 
-        if has_search {
-            where_clauses.push(format!(
-                "(url LIKE ?{} OR title LIKE ?{} OR h1 LIKE ?{})",
-                param_index, param_index, param_index
-            ));
+        if let Some(s) = search {
+            if !s.is_empty() {
+                where_clauses.push(format!(
+                    "(url LIKE ?{} OR title LIKE ?{} OR h1 LIKE ?{})",
+                    param_index, param_index, param_index
+                ));
+                param_index += 1;
+            }
+        }
+
+        if let Some(statuses) = status_filter {
+            if !statuses.is_empty() {
+                let placeholders: Vec<String> = statuses.iter().map(|_| {
+                    let idx = param_index;
+                    param_index += 1;
+                    format!("?{}", idx)
+                }).collect();
+                where_clauses.push(format!("status_code IN ({})", placeholders.join(",")));
+            }
+        }
+
+        if let Some(severities) = severity_filter {
+            if !severities.is_empty() {
+                let placeholders: Vec<String> = severities.iter().map(|_| {
+                    let idx = param_index;
+                    param_index += 1;
+                    format!("?{}", idx)
+                }).collect();
+                where_clauses.push(format!(
+                    "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.severity' IN ({}))",
+                    placeholders.join(",")
+                ));
+            }
+        }
+
+        if let Some(domain) = domain_filter {
+            if !domain.is_empty() {
+                where_clauses.push(format!("(url LIKE ?{} OR url LIKE ?{})", param_index, param_index + 1));
+                param_index += 2;
+            }
+        }
+
+        if let Some(_depth) = depth_filter {
+            where_clauses.push(format!("depth <= ?{}", param_index));
             param_index += 1;
         }
 
@@ -374,47 +415,84 @@ impl<'a> CrawlRepo<'a> {
             where_sql, param_index, param_index + 1
         );
 
-        let total: u32 = if has_issue_type && has_search {
-            let search_pat = format!("%{}%", search.unwrap_or(""));
-            let issuetype = semantic_issue_type.unwrap();
-            self.conn.query_row(&count_sql, params![project_id, issuetype, search_pat], |row| row.get(0))?
-        } else if has_issue_type {
-            let issuetype = semantic_issue_type.unwrap();
-            self.conn.query_row(&count_sql, params![project_id, issuetype], |row| row.get(0))?
-        } else if has_search {
-            let search_pat = format!("%{}%", search.unwrap_or(""));
-            self.conn.query_row(&count_sql, params![project_id, search_pat], |row| row.get(0))?
-        } else {
-            self.conn.query_row(&count_sql, params![project_id], |row| row.get(0))?
-        };
+        // Build params for count query
+        let mut count_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        count_params.push(Box::new(project_id.to_string()));
+        if let Some(issue_type) = semantic_issue_type {
+            count_params.push(Box::new(issue_type.to_string()));
+        }
+        if let Some(s) = search {
+            if !s.is_empty() {
+                count_params.push(Box::new(format!("%{}%", s)));
+            }
+        }
+        if let Some(statuses) = status_filter {
+            for s in statuses {
+                count_params.push(Box::new(*s as i32));
+            }
+        }
+        if let Some(severities) = severity_filter {
+            for sev in severities {
+                count_params.push(Box::new(sev.clone()));
+            }
+        }
+        if let Some(domain) = domain_filter {
+            if !domain.is_empty() {
+                count_params.push(Box::new(format!("https://{}/%", domain)));
+                count_params.push(Box::new(format!("http://{}/%", domain)));
+            }
+        }
+        if let Some(depth) = depth_filter {
+            count_params.push(Box::new(depth as i32));
+        }
+        count_params.push(Box::new(page_size as i32));
+        count_params.push(Box::new(offset as i32));
+
+        let total: u32 = self.conn.query_row(
+            &count_sql,
+            rusqlite::params_from_iter(count_params.iter().map(|p| p.as_ref())),
+            |row| row.get(0),
+        )?;
+
+        // Build params for query (same base + limit/offset)
+        let mut query_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        query_params.push(Box::new(project_id.to_string()));
+        if let Some(issue_type) = semantic_issue_type {
+            query_params.push(Box::new(issue_type.to_string()));
+        }
+        if let Some(s) = search {
+            if !s.is_empty() {
+                query_params.push(Box::new(format!("%{}%", s)));
+            }
+        }
+        if let Some(statuses) = status_filter {
+            for s in statuses {
+                query_params.push(Box::new(*s as i32));
+            }
+        }
+        if let Some(severities) = severity_filter {
+            for sev in severities {
+                query_params.push(Box::new(sev.clone()));
+            }
+        }
+        if let Some(domain) = domain_filter {
+            if !domain.is_empty() {
+                query_params.push(Box::new(format!("https://{}/%", domain)));
+                query_params.push(Box::new(format!("http://{}/%", domain)));
+            }
+        }
+        if let Some(depth) = depth_filter {
+            query_params.push(Box::new(depth as i32));
+        }
+        query_params.push(Box::new(page_size as i32));
+        query_params.push(Box::new(offset as i32));
 
         let mut stmt = self.conn.prepare(&query_sql)?;
-
-        let results = if has_issue_type && has_search {
-            let search_pat = format!("%{}%", search.unwrap_or(""));
-            let issuetype = semantic_issue_type.unwrap();
-            stmt.query_map(params![project_id, issuetype, search_pat, page_size, offset], |row| {
+        let results = stmt
+            .query_map(rusqlite::params_from_iter(query_params.iter().map(|p| p.as_ref())), |row| {
                 Self::row_to_result(row)
             })?
-            .collect::<Result<Vec<_>, _>>()?
-        } else if has_issue_type {
-            let issuetype = semantic_issue_type.unwrap();
-            stmt.query_map(params![project_id, issuetype, page_size, offset], |row| {
-                Self::row_to_result(row)
-            })?
-            .collect::<Result<Vec<_>, _>>()?
-        } else if has_search {
-            let search_pat = format!("%{}%", search.unwrap_or(""));
-            stmt.query_map(params![project_id, search_pat, page_size, offset], |row| {
-                Self::row_to_result(row)
-            })?
-            .collect::<Result<Vec<_>, _>>()?
-        } else {
-            stmt.query_map(params![project_id, page_size, offset], |row| {
-                Self::row_to_result(row)
-            })?
-            .collect::<Result<Vec<_>, _>>()?
-        };
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok((results, total))
     }

@@ -72,17 +72,7 @@
     onFilterIssueType(null);
   }
 
-  function getSeverityColor(severity: string): string {
-    if (severity === 'error') return '#ff6b6b';
-    if (severity === 'warning') return '#ffd43b';
-    return '#74c0fc';
-  }
-
-  function getSeverityBg(severity: string): string {
-    if (severity === 'error') return '#3d1f1f';
-    if (severity === 'warning') return '#3d3520';
-    return '#1a2a3a';
-  }
+  // Severity colors handled via CSS classes
 
   function formatIssueType(type: string): string {
     return translateIssueName(type);

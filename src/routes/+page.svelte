@@ -3,6 +3,7 @@
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { confirm } from '@tauri-apps/plugin-dialog';
   import ResultsTable from '$lib/components/ResultsTable.svelte';
+  import FilterBar, { type FilterState } from '$lib/components/FilterBar.svelte';
   import PageDetailPanel from '$lib/components/PageDetailPanel.svelte';
   import SemanticDashboard from '$lib/components/SemanticDashboard.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
@@ -31,6 +32,14 @@
   let results = $state<any>({ items: [], total: 0, page: 1, page_size: 50 });
   let error = $state('');
   let sitemapInfo = $state('');
+
+  // Filters
+  let activeFilters = $state<FilterState>({
+    statusCodes: [],
+    severities: [],
+    domain: '',
+    depth: undefined,
+  });
 
   // Pagination
   let currentPage = $state(1);
@@ -377,11 +386,20 @@
         pageSize: pageSize,
         semanticIssueType: semanticFilter || null,
         search: debouncedSearch || null,
+        statusFilter: activeFilters.statusCodes.length > 0 ? activeFilters.statusCodes : null,
+        severityFilter: activeFilters.severities.length > 0 ? activeFilters.severities : null,
+        domainFilter: activeFilters.domain || null,
+        depthFilter: activeFilters.depth,
       });
       results = data;
     } catch (e) {
       console.error('[Crawler] Failed to load results:', e);
     }
+  }
+
+  function handleFilterChange(filters: FilterState) {
+    activeFilters = filters;
+    loadResults(1);
   }
 
   function goToPage(page: number) {
@@ -707,6 +725,12 @@
                 </span>
               {/if}
             </div>
+
+            <FilterBar
+              items={results.items}
+              totalResults={results.total}
+              onFilter={handleFilterChange}
+            />
 
             <ResultsTable
               bind:expandedUrl={expandedIssueUrl}

@@ -11,6 +11,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::crawler::db_writer::{create_db_writer_channel, CrawlResultMsg, DbWriter};
+use crate::crawler::dedup::Deduplicator;
 use crate::crawler::fetcher::{HtmlFetcher, HttpFetcher};
 use crate::crawler::frontier::Frontier;
 use crate::crawler::parser::SeoParser;
@@ -64,12 +65,36 @@ impl CrawlEngine {
         self.allowed_origins.contains(&origin)
     }
 
+    #[allow(dead_code)]
+    fn matches_patterns(url: &str, config: &CrawlConfig) -> bool {
+        if config.include_patterns.is_empty() && config.exclude_patterns.is_empty() {
+            return true;
+        }
+        if !config.include_patterns.is_empty() {
+            let matches_include = config.include_patterns.iter()
+                .any(|pattern| glob::Pattern::new(pattern).is_ok_and(|p| p.matches(url)));
+            if !matches_include {
+                return false;
+            }
+        }
+        if !config.exclude_patterns.is_empty() {
+            let matches_exclude = config.exclude_patterns.iter()
+                .any(|pattern| glob::Pattern::new(pattern).is_ok_and(|p| p.matches(url)));
+            if matches_exclude {
+                return false;
+            }
+        }
+        true
+    }
+
     fn url_visited(&self, url: &str) -> bool {
-        self.visited.contains(url)
+        let normalized = Deduplicator::normalize(url);
+        self.visited.contains(&normalized)
     }
 
     fn mark_visited(&mut self, url: String) {
-        self.visited.put(url, ());
+        let normalized = Deduplicator::normalize(&url);
+        self.visited.put(normalized, ());
     }
 
     pub async fn start(
@@ -110,7 +135,11 @@ impl CrawlEngine {
         info!("Allowed origins: {:?}", self.allowed_origins);
 
         // Create fetcher with implicit user agent
-        let fetcher = HttpFetcher::new(config.user_agent())?;
+        let fetcher = HttpFetcher::new(
+            config.user_agent(),
+            config.request_timeout_ms,
+            config.custom_headers.clone(),
+        )?;
         self.fetcher = Some(Arc::new(Box::new(fetcher)));
 
         // Initialize frontier
@@ -381,6 +410,8 @@ impl CrawlEngine {
                     let in_flight_clone = in_flight.clone();
                     let allowed_origins_clone = self.allowed_origins.clone();
                     let same_origin_only = config.same_origin_only;
+                    let include_patterns = config.include_patterns.clone();
+                    let exclude_patterns = config.exclude_patterns.clone();
                     let depth = entry.depth;
                     let db_tx_clone = db_tx.clone();
                     let db_tx_error = db_tx.clone();
@@ -396,6 +427,8 @@ impl CrawlEngine {
                             url_tx_clone,
                             &allowed_origins_clone,
                             same_origin_only,
+                            &include_patterns,
+                            &exclude_patterns,
                             depth,
                             db_tx_clone,
                         )
@@ -566,6 +599,8 @@ impl CrawlEngine {
         url_tx: tokio::sync::mpsc::UnboundedSender<(String, u32)>,
         allowed_origins: &[String],
         same_origin_only: bool,
+        include_patterns: &[String],
+        exclude_patterns: &[String],
         depth: u32,
         db_tx: mpsc::Sender<CrawlResultMsg>,
     ) -> Result<(u32, u32), AppError> {
@@ -676,6 +711,18 @@ impl CrawlEngine {
                         continue;
                     }
                 } else {
+                    continue;
+                }
+            }
+            // Include/Exclude patterns
+            if !include_patterns.is_empty() || !exclude_patterns.is_empty() {
+                let matches_include = if include_patterns.is_empty() {
+                    true
+                } else {
+                    include_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)))
+                };
+                let matches_exclude = exclude_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)));
+                if !matches_include || matches_exclude {
                     continue;
                 }
             }

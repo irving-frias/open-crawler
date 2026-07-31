@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod db_writer;
+pub mod dedup;
 pub mod engine;
 pub mod fetcher;
 pub mod frontier;

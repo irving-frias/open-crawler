@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
+  import { Virtualizer } from '@tanstack/virtual-core';
 
   let {
     items,
@@ -17,9 +18,45 @@
   } = $props();
 
   let localSearch = $state('');
+  let scrollContainer = $state<HTMLElement | null>(null);
 
   $effect(() => {
     localSearch = searchQuery;
+  });
+
+  $effect(() => {
+    if (scrollContainer) {
+      virtualizer.scrollToIndex(0);
+    }
+  });
+
+  // Count virtual items: each page = 1 row, if expanded add 1 detail row
+  let virtualItems = $derived.by(() => {
+    const result: { index: number; type: 'row' | 'detail'; page: any }[] = [];
+    let idx = 0;
+    for (const page of items) {
+      result.push({ index: idx, type: 'row', page });
+      idx++;
+      if (expandedUrl === page.url) {
+        result.push({ index: idx, type: 'detail', page });
+        idx++;
+      }
+    }
+    return result;
+  });
+
+  const virtualizer = new Virtualizer({
+    count: 0,
+    getScrollElement: () => scrollContainer,
+    estimateSize: () => 48,
+    overscan: 5,
+  });
+
+  $effect(() => {
+    const newCount = virtualItems.length;
+    if (virtualizer.options.count !== newCount) {
+      virtualizer.setOptions({ count: newCount });
+    }
   });
 
   function handleInput(e: Event) {
@@ -63,6 +100,10 @@
   function toggleIssues(url: string) {
     expandedUrl = expandedUrl === url ? '' : url;
   }
+
+  function getVirtualRows() {
+    return virtualizer.getVirtualItems();
+  }
 </script>
 
 <div class="table-wrapper">
@@ -104,88 +145,97 @@
   {:else if items.length === 0}
     <div class="empty-state">{m["results.no_results"]()}</div>
   {:else}
-    <div class="rows-body">
-      {#each items as page (page.id)}
-        {@const issues = parseIssues(page.semantic_issues_json)}
-        {@const issueCounts = getIssueCounts(issues)}
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          class="table-row main-row"
-          class:has-issues={issues.length > 0}
-          role={issues.length > 0 ? 'button' : undefined}
-          tabindex={issues.length > 0 ? 0 : undefined}
-          onclick={() => issues.length > 0 && toggleIssues(page.url)}
-          onkeydown={(e) => {
-            if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
-              e.preventDefault();
-              toggleIssues(page.url);
-            }
-          }}
-        >
-          <div class="col-url">
-            <a href={page.url} target="_blank" onclick={(e) => e.stopPropagation()}>
-              {@html highlight(page.url, localSearch)}
-            </a>
-            {#if onDetail}
-              <button
-                class="btn-detail"
-                title="View page details"
-                onclick={(e) => { e.stopPropagation(); onDetail(page.id); }}
-              >&#8599;</button>
-            {/if}
-          </div>
-          <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
-            {page.status_code}
-          </div>
-          <div class="col-title">{@html highlight(page.title, localSearch) || '-'}</div>
-          <div class="col-desc">{page.meta_description || '-'}</div>
-          <div class="col-h1">{@html highlight(page.h1, localSearch) || '-'}</div>
-          <div class="col-lang">{page.html_lang || '-'}</div>
-          <div class="col-hreflang">
-            {#each parseHreflang(page.hreflang_json) as hl}
-              <span class="hreflang-badge">{hl.lang}</span>
-            {/each}
-            {#if !page.hreflang_json}
-              -
-            {/if}
-          </div>
-          <div class="col-issues">
-            {#if issues.length > 0}
-              <div class="issue-badges">
-                {#if issueCounts.errors > 0}
-                  <span class="issue-badge issue-error">{issueCounts.errors}</span>
-                {/if}
-                {#if issueCounts.warnings > 0}
-                  <span class="issue-badge issue-warning">{issueCounts.warnings}</span>
-                {/if}
-                {#if issueCounts.infos > 0}
-                  <span class="issue-badge issue-info">{issueCounts.infos}</span>
+    <div class="rows-body" bind:this={scrollContainer}>
+      <div style="height: {virtualizer.getTotalSize()}px; width: 100%; position: relative;">
+        {#each getVirtualRows() as virtualRow (virtualRow.key)}
+          {@const item = virtualItems[virtualRow.index]}
+          {#if item.type === 'row'}
+            {@const page = item.page}
+            {@const issues = parseIssues(page.semantic_issues_json)}
+            {@const issueCounts = getIssueCounts(issues)}
+            <div
+              class="table-row main-row"
+              class:has-issues={issues.length > 0}
+              role={issues.length > 0 ? 'button' : undefined}
+              tabindex={issues.length > 0 ? 0 : undefined}
+              onclick={() => issues.length > 0 && toggleIssues(page.url)}
+              onkeydown={(e) => {
+                if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  toggleIssues(page.url);
+                }
+              }}
+              style="position: absolute; top: 0; left: 0; width: 100%; transform: translateY({virtualRow.start}px);"
+            >
+              <div class="col-url">
+                <a href={page.url} target="_blank" onclick={(e) => e.stopPropagation()}>
+                  {@html highlight(page.url, localSearch)}
+                </a>
+                {#if onDetail}
+                  <button
+                    class="btn-detail"
+                    title="View page details"
+                    onclick={(e) => { e.stopPropagation(); onDetail(page.id); }}
+                  >&#8599;</button>
                 {/if}
               </div>
-            {:else}
-              <span class="no-issues">{m["results.ok"]()}</span>
-            {/if}
-          </div>
-        </div>
-
-        {#if expandedUrl === page.url && issues.length > 0}
-          <div class="table-row detail-row">
-            <div class="issue-detail">
-              {#each issues as issue}
-                {@const params = parseIssueParams(issue.message, issue.issue_type)}
-                <div class="issue-item issue-{issue.severity}">
-          <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
-          <span class="issue-element">{issue.element}</span>
-          <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
-                  {#if issue.selector}
-                    <code class="issue-selector">{issue.selector}</code>
-                  {/if}
-                </div>
-              {/each}
+              <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
+                {page.status_code}
+              </div>
+              <div class="col-title">{@html highlight(page.title, localSearch) || '-'}</div>
+              <div class="col-desc">{page.meta_description || '-'}</div>
+              <div class="col-h1">{@html highlight(page.h1, localSearch) || '-'}</div>
+              <div class="col-lang">{page.html_lang || '-'}</div>
+              <div class="col-hreflang">
+                {#each parseHreflang(page.hreflang_json) as hl}
+                  <span class="hreflang-badge">{hl.lang}</span>
+                {/each}
+                {#if !page.hreflang_json}
+                  -
+                {/if}
+              </div>
+              <div class="col-issues">
+                {#if issues.length > 0}
+                  <div class="issue-badges">
+                    {#if issueCounts.errors > 0}
+                      <span class="issue-badge issue-error">{issueCounts.errors}</span>
+                    {/if}
+                    {#if issueCounts.warnings > 0}
+                      <span class="issue-badge issue-warning">{issueCounts.warnings}</span>
+                    {/if}
+                    {#if issueCounts.infos > 0}
+                      <span class="issue-badge issue-info">{issueCounts.infos}</span>
+                    {/if}
+                  </div>
+                {:else}
+                  <span class="no-issues">{m["results.ok"]()}</span>
+                {/if}
+              </div>
             </div>
-          </div>
-        {/if}
-      {/each}
+          {:else}
+            {@const page = item.page}
+            {@const issues = parseIssues(page.semantic_issues_json)}
+            <div
+              class="table-row detail-row"
+              style="position: absolute; top: 0; left: 0; width: 100%; transform: translateY({virtualRow.start}px);"
+            >
+              <div class="issue-detail">
+                {#each issues as issue}
+                  {@const params = parseIssueParams(issue.message, issue.issue_type)}
+                  <div class="issue-item issue-{issue.severity}">
+                    <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
+                    <span class="issue-element">{issue.element}</span>
+                    <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
+                    {#if issue.selector}
+                      <code class="issue-selector">{issue.selector}</code>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
     </div>
   {/if}
 </div>
@@ -369,7 +419,7 @@
      RESPONSIVE — Mobile First
      ========================================== */
 
-  /* Mobile base (≤ 767px): card layout, minimal columns */
+  /* Mobile base (<= 767px): card layout, minimal columns */
   .header-table { display: none; }
 
   .table-row {

@@ -28,6 +28,14 @@ pub struct CrawlConfig {
     pub max_crawl_time_secs: u64,
     #[serde(default = "default_true")]
     pub check_semantics: bool,
+    #[serde(default)]
+    pub include_patterns: Vec<String>,
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub custom_headers: Vec<(String, String)>,
+    #[serde(default = "default_request_timeout_ms")]
+    pub request_timeout_ms: u64,
 }
 
 fn default_max_depth() -> u32 {
@@ -47,6 +55,9 @@ fn default_max_body_size() -> usize {
 }
 fn default_max_crawl_secs() -> u64 {
     3600 // 1 hour
+}
+fn default_request_timeout_ms() -> u64 {
+    30000 // 30 seconds
 }
 
 impl CrawlConfig {
@@ -71,6 +82,10 @@ impl Default for CrawlConfig {
             check_sitemap: true,
             max_crawl_time_secs: default_max_crawl_secs(),
             check_semantics: true,
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
+            custom_headers: Vec::new(),
+            request_timeout_ms: default_request_timeout_ms(),
         }
     }
 }

@@ -354,7 +354,7 @@ pub async fn recrawl_page(
 
     // Fetch the page
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher = crate::crawler::fetcher::HttpFetcher::new(user_agent)?;
+    let fetcher = crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new())?;
     let response = fetcher.fetch(&url).await?;
 
     // Parse SEO data
@@ -494,6 +494,7 @@ pub async fn capture_page_screenshot(
 
 // ==================== RESULTS COMMANDS ====================
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn get_results(
     state: State<'_, Arc<RwLock<AppState>>>,
@@ -502,13 +503,27 @@ pub async fn get_results(
     page_size: u32,
     semantic_issue_type: Option<String>,
     search: Option<String>,
+    status_filter: Option<Vec<u32>>,
+    severity_filter: Option<Vec<String>>,
+    domain_filter: Option<String>,
+    depth_filter: Option<u32>,
 ) -> Result<PaginatedResults, AppError> {
     let state = state.inner().clone();
     let state_read = state.read().await;
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
     let repo = CrawlRepo::new(&db);
-    let (items, total) = repo.get_results(&project_id, page, page_size, semantic_issue_type.as_deref(), search.as_deref())?;
+    let (items, total) = repo.get_results(
+        &project_id,
+        page,
+        page_size,
+        semantic_issue_type.as_deref(),
+        search.as_deref(),
+        status_filter.as_deref(),
+        severity_filter.as_deref(),
+        domain_filter.as_deref(),
+        depth_filter,
+    )?;
 
     Ok(PaginatedResults {
         items,
@@ -529,7 +544,7 @@ pub async fn export_csv(
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
 
     let repo = CrawlRepo::new(&db);
-    let (items, _) = repo.get_results(&project_id, 1, 10000, None, None)?;
+    let (items, _) = repo.get_results(&project_id, 1, 10000, None, None, None, None, None, None)?;
 
     let mut wtr = csv::Writer::from_path(&file_path)?;
 

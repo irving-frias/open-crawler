@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::time::Duration;
 use url::Url;
 
 use crate::error::AppError;
@@ -21,19 +22,27 @@ pub trait HtmlFetcher: Send + Sync {
 
 pub struct HttpFetcher {
     client: reqwest::Client,
+    custom_headers: Vec<(String, String)>,
 }
 
 impl HttpFetcher {
-    pub fn new(user_agent: &str) -> Result<Self, AppError> {
+    pub fn new(
+        user_agent: &str,
+        timeout_ms: u64,
+        custom_headers: Vec<(String, String)>,
+    ) -> Result<Self, AppError> {
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(Duration::from_millis(timeout_ms))
             .redirect(reqwest::redirect::Policy::limited(10))
             .gzip(true)
             .brotli(true)
             .build()?;
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            custom_headers,
+        })
     }
 }
 
@@ -42,7 +51,11 @@ impl HtmlFetcher for HttpFetcher {
     async fn fetch(&self, url: &Url) -> Result<FetchResponse, AppError> {
         let start = std::time::Instant::now();
 
-        let response = self.client.get(url.as_str()).send().await?;
+        let mut request = self.client.get(url.as_str());
+        for (key, value) in &self.custom_headers {
+            request = request.header(key.as_str(), value.as_str());
+        }
+        let response = request.send().await?;
 
         let status = response.status().as_u16();
         let final_url = response.url().clone();

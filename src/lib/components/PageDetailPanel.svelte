@@ -64,11 +64,7 @@
     try { return JSON.parse(json); } catch { return []; }
   }
 
-  function getSeverityColor(severity: string): string {
-    if (severity === 'error') return '#ff6b6b';
-    if (severity === 'warning') return '#ffd43b';
-    return '#74c0fc';
-  }
+  // Severity colors handled via CSS classes
 
 </script>
 
@@ -191,7 +187,7 @@
                     {@const params = parseIssueParams(issue.message, issue.issue_type)}
                     <div class="issue-card issue-{issue.severity}">
                       <div class="issue-header">
-                        <span class="issue-severity" style="background: {getSeverityColor(issue.severity)}20; color: {getSeverityColor(issue.severity)}; border: 1px solid {getSeverityColor(issue.severity)}40">{translateSeverity(issue.severity)}</span>
+                        <span class="issue-severity issue-severity-{issue.severity}">{translateSeverity(issue.severity)}</span>
                         <span class="issue-type">{translateIssueName(issue.issue_type)}</span>
                       </div>
                       <div class="issue-message">{translateIssueMessage(issue.issue_type, params)}</div>
@@ -470,6 +466,24 @@
     padding: 2px 8px;
     border-radius: 4px;
     letter-spacing: 0.5px;
+  }
+
+  .issue-severity-error {
+    background: var(--bg-issue-error);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+
+  .issue-severity-warning {
+    background: var(--bg-issue-warning);
+    color: var(--warning);
+    border: 1px solid var(--warning);
+  }
+
+  .issue-severity-info {
+    background: var(--bg-issue-info);
+    color: var(--info);
+    border: 1px solid var(--info);
   }
 
   .issue-type {
