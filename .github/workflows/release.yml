@@ -43,7 +43,7 @@ jobs:
           - platform: 'macos-latest'
             target: 'aarch64-apple-darwin'
             label: 'macOS Apple Silicon'
-          - platform: 'macos-latest'
+          - platform: 'macos-13'
             target: 'x86_64-apple-darwin'
             label: 'macOS Intel'
           - platform: 'ubuntu-22.04'
@@ -110,10 +110,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: Install Rust target (macOS Intel)
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: rustup target add x86_64-apple-darwin
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
