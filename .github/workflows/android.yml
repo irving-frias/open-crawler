@@ -71,12 +71,12 @@ jobs:
 
       - name: Setup Android toolchain paths
         run: |
-          NDK_PATH=$(find $ANDROID_HOME/ndk -maxdepth 1 -type d -name "*25.1.8937393*" | head -n 1)
-          if [ -z "$NDK_PATH" ]; then
-            NDK_PATH=$(find $ANDROID_HOME -maxdepth 2 -type d -name "25.1.8937393" | head -n 1)
+          NDK_PATH="${ANDROID_HOME}/ndk/25.1.8937393"
+          if [ ! -d "$NDK_PATH" ]; then
+            NDK_PATH="${ANDROID_HOME}/ndk-bundle"
           fi
-          if [ -z "$NDK_PATH" ]; then
-            echo "::error::Android NDK not found"
+          if [ ! -d "$NDK_PATH" ]; then
+            echo "::error::Android NDK not found at $NDK_PATH"
             exit 1
           fi
           echo "NDK_PATH=$NDK_PATH" >> $GITHUB_ENV
