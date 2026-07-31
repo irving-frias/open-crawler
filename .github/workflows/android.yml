@@ -49,8 +49,13 @@ jobs:
 
       - name: Setup NDK environment
         run: |
-          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          NDK="${{ steps.setup-ndk.outputs.ndk-path }}"
+          echo "NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang" >> $GITHUB_ENV
+          echo "CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang" >> $GITHUB_ENV
+          ls -la "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep aarch64 || true
 
       - name: Install Android cross-compilation toolchain
         run: |
@@ -77,15 +82,10 @@ jobs:
       - name: Build Tauri App
         run: pnpm tauri build --target aarch64-linux-android
         env:
-          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
           ANDROID_KEY_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-          RING_PREGENERATE_ASM: 1
-          CC: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
-          CXX: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

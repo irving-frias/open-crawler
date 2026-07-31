@@ -1,8 +1,0 @@
-[target.aarch64-linux-android]
-linker = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang"
-
-[env]
-ANDROID_NDK_HOME = "${NDK_HOME}"
-CC = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang"
-CXX = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++"
-CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang"
