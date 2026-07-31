@@ -3,7 +3,7 @@ use tracing::info;
 
 use crate::error::AppError;
 use crate::models::{CrawlConfig, CrawlResult, IssueCount, PageLink, Project};
-use crate::ResultsCacheKey;
+use crate::{ResultsCacheArc, ResultsCacheKey};
 
 fn compress_gzip(data: &[u8]) -> Vec<u8> {
     use flate2::write::GzEncoder;
@@ -41,7 +41,7 @@ fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
 
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
-    results_cache: Option<std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<CrawlResult>, u32)>>>>,
+    results_cache: Option<ResultsCacheArc>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ pub struct CrawlSessionInfo {
 }
 
 impl<'a> CrawlRepo<'a> {
-    pub fn new(conn: &'a Connection, results_cache: Option<std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<CrawlResult>, u32)>>>>) -> Self {
+    pub fn new(conn: &'a Connection, results_cache: Option<ResultsCacheArc>) -> Self {
         Self { conn, results_cache }
     }
 
@@ -402,8 +402,8 @@ impl<'a> CrawlRepo<'a> {
             page_size,
             semantic_issue_type: semantic_issue_type.map(|s| s.to_string()),
             search: search.map(|s| s.to_string()),
-            status_filter: status_filter.unwrap_or_default().iter().cloned().collect(),
-            severity_filter: severity_filter.unwrap_or_default().iter().cloned().collect(),
+            status_filter: status_filter.unwrap_or_default().to_vec(),
+            severity_filter: severity_filter.unwrap_or_default().to_vec(),
             domain_filter: domain_filter.map(|s| s.to_string()),
             depth_filter,
         };
@@ -569,7 +569,7 @@ impl<'a> CrawlRepo<'a> {
         let results = stmt
             .query_map(
                 rusqlite::params_from_iter(query_params.iter().map(|p| p.as_ref())),
-                |row| Self::row_to_result(row),
+                Self::row_to_result,
             )?
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -658,7 +658,7 @@ impl<'a> CrawlRepo<'a> {
     pub fn save_screenshot(&self, page_id: &str, png_data: &[u8]) -> Result<(), AppError> {
         self.conn.execute(
             "UPDATE crawled_pages SET screenshot_png = ?1 WHERE id = ?2",
-            params![compress_png(&Some(png_data.to_vec())).as_ref().map(|v| v.as_slice()), page_id],
+            params![compress_png(&Some(png_data.to_vec())).as_deref(), page_id],
         )?;
         Ok(())
     }

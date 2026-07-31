@@ -32,10 +32,12 @@ pub struct CrawlState {
     pub progress: CrawlProgress,
 }
 
+type ResultsCacheArc = std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>>;
+
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub crawls: Arc<RwLock<HashMap<String, CrawlState>>>,
-    pub results_cache: Arc<Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>>,
+    pub results_cache: ResultsCacheArc,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

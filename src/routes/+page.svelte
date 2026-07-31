@@ -409,7 +409,6 @@
         search: debouncedSearch || null,
         statusFilter: activeFilters.statusCodes.length > 0 ? activeFilters.statusCodes : null,
         severityFilter: activeFilters.severities.length > 0 ? activeFilters.severities : null,
-        domainFilter: activeFilters.domain || null,
         depthFilter: activeFilters.depth,
       });
       results = data;
