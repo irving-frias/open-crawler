@@ -48,6 +48,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Add Android target
+        run: rustup target add aarch64-linux-android
 
       - name: Install dependencies
         run: pnpm install
