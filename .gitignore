@@ -4,9 +4,16 @@ bun.lock
 bun.lockb
 
 # Build outputs
+build/
 dist/
 target/
 *.bundle
+
+# SvelteKit
+.svelte-kit/
+
+# Paraglide (generated i18n files)
+src/lib/paraglide/
 
 # Tauri
 src-tauri/target/
