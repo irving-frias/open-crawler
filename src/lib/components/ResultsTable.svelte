@@ -1,6 +1,10 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
+  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink } from 'lucide-svelte';
+  import { Input } from '$lib/components/ui/input/index.js';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Badge } from '$lib/components/ui/badge/index.js';
 
   let {
     items,
@@ -40,11 +44,6 @@
     try { return JSON.parse(issuesJson); } catch { return []; }
   }
 
-  function parseHreflang(hreflangJson: string | null): { lang: string; href: string }[] {
-    if (!hreflangJson) return [];
-    try { return JSON.parse(hreflangJson); } catch { return []; }
-  }
-
   function getIssueCounts(issues: any[]): { errors: number; warnings: number; infos: number } {
     let errors = 0, warnings = 0, infos = 0;
     for (const issue of issues) {
@@ -55,71 +54,78 @@
     return { errors, warnings, infos };
   }
 
-  function getSeverityIcon(severity: string): string {
-    if (severity === 'error') return '\u2716';
-    if (severity === 'warning') return '\u26A0';
-    return '\u2139';
-  }
-
   function toggleIssues(url: string) {
     expandedUrl = expandedUrl === url ? '' : url;
-    if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollTop;
-    }
   }
 
-  function truncateWords(text: string, maxLength: number = 160) {
-    if (!text || text.length <= maxLength) return text?.trim() || "";
-
-    let truncated = text.slice(0, maxLength);
-    // Busca el último espacio para no cortar palabras
-    let lastSpace = truncated.lastIndexOf(' ');
-    if (lastSpace > 0) {
-      truncated = truncated.slice(0, lastSpace);
-    }
-    return truncated.trim() + "...";
+  function resultCountLabel(count: number): string {
+    return count === 1
+      ? m['results.search_match_one']({ count: count.toString() })
+      : m['results.search_matches']({ count: count.toString() });
   }
 </script>
 
 <div class="table-wrapper">
-  <div class="search-bar">
-    <div class="search-input-wrap">
-      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input
+  <div class="search-bar flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
+    <div class="relative flex-1">
+      <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
         type="text"
-        class="search-input"
-        placeholder="Search URL, title, or H1..."
+        placeholder={m['results.search_placeholder']()}
         value={localSearch}
         oninput={handleInput}
+        class="pl-9 pr-9"
       />
       {#if localSearch}
-        <button class="search-clear" onclick={() => { localSearch = ''; onSearch?.(''); }} aria-label="Clear search">&times;</button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="absolute right-1.5 top-1/2 -translate-y-1/2"
+          onclick={() => { localSearch = ''; onSearch?.(''); }}
+          aria-label={m['results.clear_search']()}
+          title={m['results.clear_search']()}
+        >
+          <X class="size-4" />
+        </Button>
       {/if}
     </div>
     {#if localSearch}
-      <span class="search-count">{items.length} result{items.length !== 1 ? 's' : ''}</span>
+      <span class="result-count">
+        {resultCountLabel(items.length)}
+      </span>
     {/if}
   </div>
-  <div class="header-row">
-    <div class="col-url">{m["results.col.title"]()}</div>
-    <div class="col-status">{m["results.col.status"]()}</div>
-    <div class="col-issues">{m["results.col.issues"]()}</div>
-  </div>
 
-  {#if items.length === 0 && localSearch}
-    <div class="empty-state">No results match "{localSearch}"</div>
-  {:else if items.length === 0}
-    <div class="empty-state">{m["results.no_results"]()}</div>
+  {#if items.length === 0}
+    <div class="empty-state">
+      {#if localSearch}
+        <SearchX class="empty-icon" />
+        <span class="empty-title">{m['results.no_search_matches']({ query: localSearch })}</span>
+      {:else}
+        <Database class="empty-icon" />
+        <span class="empty-title">{m['results.no_results']()}</span>
+      {/if}
+    </div>
   {:else}
+    <div class="header-row">
+      <div class="col-url">{m['results.col.url']()}</div>
+      <div class="col-status">{m['results.col.status']()}</div>
+      <div class="col-issues">{m['results.col.issues']()}</div>
+    </div>
+
     <div class="rows-body" bind:this={scrollContainer}>
       {#each items as page (page.id)}
         {@const issues = parseIssues(page.semantic_issues_json)}
         {@const issueCounts = getIssueCounts(issues)}
+        {@const isExpanded = expandedUrl === page.url}
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="table-row main-row"
           class:has-issues={issues.length > 0}
+          class:expanded={isExpanded}
           role={issues.length > 0 ? 'button' : undefined}
           tabindex={issues.length > 0 ? 0 : undefined}
+          aria-expanded={issues.length > 0 ? isExpanded : undefined}
           onclick={() => issues.length > 0 && toggleIssues(page.url)}
           onkeydown={(e) => {
             if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
@@ -129,8 +135,19 @@
           }}
         >
           <div class="col-url">
-            <button class="btn-title" onclick={() => onDetail?.(page.id)} title="View details">
-              {@html highlight(page.title || 'Sin título', localSearch)}
+            <a
+              class="url-link"
+              href={page.url}
+              target="_blank"
+              rel="noreferrer"
+              title={page.url}
+              onclick={(e) => e.stopPropagation()}
+            >
+              <span class="url-text">{page.url}</span>
+              <ExternalLink class="url-external size-3.5" />
+            </a>
+            <button class="btn-title" onclick={() => onDetail?.(page.id)} title={m['results.view_details']()}>
+              {@html highlight(page.title || m['detail.no_title'](), localSearch)}
             </button>
           </div>
           <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
@@ -140,34 +157,56 @@
             {#if issues.length > 0}
               <div class="issue-badges">
                 {#if issueCounts.errors > 0}
-                  <span class="issue-badge issue-error">{issueCounts.errors}</span>
+                  <Badge variant="outline" class="issue-badge-error gap-1">
+                    <CircleX class="size-3.5" />
+                    {issueCounts.errors}
+                  </Badge>
                 {/if}
                 {#if issueCounts.warnings > 0}
-                  <span class="issue-badge issue-warning">{issueCounts.warnings}</span>
+                  <Badge variant="outline" class="issue-badge-warning gap-1">
+                    <TriangleAlert class="size-3.5" />
+                    {issueCounts.warnings}
+                  </Badge>
                 {/if}
                 {#if issueCounts.infos > 0}
-                  <span class="issue-badge issue-info">{issueCounts.infos}</span>
+                  <Badge variant="outline" class="issue-badge-info gap-1">
+                    <Info class="size-3.5" />
+                    {issueCounts.infos}
+                  </Badge>
                 {/if}
               </div>
             {:else}
-              <span class="no-issues">{m["results.ok"]()}</span>
+              <span class="no-issues">{m['results.ok']()}</span>
+            {/if}
+            {#if issues.length > 0}
+              <span class="row-chevron" class:rotated={isExpanded}>
+                <ChevronDown class="size-4" />
+              </span>
             {/if}
           </div>
         </div>
-        {#if expandedUrl === page.url}
+        {#if isExpanded}
           {@const issues = parseIssues(page.semantic_issues_json)}
           <div class="table-row detail-row">
             <div class="issue-detail">
               {#each issues as issue}
                 {@const params = parseIssueParams(issue.message, issue.issue_type)}
                 <div class="issue-item issue-{issue.severity}">
-                  <span class="issue-icon">{getSeverityIcon(issue.severity)}</span>
+                  <span class="issue-icon">
+                    {#if issue.severity === 'error'}
+                      <CircleX class="size-4" />
+                    {:else if issue.severity === 'warning'}
+                      <TriangleAlert class="size-4" />
+                    {:else}
+                      <Info class="size-4" />
+                    {/if}
+                  </span>
                   <span class="issue-element">{issue.element}</span>
                   <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
                   {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
                     <code class="issue-selector">{issue.xpath}</code>
                   {:else if issue.xpath}
-                    <span class="issue-detail issue-selector">{issue.xpath}</span>
+                    <span class="issue-selector">{issue.xpath}</span>
                   {/if}
                 </div>
               {/each}
@@ -181,25 +220,53 @@
 
 <style>
   .table-wrapper {
-    overflow-x: auto;
+    overflow: auto;
+    max-height: min(600px, 60vh);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-muted) transparent;
   }
 
-  .table-wrapper {
-    overflow: auto;
-    max-height: 600px;
-    border-radius: 8px;
+  .table-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .table-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .table-wrapper::-webkit-scrollbar-thumb {
+    background: var(--border-muted);
+    border-radius: 4px;
+  }
+  .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+
+  .result-count {
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
+    background: var(--bg-card);
+    padding: 2px 10px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
 
   .header-row {
     display: grid;
-    grid-template-columns: 70% 10% 20%;
+    grid-template-columns: minmax(0, 1fr) 90px 130px;
     position: sticky;
     top: 0;
     z-index: 10;
     background: var(--bg-card);
-    border-bottom: 2px solid var(--border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .header-row > div {
@@ -222,52 +289,24 @@
   }
 
   .header-row > div:first-child {
-    border-top-left-radius: 8px;
+    border-top-left-radius: var(--radius-lg);
   }
 
   .header-row > div:last-child {
-    border-top-right-radius: 8px;
-  }
-
-  [data-theme="dark"] .header-row {
-    background: #2f323a;
-    border-bottom-color: #5c5f66;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.45);
-  }
-
-  [data-theme="dark"] .header-row > div {
-    color: #f1f3f5;
-    border-right-color: #5c5f66;
-  }
-
-  [data-theme="dark"] .table-row {
-    border-bottom-color: #5c5f66;
-  }
-
-  [data-theme="dark"] .main-row:hover {
-    background: #3a3d47;
-    box-shadow: inset 0 0 0 1px #5c5f66;
-  }
-
-  [data-theme="dark"] .detail-row {
-    border-bottom-color: #5c5f66;
-    background: #1a1b1e;
-  }
-
-  .rows-body {
-    overflow: visible;
+    border-top-right-radius: var(--radius-lg);
   }
 
   .table-row {
     display: grid;
-    grid-template-columns: 70% 10% 20%;
+    grid-template-columns: minmax(0, 1fr) 90px 130px;
     grid-template-rows: auto;
-    min-height: 48px;
+    min-height: 52px;
     padding: 0 16px;
     align-items: center;
     border-bottom: 1px solid var(--border);
     font-size: 0.9rem;
     box-sizing: border-box;
+    transition: background var(--transition-base);
   }
 
   .main-row.has-issues {
@@ -278,30 +317,66 @@
     background: var(--bg-hover);
   }
 
-  [data-theme="dark"] .main-row:hover {
-    background: #353840;
+  .main-row.has-issues:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   .detail-row {
     display: block;
     background: var(--bg-deep);
-    border-bottom: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
     padding: 0;
-    grid-column: 1 / -1;
     width: 100%;
+    animation: detail-in var(--transition-slow);
   }
 
-  [data-theme="dark"] .detail-row {
-    background: #1e2028;
-    border-bottom-color: #4a4d55;
+  @keyframes detail-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .col-url {
-    width: 70%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 2px;
     align-items: flex-start;
+    justify-content: center;
+    padding: 6px 0;
+    overflow: hidden;
+  }
+
+  .url-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    font-size: 0.85rem;
+    color: var(--accent);
+    text-decoration: none;
+    overflow: hidden;
+  }
+
+  .url-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .url-external {
+    flex-shrink: 0;
+    opacity: 0.45;
+    transition: opacity var(--transition-fast);
+  }
+
+  .url-link:hover {
+    text-decoration: underline;
+    color: var(--accent-hover);
+  }
+
+  :global(.url-link:hover .url-external) {
+    opacity: 1;
   }
 
   .btn-title {
@@ -320,7 +395,7 @@
     max-width: 100%;
     text-decoration: underline;
     text-decoration-color: transparent;
-    transition: text-decoration-color 0.15s;
+    transition: text-decoration-color var(--transition-fast);
   }
 
   .btn-title:hover {
@@ -328,54 +403,99 @@
     color: var(--accent-hover);
   }
 
-  .col-status { width: 10%; }
-  .col-issues { width: 20%; }
+  .btn-title:focus-visible,
+  .url-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .col-status {
+    width: fit-content;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .status-2xx { background: var(--bg-status-2xx); color: var(--success); }
+  .status-3xx { background: var(--bg-status-3xx); color: var(--warning); }
+  .status-4xx { background: var(--bg-status-4xx); color: var(--orange); }
+  .status-5xx { background: var(--bg-status-5xx); color: var(--danger); }
+  .status-0xx { background: var(--bg-hover); color: var(--text-muted); }
+
+  .col-issues {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .row-chevron {
+    margin-left: auto;
+    color: var(--text-muted);
+    display: inline-flex;
+    flex-shrink: 0;
+    transition: transform var(--transition-base);
+  }
+
+  .row-chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .issue-badges {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .issue-badge-error {
+    background: var(--bg-issue-error);
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .issue-badge-warning {
+    background: var(--bg-issue-warning);
+    color: var(--warning);
+    border-color: var(--warning);
+  }
+  .issue-badge-info {
+    background: var(--bg-issue-info);
+    color: var(--info);
+    border-color: var(--info);
+  }
+
+  .no-issues {
+    color: var(--success);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
 
   .empty-state {
-    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 20px;
     text-align: center;
     color: var(--text-muted);
     font-size: 0.9rem;
   }
 
-  a {
-    color: var(--accent);
-    text-decoration: none;
-  }
-  a:hover { text-decoration: underline; }
-
-  .status-2xx { color: var(--success); }
-  .status-3xx { color: var(--warning); }
-  .status-4xx { color: var(--orange); }
-  .status-5xx { color: var(--danger); }
-
-  .hreflang-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    background: var(--border);
-    border-radius: 4px;
-    font-size: 0.75rem;
-    margin-right: 4px;
-    color: var(--text-secondary);
+  .empty-icon {
+    width: 36px;
+    height: 36px;
+    color: var(--border-muted);
   }
 
-  .issue-badges { display: flex; gap: 4px; }
-
-  .issue-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 5px;
-    border-radius: 10px;
-    font-size: 0.75rem;
-    font-weight: 600;
+  .empty-title {
+    font-size: 0.9rem;
+    max-width: 420px;
+    overflow-wrap: break-word;
   }
-  .issue-error { background: var(--bg-issue-error); color: var(--danger); border: 1px solid var(--danger); }
-  .issue-warning { background: var(--bg-issue-warning); color: var(--warning); border: 1px solid var(--warning); }
-  .issue-info { background: var(--bg-issue-info); color: var(--info); border: 1px solid var(--info); }
-  .no-issues { color: var(--success); font-size: 0.85rem; font-weight: 500; }
 
   .issue-detail {
     display: flex;
@@ -398,23 +518,55 @@
   .issue-item.issue-warning { background: var(--bg-issue-warning); }
   .issue-item.issue-info { background: var(--bg-issue-info); }
 
-  .issue-icon { font-size: 0.9rem; }
-  .issue-element { font-weight: 600; color: var(--text); min-width: 80px; }
-  .issue-message { color: var(--text-secondary); flex: 1; }
+  .issue-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+  .issue-item.issue-error .issue-icon { color: var(--danger); }
+  .issue-item.issue-warning .issue-icon { color: var(--warning); }
+  .issue-item.issue-info .issue-icon { color: var(--info); }
+
+  .issue-element {
+    font-weight: 600;
+    color: var(--text);
+    min-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .issue-message {
+    color: var(--text-secondary);
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
   .issue-selector {
     padding: 2px 6px;
     background: var(--bg-hover);
     border-radius: 4px;
     font-size: 0.75rem;
     color: var(--info);
-    font-family: monospace;
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 320px;
   }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover { text-decoration: underline; }
 
   /* ==========================================
      RESPONSIVE — Mobile First
      ========================================== */
 
-  /* Mobile base (<= 767px): card layout, minimal columns */
+  /* Mobile base (<= 767px): card layout */
   .header-row { display: none; }
 
   .table-row {
@@ -423,10 +575,13 @@
     gap: 6px;
     padding: 12px 16px;
     min-height: auto;
+    position: relative;
   }
 
-  .col-url { width: 100%; }
-  .col-url a { font-size: 0.85rem; }
+  .col-url {
+    width: 100%;
+    padding-right: 76px;
+  }
 
   .col-status {
     position: absolute;
@@ -434,28 +589,8 @@
     right: 16px;
   }
 
-  .col-title {
-    width: 100%;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .col-desc,
-  .col-h1,
-  .col-lang,
-  .col-hreflang {
-    display: none;
-  }
-
   .col-issues {
     width: 100%;
-  }
-
-  .btn-detail {
-    opacity: 1;
   }
 
   .issue-detail {
@@ -470,115 +605,33 @@
     min-width: 60px;
   }
 
-  /* Tablet (768px+): show 3-column table */
+  /* Tablet+ (768px+): 3-column table */
   @media (min-width: 768px) {
     .header-row {
       display: grid;
-      grid-template-columns: 70% 10% 20%;
+      grid-template-columns: minmax(0, 1fr) 90px 130px;
     }
 
     .table-row {
       display: grid;
-      grid-template-columns: 70% 10% 20%;
-      min-height: 48px;
+      grid-template-columns: minmax(0, 1fr) 90px 130px;
+      min-height: 52px;
       padding: 0 16px;
       align-items: center;
     }
 
-    .col-title,
-    .col-desc,
-    .col-h1,
-    .col-lang,
-    .col-hreflang {
-      display: none;
+    .col-url {
+      width: auto;
+      padding-right: 0;
     }
 
-    .col-url { width: auto; }
-    .col-status { width: auto; position: static; }
-    .col-issues { width: auto; }
-  }
-
-  /* Desktop (1024px+): keep 3 columns */
-  @media (min-width: 1024px) {
-    .header-row,
-    .table-row {
-      grid-template-columns: 70% 10% 20%;
+    .col-status {
+      position: static;
     }
 
-    .col-title,
-    .col-desc,
-    .col-h1,
-    .col-lang,
-    .col-hreflang {
-      display: none;
+    .col-issues {
+      width: auto;
     }
-  }
-
-  .search-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm, 0.5rem);
-    padding: var(--space-sm, 0.5rem) var(--space-md, 1rem);
-    border-bottom: 1px solid var(--border, #e0e0e0);
-    background: var(--bg-secondary, #f9fafb);
-  }
-
-  .search-input-wrap {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-    background: var(--bg-primary, #fff);
-    border: 1px solid var(--border, #d1d5db);
-    border-radius: var(--radius-md, 8px);
-    padding: 6px 10px;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .search-input-wrap:focus-within {
-    border-color: var(--accent, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-  }
-
-  .search-icon {
-    flex-shrink: 0;
-    color: var(--text-secondary, #9ca3af);
-  }
-
-  .search-input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    font-size: 0.875rem;
-    color: var(--text-primary, #111);
-    outline: none;
-    padding: 0;
-  }
-  .search-input::placeholder {
-    color: var(--text-secondary, #9ca3af);
-  }
-
-  .search-clear {
-    background: none;
-    border: none;
-    font-size: 1.1rem;
-    cursor: pointer;
-    color: var(--text-secondary, #9ca3af);
-    padding: 0;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-  .search-clear:hover {
-    color: var(--text-primary, #374151);
-  }
-
-  .search-count {
-    font-size: 0.8rem;
-    color: var(--text-secondary, #6b7280);
-    white-space: nowrap;
-    padding: 2px 8px;
-    background: var(--bg-primary, #fff);
-    border: 1px solid var(--border, #e5e7eb);
-    border-radius: var(--radius-sm, 4px);
   }
 
   :global(.table-wrapper mark) {
@@ -586,5 +639,18 @@
     color: inherit;
     padding: 0 1px;
     border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .detail-row {
+      animation: none;
+    }
+
+    .row-chevron,
+    .url-external,
+    .btn-title,
+    .table-row {
+      transition: none;
+    }
   }
 </style>

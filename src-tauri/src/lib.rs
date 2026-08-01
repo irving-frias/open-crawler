@@ -55,6 +55,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let app_data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
@@ -79,6 +80,15 @@ pub fn run() {
                     return Err(Box::new(e) as Box<dyn std::error::Error>);
                 }
             };
+
+            if let Err(e) = conn.pragma_update(None, "journal_mode", "WAL") {
+                tracing::error!("Failed to enable WAL mode: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
+            if let Err(e) = conn.pragma_update(None, "busy_timeout", 5000) {
+                tracing::error!("Failed to set busy_timeout: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
 
             // Run migrations
             if let Err(e) = crate::db::schema::run_migrations(&conn) {
@@ -115,7 +125,6 @@ pub fn run() {
             crate::commands::inline_assets,
             crate::commands::recrawl_page,
             crate::commands::capture_page_screenshot,
-            crate::commands::export_csv,
             crate::commands::get_settings,
             crate::commands::save_settings,
             crate::commands::export_full,

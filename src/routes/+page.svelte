@@ -1,11 +1,23 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-  import { confirm } from '@tauri-apps/plugin-dialog';
+  import { toast } from 'svelte-sonner';
   import ResultsTable from '$lib/components/ResultsTable.svelte';
   import FilterBar, { type FilterState } from '$lib/components/FilterBar.svelte';
-  import Toast from '$lib/components/Toast.svelte';
-  import { m } from '$lib/paraglide/messages.js';
+import { m } from '$lib/paraglide/messages.js';
+import { notify } from '$lib/utils';
+import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Download, SearchX, FileSpreadsheet, FileText, ChevronDown } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Input } from '$lib/components/ui/input/index.js';
+  import { Label } from '$lib/components/ui/label/index.js';
+  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+  import * as Select from '$lib/components/ui/select/index.js';
+  import { Progress } from '$lib/components/ui/progress/index.js';
+  import { Badge } from '$lib/components/ui/badge/index.js';
+  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import * as Tabs from '$lib/components/ui/tabs/index.js';
+  import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+  import * as Popover from '$lib/components/ui/popover/index.js';
 
   let PageDetailPanel = $state<typeof import('$lib/components/PageDetailPanel.svelte').default | null>(null);
   let SemanticDashboard = $state<typeof import('$lib/components/SemanticDashboard.svelte').default | null>(null);
@@ -64,7 +76,18 @@
   // Pagination
   let currentPage = $state(1);
   let pageSize = $state(50);
+  let pageSizeSelect = $state('50');
   let totalPages = $derived(Math.ceil(results.total / pageSize));
+
+  const progressPct = $derived(
+    progress.crawled > 0
+      ? Math.min((progress.crawled / (progress.crawled + progress.queued)) * 100, 100)
+      : 0
+  );
+
+  $effect(() => {
+    pageSizeSelect = String(pageSize);
+  });
 
   // Resume state
   let resumableInfo = $state<any>(null);
@@ -72,6 +95,14 @@
 
   // Streamed count during live crawl
   let streamedCount = $state(0);
+
+  // Export progress
+  let exportProgress = $state<{ running: boolean; percent: number; stage: string }>({
+    running: false,
+    percent: 0,
+    stage: '',
+  });
+  let exportHideTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Expanded issue row
   let expandedIssueUrl = $state('');
@@ -88,6 +119,9 @@
   let debouncedSearch = $state('');
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Results loading state
+  let resultsLoading = $state(false);
+
   function onSearchInput(query: string) {
     searchQuery = query;
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
@@ -101,17 +135,12 @@
   // Settings modal
   let settingsModalOpen = $state(false);
 
-  // Toast notifications
-  let toasts = $state<Array<{ id: number; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([]);
-  let toastCounter = $state(0);
-  function showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') {
-    const id = ++toastCounter;
-    toasts = [...toasts, { id, message, type }];
-    setTimeout(() => { toasts = toasts.filter((t) => t.id !== id); }, 5000);
-  }
-  function dismissToast(id: number) {
-    toasts = toasts.filter((t) => t.id !== id);
-  }
+  // Notifications
+  let notificationsEnabled = $state(true);
+
+  // Delete confirmation
+  let deletePendingId = $state<string | null>(null);
+  let deleteDialogOpen = $state(false);
 
   let unlistenFns: UnlistenFn[] = [];
 
@@ -134,6 +163,9 @@
       const settings = await invoke<Record<string, string>>('get_settings');
       if (settings.page_size) {
         pageSize = parseInt(settings.page_size, 10);
+      }
+      if (settings.notifications_enabled !== undefined) {
+        notificationsEnabled = settings.notifications_enabled === 'true';
       }
     } catch (e) {
       // Settings may not exist yet, use defaults
@@ -260,9 +292,18 @@
     renamingName = '';
   }
 
+  function requestDelete(id: string) {
+    deletePendingId = id;
+    deleteDialogOpen = true;
+  }
+
+  function closeDelete() {
+    deleteDialogOpen = false;
+    deletePendingId = null;
+  }
+
   async function deleteProject(id: string) {
-    const ok = await confirm(m["dialog.delete_confirm"](), { title: m["dialog.delete_title"](), kind: 'warning' });
-    if (!ok) return;
+    closeDelete();
     try {
       await invoke('delete_project', { id });
       if (selectedProjectId === id) {
@@ -280,6 +321,9 @@
   async function setupListeners() {
     const un0 = await listen<any>('crawl-started', (event) => {
       console.log('[Crawler] crawl-started:', event.payload);
+      if (notificationsEnabled) {
+        notify(m['notifications.crawl_started'](), m['notifications.crawl_started_desc']());
+      }
     });
     unlistenFns.push(un0);
 
@@ -310,6 +354,9 @@
       resumableInfo = null;
       streamedCount = 0;
       loadResults(1);
+      if (notificationsEnabled) {
+        notify(m['notifications.crawl_complete'](), m['notifications.crawl_complete_desc']());
+      }
     });
     unlistenFns.push(un2);
 
@@ -318,6 +365,9 @@
       if (p.project_id !== selectedProjectId) return;
       status = 'error';
       error = p.error || String(p);
+      if (notificationsEnabled) {
+        notify(m['notifications.crawl_error'](), p.error || String(p));
+      }
     });
     unlistenFns.push(un3);
 
@@ -327,6 +377,9 @@
       status = 'idle';
       streamedCount = 0;
       checkResumable();
+      if (notificationsEnabled) {
+        notify(m['notifications.crawl_stopped'](), m['notifications.crawl_stopped_desc']());
+      }
     });
     unlistenFns.push(un4);
 
@@ -373,7 +426,7 @@
     } catch (e) {
       status = 'error';
       error = String(e);
-      showToast(String(e), 'error');
+      toast.error(String(e));
     }
   }
 
@@ -389,10 +442,10 @@
     if (!selectedProjectId) return;
     try {
       await invoke('stop_crawl', { projectId: selectedProjectId });
-      showToast(m["progress.title"]() + ': stopped', 'info');
+      toast.info(m["progress.title"]() + ': stopped');
     } catch (e) {
       error = String(e);
-      showToast(String(e), 'error');
+      toast.error(String(e));
     }
   }
 
@@ -400,6 +453,7 @@
     if (!selectedProjectId) return;
     try {
       currentPage = page;
+      resultsLoading = true;
       const data = await invoke('get_results', {
         projectId: selectedProjectId,
         page: currentPage,
@@ -413,6 +467,8 @@
       results = data;
     } catch (e) {
       console.error('[Crawler] Failed to load results:', e);
+    } finally {
+      resultsLoading = false;
     }
   }
 
@@ -462,27 +518,56 @@
     return pages;
   }
 
-  async function exportFull() {
-    if (!selectedProjectId) return;
+  async function exportFull(format: 'xlsx' | 'csv') {
+    if (!selectedProjectId || exportProgress.running) return;
     try {
-      const { save, confirm } = await import('@tauri-apps/plugin-dialog');
+      const { save } = await import('@tauri-apps/plugin-dialog');
 
-      const path = await save({
-        defaultPath: `crawl-results-${selectedProjectId}.xlsx`,
-        filters: [{ name: 'Excel', extensions: ['xlsx'] }, { name: 'CSV', extensions: ['csv'] }],
+      const ext = format === 'xlsx' ? 'xlsx' : 'csv';
+      let path = await save({
+        defaultPath: `crawl-results-${selectedProjectId}.${ext}`,
+        filters: [
+          {
+            name: format === 'xlsx' ? 'Excel' : 'CSV',
+            extensions: [ext],
+          },
+        ],
       });
       if (!path) return;
 
-      const format = path.endsWith('.csv') ? 'csv' : 'xlsx';
-      await invoke('export_full', {
-        projectId: selectedProjectId,
-        filePath: path,
-        format,
+      if (!path.toLowerCase().endsWith(`.${ext}`)) path += `.${ext}`;
+
+      exportProgress = { running: true, percent: 0, stage: '' };
+      const unlisten = await listen<{ stage: string; percent: number }>('export-progress', (event) => {
+        exportProgress = {
+          running: true,
+          percent: Math.min(event.payload.percent, 100),
+          stage: event.payload.stage,
+        };
       });
-      showToast(`Exported to ${path.split(/[/\\]/).pop()}`, 'success');
+
+      try {
+        await invoke('export_full', {
+          projectId: selectedProjectId,
+          filePath: path,
+          format,
+        });
+        exportProgress = { running: false, percent: 100, stage: '' };
+        toast.success(`Exported to ${path.split(/[/\\]/).pop()}`);
+        if (notificationsEnabled) {
+          notify(m['notifications.export_complete'](), m['notifications.export_complete_desc']());
+        }
+        if (exportHideTimer) clearTimeout(exportHideTimer);
+        exportHideTimer = setTimeout(() => {
+          exportProgress = { running: false, percent: 0, stage: '' };
+        }, 1500);
+      } finally {
+        unlisten();
+      }
     } catch (e) {
+      exportProgress = { running: false, percent: 0, stage: '' };
       error = String(e);
-      showToast(String(e), 'error');
+      toast.error(String(e));
     }
   }
 
@@ -501,24 +586,39 @@
 </script>
 
 <div class="app-layout">
-  <Toast {toasts} onDismiss={dismissToast} />
-
   <!-- Header -->
   <header class="app-header">
     <div class="header-left">
       <h1 class="logo">{m["app.title"]()}</h1>
-      <button class="btn-settings" onclick={() => settingsModalOpen = true} aria-label="Settings">⚙️</button>
+      <Button
+        variant="ghost"
+        size="xs"
+        class="btn-settings"
+        onclick={() => settingsModalOpen = true}
+        aria-label={m["settings.title"]()}
+        title={m["settings.title"]()}
+      >
+        <Settings class="size-4" />
+      </Button>
     </div>
 
     <div class="header-center">
       <div class="project-create">
-        <input
+        <Input
           type="text"
           bind:value={newProjectName}
           placeholder={m["sidebar.new_project_placeholder"]()}
           onkeydown={(e) => e.key === 'Enter' && createProject()}
         />
-        <button class="btn-icon" onclick={createProject} disabled={!newProjectName.trim()}>+</button>
+        <Button
+          size="icon"
+          onclick={createProject}
+          disabled={!newProjectName.trim()}
+          aria-label={m["sidebar.new_project_placeholder"]()}
+          title={m["sidebar.new_project_placeholder"]()}
+        >
+          <Plus class="size-4" />
+        </Button>
       </div>
     </div>
 
@@ -533,7 +633,7 @@
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectProject(project.id); }}
         >
           {#if renamingProjectId === project.id}
-            <input
+            <Input
               type="text"
               bind:value={renamingName}
               onkeydown={(e) => {
@@ -541,28 +641,39 @@
                 if (e.key === 'Escape') cancelRename();
               }}
               onblur={confirmRename}
-              class="rename-input"
+              class="h-8 px-2 py-1 text-sm"
               onclick={(e) => e.stopPropagation()}
             />
           {:else}
+            <span class="project-avatar">{project.name.trim().charAt(0).toUpperCase() || '?'}</span>
             <span class="project-name">{project.name}</span>
             <div class="project-actions">
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
                 class="btn-mini"
                 title={m["sidebar.rename"]()}
+                aria-label={m["sidebar.rename"]()}
                 onclick={(e) => {
                   e.stopPropagation();
                   startRename(project.id, project.name);
                 }}
-              >&#9998;</button>
-              <button
-                class="btn-mini btn-mini-danger"
+              >
+                <Pencil class="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                class="hover:bg-destructive hover:text-white"
                 title={m["sidebar.delete"]()}
+                aria-label={m["sidebar.delete"]()}
                 onclick={(e) => {
                   e.stopPropagation();
-                  deleteProject(project.id);
+                  requestDelete(project.id);
                 }}
-              >&times;</button>
+              >
+                <Trash2 class="size-3" />
+              </Button>
             </div>
           {/if}
         </div>
@@ -577,6 +688,7 @@
   <main class="main-content">
     {#if !selectedProjectId}
       <div class="no-project">
+        <SearchX class="no-project-icon" />
         <h2>{m["app.select_project"]()}</h2>
         <p>{m["app.select_project_hint"]()}</p>
       </div>
@@ -591,31 +703,35 @@
 
       <!-- Resume Dialog -->
       {#if showResumeDialog && resumableInfo}
-        <div class="resume-dialog">
-          <h3>{m["resume.title"]()}</h3>
-          <p>
-            {m["resume.found"]({ pages: resumableInfo.pages_crawled, urls: resumableInfo.queue_remaining, time: formatDuration(resumableInfo.elapsed_secs) })}
-          </p>
-          <div class="resume-actions">
-            <button class="btn btn-primary" onclick={() => startCrawl(true)}>
-              {m["resume.resume_btn"]()}
-            </button>
-            <button class="btn btn-secondary" onclick={() => { showResumeDialog = false; startCrawl(false); }}>
-              {m["resume.fresh_btn"]()}
-            </button>
-            <button class="btn btn-secondary" onclick={() => showResumeDialog = false}>
-              {m["resume.cancel"]()}
-            </button>
-          </div>
-        </div>
+        <AlertDialog.Root bind:open={showResumeDialog}>
+          <AlertDialog.Content class="max-w-md">
+            <AlertDialog.Header>
+              <AlertDialog.Title>{m["resume.title"]()}</AlertDialog.Title>
+              <AlertDialog.Description>
+                {m["resume.found"]({ pages: resumableInfo.pages_crawled, urls: resumableInfo.queue_remaining, time: formatDuration(resumableInfo.elapsed_secs) })}
+              </AlertDialog.Description>
+            </AlertDialog.Header>
+            <AlertDialog.Footer>
+              <Button variant="outline" onclick={() => { showResumeDialog = false; startCrawl(false); }}>
+                {m["resume.fresh_btn"]()}
+              </Button>
+              <Button variant="outline" onclick={() => showResumeDialog = false}>
+                {m["resume.cancel"]()}
+              </Button>
+              <Button onclick={() => startCrawl(true)}>
+                {m["resume.resume_btn"]()}
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
       {/if}
 
       <section class="config-section">
         <h2>{m["config.title"]()}</h2>
 
         <div class="form-group">
-          <label for="seed">{m["config.seed_url"]()}</label>
-          <input
+          <Label for="seed">{m["config.seed_url"]()}</Label>
+          <Input
             id="seed"
             type="url"
             bind:value={seedUrl}
@@ -626,45 +742,83 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label for="maxDepth">{m["config.max_depth"]()}</label>
-            <input id="maxDepth" type="number" bind:value={maxDepth} min="1" max="100" disabled={status === 'running'} />
+            <Label for="maxDepth">{m["config.max_depth"]()}</Label>
+            <Input id="maxDepth" type="number" bind:value={maxDepth} min="1" max="100" disabled={status === 'running'} />
           </div>
           <div class="form-group">
-            <label for="maxTime">{m["config.time_limit"]()}</label>
-            <input id="maxTime" type="number" bind:value={maxCrawlTime} min="0" max="86400" disabled={status === 'running'} />
+            <Label for="maxTime">{m["config.time_limit"]()}</Label>
+            <Input id="maxTime" type="number" bind:value={maxCrawlTime} min="0" max="86400" disabled={status === 'running'} />
           </div>
         </div>
 
         <div class="form-group checkboxes">
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={respectRobots} disabled={status === 'running'} />
-            {m["config.respect_robots"]()}
+            <Checkbox bind:checked={respectRobots} disabled={status === 'running'} />
+            <span>{m["config.respect_robots"]()}</span>
           </label>
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={renderJs} disabled={status === 'running'} />
-            {m["config.render_js"]()}
+            <Checkbox bind:checked={renderJs} disabled={status === 'running'} />
+            <span>{m["config.render_js"]()}</span>
           </label>
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={checkSitemap} disabled={status === 'running'} />
-            {m["config.check_sitemap"]()}
+            <Checkbox bind:checked={checkSitemap} disabled={status === 'running'} />
+            <span>{m["config.check_sitemap"]()}</span>
           </label>
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={checkSemantics} disabled={status === 'running'} />
-            {m["config.check_semantics"]()}
+            <Checkbox bind:checked={checkSemantics} disabled={status === 'running'} />
+            <span>{m["config.check_semantics"]()}</span>
           </label>
         </div>
 
         <div class="actions">
           {#if status === 'idle' || status === 'completed' || status === 'error'}
-            <button class="btn btn-primary" onclick={handleStartCrawl} disabled={!seedUrl}>
+            <Button onclick={handleStartCrawl} disabled={!seedUrl}>
               {resumableInfo ? m["config.resume"]() : m["config.start"]()}
-            </button>
+            </Button>
           {:else if status === 'running'}
-            <button class="btn btn-danger" onclick={stopCrawl}>{m["config.stop"]()}</button>
+            <Button variant="destructive" onclick={stopCrawl}>{m["config.stop"]()}</Button>
           {/if}
-          <button class="btn btn-secondary" onclick={() => loadResults(currentPage)}>{m["config.refresh"]()}</button>
+          <Button variant="outline" class="gap-1.5" onclick={() => loadResults(currentPage)}>
+            <RefreshCw class="size-4" />
+            {m["config.refresh"]()}
+          </Button>
           {#if results.items.length > 0}
-            <button class="btn btn-secondary" onclick={exportFull}>{m["settings.export"]()}</button>
+            <Popover.Root>
+              <Popover.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    variant="outline"
+                    class="gap-1.5"
+                    {...props}
+                    disabled={exportProgress.running}
+                  >
+                    <Download class="size-4" />
+                    {m["settings.export"]()}
+                    <ChevronDown class="size-3.5" />
+                  </Button>
+                {/snippet}
+              </Popover.Trigger>
+              <Popover.Content align="end" class="w-44 p-1">
+                <Button
+                  variant="ghost"
+                  class="w-full justify-start gap-2"
+                  disabled={exportProgress.running}
+                  onclick={() => exportFull('xlsx')}
+                >
+                  <FileSpreadsheet class="size-4" />
+                  {m["export.xlsx"]()}
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="w-full justify-start gap-2"
+                  disabled={exportProgress.running}
+                  onclick={() => exportFull('csv')}
+                >
+                  <FileText class="size-4" />
+                  {m["export.csv"]()}
+                </Button>
+              </Popover.Content>
+            </Popover.Root>
           {/if}
         </div>
 
@@ -677,15 +831,14 @@
 
       {#if status === 'running'}
         <section class="progress-section">
-          <h2>{m["progress.title"]()}</h2>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              style="width: {progress.crawled > 0
-                ? Math.min((progress.crawled / (progress.crawled + progress.queued)) * 100, 100)
-                : 0}%"
-            ></div>
+          <div class="progress-head">
+            <h2>{m["progress.title"]()}</h2>
+            <span class="progress-pct">{Math.round(progressPct)}%</span>
           </div>
+          <Progress
+            value={progressPct}
+            class="h-2 transition-all duration-300"
+          />
           <div class="progress-stats">
             <span>{m["progress.crawled"]({ count: progress.crawled.toString() })}</span>
             <span>{m["progress.queued"]({ count: progress.queued.toString() })}</span>
@@ -704,33 +857,54 @@
         <div class="sitemap-info">{sitemapInfo}</div>
       {/if}
 
-      {#if results.items.length > 0 || streamedCount > 0}
+      {#if results.items.length > 0 || streamedCount > 0 || resultsLoading}
         <section class="results-section">
-          <div class="results-tabs">
-            <button class="tab" class:active={activeTab === 'results'} onclick={() => activeTab = 'results'}>
-              {m["tabs.results"]({ count: results.total.toLocaleString() })}
-            </button>
-            <button class="tab" class:active={activeTab === 'dashboard'} onclick={() => activeTab = 'dashboard'}>
-              {m["tabs.issues_dashboard"]()}
-            </button>
-          </div>
+          <Tabs.Root bind:value={activeTab} class="mb-4">
+            <Tabs.List>
+              <Tabs.Trigger value="results">
+                {m["tabs.results"]({ count: results.total.toLocaleString() })}
+              </Tabs.Trigger>
+              <Tabs.Trigger value="dashboard">
+                {m["tabs.issues_dashboard"]()}
+              </Tabs.Trigger>
+            </Tabs.List>
+          </Tabs.Root>
 
           {#if activeTab === 'results'}
             <div class="results-toolbar">
               <div class="page-size-selector">
-                <label for="pageSizeSelect">{m["results.page_size_show"]()}</label>
-                <select id="pageSizeSelect" bind:value={pageSize} onchange={() => changePageSize(pageSize)}>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={200}>200</option>
-                </select>
+                <Label for="pageSizeSelect">{m["results.page_size_show"]()}</Label>
+                <Select.Root
+                  type="single"
+                  bind:value={pageSizeSelect}
+                  onValueChange={(v) => {
+                    if (v) changePageSize(parseInt(v, 10));
+                  }}
+                >
+                  <Select.Trigger id="pageSizeSelect" class="w-20">
+                    {pageSizeSelect}
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each ['25', '50', '100', '200'] as size (size)}
+                      <Select.Item value={size}>{size}</Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
               </div>
               {#if semanticFilter}
-                <span class="active-filter">
+                <Badge variant="secondary" class="gap-1.5 px-3 py-1">
                   {m["results.filtered_by"]({ type: semanticFilter.replace(/_/g, ' ') })}
-                  <button class="btn-clear-filter" onclick={() => handleFilterIssueType(null)}>&times;</button>
-                </span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    class="btn-clear-filter size-5"
+                    onclick={() => handleFilterIssueType(null)}
+                    aria-label={m["results.clear_filter"]()}
+                    title={m["results.clear_filter"]()}
+                  >
+                    <X class="size-3" />
+                  </Button>
+                </Badge>
               {/if}
             </div>
 
@@ -740,42 +914,90 @@
               onFilter={handleFilterChange}
             />
 
-            <ResultsTable
-              bind:expandedUrl={expandedIssueUrl}
-              items={results.items}
-              onDetail={openDetail}
-              searchQuery={debouncedSearch}
-              onSearch={onSearchInput}
-            />
-
-            {#if totalPages > 1}
-              <div class="pagination">
-                <span class="pagination-info">
-                  {m["results.showing"]({ from: ((currentPage - 1) * pageSize + 1).toString(), to: Math.min(currentPage * pageSize, results.total).toString(), total: results.total.toLocaleString() })}
-                </span>
-                <div class="pagination-controls">
-                  <button class="btn-page" onclick={() => goToPage(1)} disabled={currentPage === 1}>&laquo;</button>
-                  <button class="btn-page" onclick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>&lsaquo;</button>
-                  {#each getPageNumbers() as pageNum}
-                    {#if pageNum === '...'}
-                      <span class="page-ellipsis">&hellip;</span>
-                    {:else}
-                      <button
-                        class="btn-page"
-                        class:active={pageNum === currentPage}
-                        onclick={() => goToPage(pageNum)}
-                      >
-                        {pageNum}
-                      </button>
-                    {/if}
-                  {/each}
-                  <button class="btn-page" onclick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>&rsaquo;</button>
-                  <button class="btn-page" onclick={() => goToPage(totalPages)} disabled={currentPage === totalPages}>&raquo;</button>
-                </div>
-                <span class="pagination-page">
-                  {m["results.page_of"]({ current: currentPage.toString(), total: totalPages.toString() })}
-                </span>
+            {#if resultsLoading}
+              <div class="results-skeleton">
+                <Skeleton class="h-10 w-full" />
+                <Skeleton class="h-10 w-full" />
+                <Skeleton class="h-10 w-full" />
+                <Skeleton class="h-10 w-full" />
+                <Skeleton class="h-10 w-3/4" />
               </div>
+            {:else}
+              <ResultsTable
+                bind:expandedUrl={expandedIssueUrl}
+                items={results.items}
+                onDetail={openDetail}
+                searchQuery={debouncedSearch}
+                onSearch={onSearchInput}
+              />
+
+              {#if totalPages > 1}
+                <div class="pagination">
+                  <span class="pagination-info">
+                    {m["results.showing"]({ from: ((currentPage - 1) * pageSize + 1).toString(), to: Math.min(currentPage * pageSize, results.total).toString(), total: results.total.toLocaleString() })}
+                  </span>
+                  <div class="pagination-controls">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      class="btn-edge size-9"
+                      onclick={() => goToPage(1)}
+                      disabled={currentPage === 1}
+                      aria-label="First page"
+                    >
+                      <ChevronsLeft class="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      class="size-9"
+                      onclick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft class="size-4" />
+                    </Button>
+                    {#each getPageNumbers() as pageNum}
+                      {#if pageNum === '...'}
+                        <span class="page-ellipsis">&hellip;</span>
+                      {:else}
+                        <Button
+                          variant={pageNum === currentPage ? 'default' : 'outline'}
+                          size="icon"
+                          class="btn-page size-9"
+                          onclick={() => goToPage(pageNum)}
+                          aria-current={pageNum === currentPage ? 'page' : undefined}
+                        >
+                          {pageNum}
+                        </Button>
+                      {/if}
+                    {/each}
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      class="size-9"
+                      onclick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight class="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      class="btn-edge size-9"
+                      onclick={() => goToPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      aria-label="Last page"
+                    >
+                      <ChevronsRight class="size-4" />
+                    </Button>
+                  </div>
+                  <span class="pagination-page">
+                    {m["results.page_of"]({ current: currentPage.toString(), total: totalPages.toString() })}
+                  </span>
+                </div>
+              {/if}
             {/if}
           {:else}
             {#if SemanticDashboard}
@@ -800,11 +1022,54 @@
   <SettingsModal bind:open={settingsModalOpen} />
 {/if}
 
+{#if exportProgress.running || exportProgress.percent === 100}
+  <div class="export-progress-bar" aria-live="polite">
+    <div class="progress-head">
+      <span class="export-title">{m["export.progress"]()}</span>
+      <span class="progress-pct">{Math.round(exportProgress.percent)}%</span>
+    </div>
+    <Progress value={exportProgress.percent} class="h-2 transition-all duration-300" />
+    <div class="progress-stats">
+      <span>
+        {#if exportProgress.stage === 'pages'}
+          {m["export.stage.pages"]()}
+        {:else if exportProgress.stage === 'issues'}
+          {m["export.stage.issues"]()}
+        {:else if exportProgress.stage === 'links'}
+          {m["export.stage.links"]()}
+        {:else}
+          {'…'}
+        {/if}
+      </span>
+    </div>
+  </div>
+{/if}
+
+<AlertDialog.Root bind:open={deleteDialogOpen} onOpenChange={(o) => { if (!o) closeDelete(); }}>
+  <AlertDialog.Content class="max-w-md">
+    <AlertDialog.Header>
+      <AlertDialog.Title>{m["dialog.delete_title"]()}</AlertDialog.Title>
+      <AlertDialog.Description>
+        {m["dialog.delete_confirm"]()}
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <Button variant="outline" onclick={closeDelete}>
+        {m["settings.cancel"]()}
+      </Button>
+      <Button variant="destructive" onclick={() => deleteProject(deletePendingId!)}>
+        {m["sidebar.delete"]()}
+      </Button>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
+
 <style>
   .app-layout {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
   }
 
@@ -814,7 +1079,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
-    padding: 10px 16px;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg-sidebar);
     border-bottom: 1px solid var(--border);
     z-index: 20;
@@ -838,23 +1103,6 @@
     gap: 6px;
     width: 100%;
     max-width: 420px;
-  }
-
-  .project-create input {
-    flex: 1;
-    padding: 8px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: 0.85rem;
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
-  }
-
-  .project-create input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-subtle);
   }
 
   .project-list-header {
@@ -915,6 +1163,11 @@
     transform: translateY(0);
   }
 
+  .project-chip:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
   .project-chip.selected {
     background: var(--bg-hover);
     border-left: 4px solid var(--accent);
@@ -929,6 +1182,21 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 180px;
+  }
+
+  .project-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: var(--accent-gradient);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    flex-shrink: 0;
   }
 
   .project-actions {
@@ -947,86 +1215,15 @@
     font-size: 0.85rem;
   }
 
-  .btn-settings {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 4px 8px;
-    transition: all var(--transition-base);
-    line-height: 1;
-  }
-  .btn-settings:hover {
-    background: var(--bg-hover);
-    border-color: var(--text-muted);
-  }
-
   .logo {
     font-size: 1.1rem;
     font-weight: 700;
     background: var(--accent-gradient);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
     white-space: nowrap;
-  }
-
-  .btn-icon {
-    width: 34px;
-    height: 34px;
-    background: var(--accent-gradient);
-    border: none;
-    border-radius: var(--radius-md);
-    color: white;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform var(--transition-fast), box-shadow var(--transition-base);
-  }
-  .btn-icon:hover:not(:disabled) {
-    transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
-  }
-  .btn-icon:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  .btn-icon:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .btn-mini {
-    padding: 2px 8px;
-    background: var(--border);
-    border: none;
-    border-radius: 4px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.8rem;
-  }
-
-  .btn-mini:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-
-  .btn-mini-danger:hover {
-    background: var(--danger);
-    color: white;
-  }
-
-  .rename-input {
-    width: 100%;
-    padding: 4px 8px;
-    background: var(--bg-deep);
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    color: var(--text);
-    font-size: 0.9rem;
   }
 
   /* Main content */
@@ -1034,6 +1231,8 @@
     flex: 1;
     overflow-y: auto;
     padding: var(--space-md);
+    padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
   }
 
   .no-project {
@@ -1042,7 +1241,15 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     color: var(--text-muted);
+  }
+
+  :global(.no-project-icon) {
+    width: 48px;
+    height: 48px;
+    color: var(--border-muted);
+    margin-bottom: 8px;
   }
 
   .no-project h2 {
@@ -1072,30 +1279,7 @@
     font-size: 0.9rem;
   }
 
-  /* Resume dialog */
-  .resume-dialog {
-    background: var(--bg-card);
-    border: 1px solid var(--accent);
-    border-radius: 12px;
-    padding: 24px;
-  }
-
-  .resume-dialog h3 {
-    margin: 0 0 12px 0;
-    color: var(--text);
-  }
-
-  .resume-dialog p {
-    margin: 0 0 16px 0;
-    color: var(--text-secondary);
-    line-height: 1.5;
-  }
-
-  .resume-actions {
-    display: flex;
-    gap: 12px;
-  }
-
+  /* Resume hint */
   .resume-hint {
     margin-top: 12px;
     padding: 8px 12px;
@@ -1107,6 +1291,7 @@
 
   section {
     background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
     box-shadow: var(--shadow-xs);
@@ -1135,32 +1320,6 @@
     color: var(--text-secondary);
   }
 
-  input[type='url'],
-  input[type='text'],
-  input[type='number'],
-  select {
-    width: 100%;
-    padding: 10px 14px;
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    color: var(--text);
-    font-size: 0.95rem;
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
-  }
-
-  input:focus,
-  select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-subtle);
-  }
-
-  input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
   .checkboxes {
     display: flex;
     gap: 24px;
@@ -1174,63 +1333,11 @@
     cursor: pointer;
   }
 
-  .checkbox-label input[type='checkbox'] {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--accent);
-  }
-
   .actions {
     display: flex;
     gap: 12px;
     margin-top: 8px;
-  }
-
-  .btn {
-    padding: 10px 24px;
-    border: none;
-    border-radius: var(--radius-lg);
-    font-size: 0.95rem;
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    transition: all var(--transition-base);
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--accent-gradient);
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-  }
-  .btn-primary:active:not(:disabled) {
-    transform: translateY(0);
-  }
-
-  .btn-secondary {
-    background: var(--border);
-    color: var(--text);
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-
-  .btn-danger {
-    background: var(--danger);
-    color: white;
-  }
-
-  .btn-danger:hover:not(:disabled) {
-    background: var(--danger);
-    filter: brightness(1.15);
+    flex-wrap: wrap;
   }
 
   .progress-section {
@@ -1239,17 +1346,45 @@
     gap: 12px;
   }
 
-  .progress-bar {
-    height: 8px;
-    background: var(--bg-deep);
-    border-radius: 4px;
-    overflow: hidden;
+  .export-progress-bar {
+    position: fixed;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(420px, calc(100vw - 32px));
+    padding: 12px 16px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   }
 
-  .progress-fill {
-    height: 100%;
-    background: var(--accent-gradient);
-    transition: width 0.3s;
+  .export-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .progress-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .progress-head h2 {
+    margin-bottom: 0;
+  }
+
+  .progress-pct {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
   }
 
   .progress-stats {
@@ -1274,58 +1409,12 @@
     font-style: italic;
   }
 
-  .results-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0;
-  }
-
-  .tab {
-    padding: 10px 20px;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .tab:hover { color: var(--text); }
-  .tab.active {
-    color: var(--text);
-    border-bottom-color: var(--accent);
-  }
-
   .results-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
   }
-
-  .active-filter {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 10px;
-    background: var(--border);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    color: var(--text);
-  }
-
-  .btn-clear-filter {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 0;
-  }
-  .btn-clear-filter:hover { color: var(--danger); }
 
   .page-size-selector {
     display: flex;
@@ -1335,13 +1424,16 @@
     color: var(--text-secondary);
   }
 
-  .page-size-selector select {
-    width: auto;
-    padding: 4px 8px;
-    font-size: 0.85rem;
+  /* Pagination */
+  .results-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 12px;
   }
 
-  /* Pagination */
   .pagination {
     display: flex;
     align-items: center;
@@ -1360,36 +1452,6 @@
     display: flex;
     gap: 4px;
     align-items: center;
-  }
-
-  .btn-page {
-    min-width: 36px;
-    height: 36px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--bg-deep);
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all var(--transition-base);
-  }
-
-  .btn-page:hover:not(:disabled):not(.active) {
-    background: var(--bg-hover);
-    color: var(--text);
-    border-color: var(--accent);
-  }
-
-  .btn-page.active {
-    background: var(--accent-gradient);
-    color: white;
-    border-color: transparent;
-  }
-
-  .btn-page:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
   }
 
   .page-ellipsis {
@@ -1411,7 +1473,7 @@
   .app-header {
     flex-wrap: wrap;
     gap: 10px;
-    padding: 10px 12px;
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
   }
 
   .header-left {
@@ -1441,13 +1503,9 @@
     font-size: 0.85rem;
   }
 
-  .btn-mini {
-    padding: 4px 10px;
-    font-size: 0.85rem;
-  }
-
   .main-content {
     padding: var(--space-md);
+    padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
   }
 
   .form-row {
@@ -1476,24 +1534,13 @@
     justify-content: center;
   }
 
-  .btn-page {
-    min-width: 32px;
-    height: 32px;
-    font-size: var(--text-sm);
+  :global(.btn-edge) {
+    display: none;
   }
 
   section {
     padding: var(--section-padding);
     border-radius: var(--radius-lg);
-  }
-
-  .resume-actions {
-    flex-direction: column;
-  }
-
-  .resume-actions .btn {
-    width: 100%;
-    justify-content: center;
   }
 
   .checkboxes {
@@ -1505,7 +1552,7 @@
     .app-header {
       flex-wrap: nowrap;
       gap: 16px;
-      padding: 12px 20px;
+      padding: calc(12px + env(safe-area-inset-top)) 20px 12px;
     }
 
     .header-left {
@@ -1533,11 +1580,6 @@
       font-size: 0.9rem;
     }
 
-    .btn-mini {
-      padding: 4px 10px;
-      font-size: 0.85rem;
-    }
-
     .main-content {
       padding: var(--space-lg);
     }
@@ -1556,18 +1598,15 @@
       justify-content: space-between;
     }
 
-    .resume-actions {
-      flex-direction: row;
-    }
-    .resume-actions .btn {
-      width: auto;
+    :global(.btn-edge) {
+      display: inline-flex;
     }
   }
 
   /* --- Desktop (1024px+) --- */
   @media (min-width: 1024px) {
     .app-header {
-      padding: 14px 24px;
+      padding: calc(14px + env(safe-area-inset-top)) 24px 14px;
       gap: 20px;
     }
 
@@ -1581,17 +1620,19 @@
 
     .main-content {
       padding: var(--space-lg);
+      padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
     }
   }
 
   /* --- Wide (1440px+) --- */
   @media (min-width: 1440px) {
     .app-header {
-      padding: 16px 32px;
+      padding: calc(16px + env(safe-area-inset-top)) 32px 16px;
     }
 
     .main-content {
       padding: var(--space-lg) var(--space-xl);
+      padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom));
     }
   }
 </style>

@@ -21,7 +21,6 @@
   "config.resume": "Resume / Start",
   "config.stop": "Stop",
   "config.refresh": "Refresh",
-  "config.export_csv": "Export CSV",
 
   "progress.title": "Crawl Progress",
   "progress.crawled": "Crawled: {count}",
@@ -41,6 +40,11 @@
 
   "results.showing": "Showing {from}-{to} of {total}",
   "results.no_results": "No results yet.",
+  "results.search_placeholder": "Search URL, title, or H1...",
+  "results.search_match_one": "{count} result",
+  "results.search_matches": "{count} results",
+  "results.no_search_matches": "No results match \"{query}\"",
+  "results.clear_search": "Clear search",
   "results.filtered_by": "Filtered by: {type}",
   "results.clear_filter": "Clear filter",
   "results.page_size_show": "Show:",
@@ -59,6 +63,7 @@
 
   "filter.status": "Status Code",
   "filter.severity": "Severity",
+  "filter.filters": "Filters",
   "filter.domain": "Domain",
   "filter.depth": "Depth",
   "filter.clear_all": "Clear all",
@@ -73,6 +78,7 @@
   "filter.no_options": "No options available",
 
   "detail.back": "← Results",
+  "detail.close": "Close",
   "detail.loading": "Loading page details...",
   "detail.overview": "Overview",
   "detail.links": "Links ({count})",
@@ -80,6 +86,7 @@
 
   "detail.seo_meta": "SEO Meta",
   "detail.title": "Title",
+  "detail.no_title": "No title",
   "detail.meta_description": "Meta Description",
   "detail.h1": "H1",
   "detail.canonical": "Canonical",
@@ -132,6 +139,13 @@
   "settings.cancel": "Cancel",
   "settings.save": "Save",
   "settings.export": "Export XLSX/CSV",
+  "settings.notifications": "Desktop Notifications",
+  "export.xlsx": "Export XLSX",
+  "export.csv": "Export CSV",
+  "export.progress": "Exporting…",
+  "export.stage.pages": "Writing pages…",
+  "export.stage.issues": "Writing issues…",
+  "export.stage.links": "Writing links…",
 
   "issue.missing_html_lang.name": "Missing HTML Lang",
   "issue.missing_html_lang.message": "Missing lang attribute on <html> element",
@@ -177,5 +191,15 @@
   "theme.label": "Theme",
   "theme.light": "Light",
   "theme.dark": "Dark",
-  "theme.system": "System"
+  "theme.system": "System",
+
+  "notifications.crawl_started": "Crawl Started",
+  "notifications.crawl_started_desc": "Crawling has begun for the selected project.",
+  "notifications.crawl_complete": "Crawl Complete",
+  "notifications.crawl_complete_desc": "The crawl has finished successfully.",
+  "notifications.crawl_error": "Crawl Error",
+  "notifications.crawl_stopped": "Crawl Stopped",
+  "notifications.crawl_stopped_desc": "The crawl was stopped.",
+  "notifications.export_complete": "Export Complete",
+  "notifications.export_complete_desc": "The export has finished successfully."
 }

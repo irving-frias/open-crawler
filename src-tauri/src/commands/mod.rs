@@ -533,55 +533,6 @@ pub async fn get_results(
     })
 }
 
-#[tauri::command]
-pub async fn export_csv(
-    state: State<'_, Arc<RwLock<AppState>>>,
-    project_id: String,
-    file_path: String,
-) -> Result<(), AppError> {
-    let state = state.inner().clone();
-    let state_read = state.read().await;
-    let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-
-    let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
-    let (items, _) = repo.get_results(&project_id, 1, 10000, None, None, None, None, None, None)?;
-
-    let mut wtr = csv::Writer::from_path(&file_path)?;
-
-    wtr.write_record([
-        "URL",
-        "Status Code",
-        "Title",
-        "Meta Description",
-        "H1",
-        "Canonical",
-        "Size (bytes)",
-        "Load Time (ms)",
-    ])?;
-
-    for item in &items {
-        wtr.write_record([
-            &item.url,
-            &item.status_code
-                .map(|s| s.to_string())
-                .unwrap_or_default(),
-            &item.title.clone().unwrap_or_default(),
-            &item.meta_description.clone().unwrap_or_default(),
-            &item.h1.clone().unwrap_or_default(),
-            &item.canonical.clone().unwrap_or_default(),
-            &item.size_bytes
-                .map(|s| s.to_string())
-                .unwrap_or_default(),
-            &item.load_time_ms
-                .map(|l| l.to_string())
-                .unwrap_or_default(),
-        ])?;
-    }
-
-    wtr.flush()?;
-    Ok(())
-}
-
 // ==================== SETTINGS COMMANDS ====================
 
 #[tauri::command]
@@ -612,8 +563,37 @@ pub async fn save_settings(
 
 // ==================== EXPORT COMMANDS ====================
 
+const PAGE_BATCH_SIZE: u32 = 1000;
+const LINK_BATCH_SIZE: u32 = 5000;
+
+#[derive(serde::Serialize, Clone)]
+struct ExportProgress {
+    stage: &'static str,
+    processed: u64,
+    total: u64,
+    percent: f32,
+}
+
+fn emit_export_progress(app: &AppHandle, stage: &'static str, processed: u64, total: u64) {
+    let percent = if total == 0 {
+        100.0
+    } else {
+        (processed as f32 / total as f32) * 100.0
+    };
+    let _ = app.emit(
+        "export-progress",
+        ExportProgress {
+            stage,
+            processed,
+            total,
+            percent,
+        },
+    );
+}
+
 #[tauri::command]
 pub async fn export_full(
+    app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
     file_path: String,
@@ -624,62 +604,81 @@ pub async fn export_full(
     let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
     let repo = CrawlRepo::new(&db, None);
 
-    let pages = repo.get_all_results(&project_id, None)?;
-    let links = repo.get_links_for_project(&project_id)?;
-
-    if pages.len() > 100_000 {
-        warn!("Export requested for {} pages (over 100K). File may be very large.", pages.len());
+    let total_pages = repo.count_pages(&project_id)?;
+    if total_pages > 100_000 {
+        warn!(
+            "Export requested for {} pages (over 100K). File may be very large.",
+            total_pages
+        );
     }
 
     if format == "xlsx" {
-        export_xlsx(&pages, &links, &file_path)?;
+        let total_links = repo.count_links(&project_id)?;
+        let total_issues = repo.count_issues(&project_id)?;
+        export_xlsx(
+            &repo,
+            &app,
+            &project_id,
+            &file_path,
+            total_pages,
+            total_links,
+            total_issues,
+        )?;
     } else {
-        export_csv_files(&pages, &links, &file_path)?;
+        export_csv_single(&repo, &app, &project_id, &file_path, total_pages)?;
     }
 
     Ok(())
 }
 
-fn export_csv_files(
-    pages: &[crate::models::CrawlResult],
-    links: &[crate::models::PageLink],
+fn export_csv_single(
+    repo: &CrawlRepo,
+    app: &AppHandle,
+    project_id: &str,
     file_path: &str,
+    total_pages: u32,
 ) -> Result<(), AppError> {
-    let base = std::path::Path::new(file_path)
-        .file_stem()
-        .unwrap_or_default()
-        .to_str()
-        .unwrap_or("export");
-    let dir = std::path::Path::new(file_path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-    let ext = std::path::Path::new(file_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("csv");
+    let mut wtr = csv::Writer::from_path(file_path)?;
 
-    // Pages CSV
-    let pages_path = dir.join(format!("{}_pages.{}", base, ext));
-    {
-        let mut wtr = csv::Writer::from_path(&pages_path)?;
-        wtr.write_record([
-            "URL",
-            "Status Code",
-            "Title",
-            "Meta Description",
-            "H1",
-            "Canonical",
-            "HTML Lang",
-            "Indexable",
-            "Depth",
-            "Parent URL",
-            "Size (bytes)",
-            "Load Time (ms)",
-            "Semantic Issues",
-        ])?;
-        for item in pages {
-            let indexable = item.is_indexable.map(|i| if i { "Yes".to_string() } else { "No".to_string() }).unwrap_or_else(|| "Unknown".to_string());
-            let issues_str = item.semantic_issues_json.clone().unwrap_or_else(|| "[]".to_string());
+    wtr.write_record([
+        "URL",
+        "Status Code",
+        "Title",
+        "Meta Description",
+        "H1",
+        "Canonical",
+        "HTML Lang",
+        "Indexable",
+        "Depth",
+        "Parent URL",
+        "Size (bytes)",
+        "Load Time (ms)",
+        "Semantic Issues",
+    ])?;
+
+    let mut last_timestamp: Option<String> = None;
+    let mut last_id: Option<String> = None;
+    let mut processed: u64 = 0;
+
+    loop {
+        let batch = repo.get_result_batch(
+            project_id,
+            last_timestamp.as_deref(),
+            last_id.as_deref(),
+            PAGE_BATCH_SIZE,
+        )?;
+        if batch.is_empty() {
+            break;
+        }
+        for item in &batch {
+            let indexable = item
+                .is_indexable
+                .map(|i| if i { "Yes".to_string() } else { "No".to_string() })
+                .unwrap_or_else(|| "Unknown".to_string());
+            let issues_str = item
+                .semantic_issues_json
+                .clone()
+                .unwrap_or_else(|| "[]".to_string());
             wtr.write_record([
                 &item.url,
                 &item.status_code.map(|s| s.to_string()).unwrap_or_default(),
@@ -696,71 +695,15 @@ fn export_csv_files(
                 &issues_str,
             ])?;
         }
-        wtr.flush()?;
+        processed += batch.len() as u64;
+        emit_export_progress(app, "pages", processed, total_pages as u64);
+        let last = batch.last().expect("batch is not empty");
+        last_timestamp = Some(last.crawl_timestamp.clone());
+        last_id = Some(last.id.clone());
     }
 
-    // Issues CSV
-    let issues_path = dir.join(format!("{}_issues.{}", base, ext));
-    {
-        let mut wtr = csv::Writer::from_path(&issues_path)?;
-        wtr.write_record([
-            "URL",
-            "Issue Type",
-            "Severity",
-            "Message",
-            "Element",
-            "Selector",
-            "XPath",
-        ])?;
-        for page in pages {
-            if let Some(ref json_str) = page.semantic_issues_json {
-                if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(json_str) {
-                    for issue in &issues {
-                        let issue_type = issue.get("issue_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let severity = issue.get("severity").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let message = issue.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let element = issue.get("element").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let selector = issue.get("css_selector").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let xpath = issue.get("xpath").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        wtr.write_record([
-                            &page.url,
-                            &issue_type,
-                            &severity,
-                            &message,
-                            &element,
-                            &selector,
-                            &xpath,
-                        ])?;
-                    }
-                }
-            }
-        }
-        wtr.flush()?;
-    }
-
-    // Links CSV
-    let links_path = dir.join(format!("{}_links.{}", base, ext));
-    {
-        let mut wtr = csv::Writer::from_path(&links_path)?;
-        wtr.write_record([
-            "From URL",
-            "To URL",
-            "Link Type",
-            "Anchor Text",
-            "Follow",
-        ])?;
-        for link in links {
-            wtr.write_record([
-                &link.from_url,
-                &link.to_url,
-                &link.link_type,
-                &link.anchor_text.clone().unwrap_or_default(),
-                &if link.is_follow { "Yes" } else { "No" }.to_string(),
-            ])?;
-        }
-        wtr.flush()?;
-    }
-
+    wtr.flush()?;
+    emit_export_progress(app, "pages", total_pages as u64, total_pages as u64);
     Ok(())
 }
 
@@ -792,6 +735,10 @@ fn sheet_name(base: &str, index: usize, total: usize) -> String {
     }
 }
 
+fn sheet_count(rows: u32) -> usize {
+    ((rows as u64 + MAX_ROWS_PER_SHEET as u64 - 1) / MAX_ROWS_PER_SHEET as u64) as usize
+}
+
 fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::models::CrawlResult, alt: &rust_xlsxwriter::Format, wrap: &rust_xlsxwriter::Format) -> Result<(), AppError> {
     let f = if row.is_multiple_of(2) { Some(alt) } else { None };
     xlsx_str(ws, row, 0, &p.url, f)?;
@@ -810,6 +757,33 @@ fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::mode
     Ok(())
 }
 
+fn write_issue_row(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    row: u32,
+    url: &str,
+    iss: &serde_json::Value,
+    wrap: &rust_xlsxwriter::Format,
+    err_fmt: &rust_xlsxwriter::Format,
+    warn_fmt: &rust_xlsxwriter::Format,
+    info_fmt: &rust_xlsxwriter::Format,
+) -> Result<(), AppError> {
+    xlsx_str(ws, row, 0, url, None)?;
+    xlsx_str(ws, row, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    let sev = iss.get("severity").and_then(|v| v.as_str()).unwrap_or("");
+    let sev_fmt = match sev {
+        "error" => Some(err_fmt),
+        "warning" => Some(warn_fmt),
+        "info" => Some(info_fmt),
+        _ => None,
+    };
+    xlsx_str(ws, row, 2, sev, sev_fmt)?;
+    xlsx_str(ws, row, 3, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(wrap))?;
+    xlsx_str(ws, row, 4, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    xlsx_str(ws, row, 5, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    xlsx_str(ws, row, 6, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    Ok(())
+}
+
 fn finalize_sheet(ws: &mut rust_xlsxwriter::Worksheet, data_rows: u32, num_cols: u16) -> Result<(), AppError> {
     ws.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
     if num_cols > 2 { ws.set_column_width(2, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?; }
@@ -821,12 +795,20 @@ fn finalize_sheet(ws: &mut rust_xlsxwriter::Worksheet, data_rows: u32, num_cols:
     Ok(())
 }
 
+const PAGE_HEADERS: [&str; 12] = ["URL","Status Code","Title","Meta Description","H1","Canonical","HTML Lang","Indexable","Depth","Parent URL","Size (bytes)","Load Time (ms)"];
+const ISSUE_HEADERS: [&str; 7] = ["URL","Issue Type","Severity","Message","Element","Selector","XPath"];
+const LINK_HEADERS: [&str; 5] = ["From URL","To URL","Link Type","Anchor Text","Follow"];
+
 fn export_xlsx(
-    pages: &[crate::models::CrawlResult],
-    links: &[crate::models::PageLink],
+    repo: &CrawlRepo,
+    app: &AppHandle,
+    project_id: &str,
     file_path: &str,
+    total_pages: u32,
+    total_links: u32,
+    total_issues: u32,
 ) -> Result<(), AppError> {
-    use rust_xlsxwriter::{Workbook, Format, FormatAlign};
+    use rust_xlsxwriter::{Format, FormatAlign, Workbook};
 
     let mut workbook = Workbook::new();
     let header_fmt = Format::new()
@@ -836,99 +818,163 @@ fn export_xlsx(
         .set_align(FormatAlign::Center);
     let alt = Format::new().set_background_color(0xF8F9FA);
     let wrap = Format::new().set_text_wrap();
-
-    // === Pages sheets (split if > 1,048,575 pages) ===
-    let page_chunks: Vec<&[crate::models::CrawlResult]> = if pages.is_empty() {
-        vec![]
-    } else {
-        pages.chunks(MAX_ROWS_PER_SHEET as usize).collect()
-    };
-    let page_sheets = page_chunks.len().max(1);
-    for (chunk_idx, chunk) in page_chunks.iter().enumerate() {
-        let ws = workbook.add_worksheet();
-        ws.set_name(sheet_name("Pages", chunk_idx, page_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
-        for (col, h) in ["URL","Status Code","Title","Meta Description","H1","Canonical","HTML Lang","Indexable","Depth","Parent URL","Size (bytes)","Load Time (ms)"].iter().enumerate() {
-            xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
-        }
-        for (i, p) in chunk.iter().enumerate() {
-            write_page_row(ws, (i + 1) as u32, p, &alt, &wrap)?;
-        }
-        finalize_sheet(ws, chunk.len() as u32, 12)?;
-    }
-
-    // === Issues sheets (split if > 1,048,575 issues) ===
-    let mut all_issues: Vec<(String, serde_json::Value)> = Vec::new();
-    for p in pages {
-        if let Some(ref js) = p.semantic_issues_json {
-            if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) {
-                for iss in issues {
-                    all_issues.push((p.url.clone(), iss));
-                }
-            }
-        }
-    }
-    let issue_chunks: Vec<&[(String, serde_json::Value)]> = if all_issues.is_empty() {
-        vec![]
-    } else {
-        all_issues.chunks(MAX_ROWS_PER_SHEET as usize).collect()
-    };
     let err_fmt = Format::new().set_background_color(0xFFE0E0).set_font_color(0x721C24);
     let warn_fmt = Format::new().set_background_color(0xFFF3CD).set_font_color(0x856404);
     let info_fmt = Format::new().set_background_color(0xD1ECF1).set_font_color(0x0C5460);
-    let issue_sheets = issue_chunks.len().max(1);
-    for (chunk_idx, chunk) in issue_chunks.iter().enumerate() {
-        let wi = workbook.add_worksheet();
-        wi.set_name(sheet_name("Issues", chunk_idx, issue_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
-        for (col, h) in ["URL","Issue Type","Severity","Message","Element","Selector","XPath"].iter().enumerate() {
-            xlsx_str(wi, 0, col as u16, h, Some(&header_fmt))?;
+
+    let total = total_pages as u64 + total_issues as u64 + total_links as u64;
+    let mut processed: u64 = 0;
+
+    // === Pass 1: Pages sheets (streamed by batch, split if > 1,048,575 pages) ===
+    if total_pages > 0 {
+        let num_sheets = sheet_count(total_pages);
+        let mut sheet_idx: usize = 0;
+        let mut sheet_rows: u32 = 1;
+        let mut ws = workbook.add_worksheet_with_constant_memory();
+        ws.set_name(sheet_name("Pages", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in PAGE_HEADERS.iter().enumerate() {
+            xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
         }
-        for (i, (url, iss)) in chunk.iter().enumerate() {
-            let r = (i + 1) as u32;
-            xlsx_str(wi, r, 0, url, None)?;
-            xlsx_str(wi, r, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), None)?;
-            let sev = iss.get("severity").and_then(|v| v.as_str()).unwrap_or("");
-            let sev_fmt = match sev {
-                "error" => Some(&err_fmt),
-                "warning" => Some(&warn_fmt),
-                "info" => Some(&info_fmt),
-                _ => None,
-            };
-            xlsx_str(wi, r, 2, sev, sev_fmt)?;
-            xlsx_str(wi, r, 3, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(&wrap))?;
-            xlsx_str(wi, r, 4, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), None)?;
-            xlsx_str(wi, r, 5, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), None)?;
-            xlsx_str(wi, r, 6, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+
+        let mut last_timestamp: Option<String> = None;
+        let mut last_id: Option<String> = None;
+        loop {
+            let batch = repo.get_result_batch(
+                project_id,
+                last_timestamp.as_deref(),
+                last_id.as_deref(),
+                PAGE_BATCH_SIZE,
+            )?;
+            if batch.is_empty() {
+                break;
+            }
+            for p in &batch {
+                if sheet_rows > MAX_ROWS_PER_SHEET {
+                    finalize_sheet(ws, MAX_ROWS_PER_SHEET, 12)?;
+                    sheet_idx += 1;
+                    ws = workbook.add_worksheet_with_constant_memory();
+                    ws.set_name(sheet_name("Pages", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    for (col, h) in PAGE_HEADERS.iter().enumerate() {
+                        xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+                    }
+                    sheet_rows = 1;
+                }
+                write_page_row(ws, sheet_rows, p, &alt, &wrap)?;
+                sheet_rows += 1;
+            }
+            processed += batch.len() as u64;
+            emit_export_progress(app, "pages", processed, total);
+            let last = batch.last().expect("batch is not empty");
+            last_timestamp = Some(last.crawl_timestamp.clone());
+            last_id = Some(last.id.clone());
         }
-        finalize_sheet(wi, chunk.len() as u32, 7)?;
-        wi.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-        wi.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-        wi.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        finalize_sheet(ws, sheet_rows.saturating_sub(1), 12)?;
     }
 
-    // === Links sheets (split if > 1,048,575 links) ===
-    let link_chunks: Vec<&[crate::models::PageLink]> = if links.is_empty() {
-        vec![]
-    } else {
-        links.chunks(MAX_ROWS_PER_SHEET as usize).collect()
-    };
-    let link_sheets = link_chunks.len().max(1);
-    for (chunk_idx, chunk) in link_chunks.iter().enumerate() {
-        let wl = workbook.add_worksheet();
-        wl.set_name(sheet_name("Links", chunk_idx, link_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
-        for (col, h) in ["From URL","To URL","Link Type","Anchor Text","Follow"].iter().enumerate() {
-            xlsx_str(wl, 0, col as u16, h, Some(&header_fmt))?;
+    // === Pass 2: Issues sheets (re-reads pages by batch, split if > 1,048,575 issues) ===
+    if total_issues > 0 {
+        let num_sheets = sheet_count(total_issues);
+        let mut sheet_idx: usize = 0;
+        let mut sheet_rows: u32 = 1;
+        let mut ws = workbook.add_worksheet_with_constant_memory();
+        ws.set_name(sheet_name("Issues", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in ISSUE_HEADERS.iter().enumerate() {
+            xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
         }
-        for (i, lk) in chunk.iter().enumerate() {
-            let r = (i + 1) as u32;
-            let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
-            xlsx_str(wl, r, 0, &lk.from_url, f)?;
-            xlsx_str(wl, r, 1, &lk.to_url, f)?;
-            xlsx_str(wl, r, 2, &lk.link_type, f)?;
-            xlsx_str(wl, r, 3, lk.anchor_text.as_deref().unwrap_or(""), f)?;
-            xlsx_str(wl, r, 4, if lk.is_follow {"Yes"} else {"No"}, f)?;
+
+        let mut last_timestamp: Option<String> = None;
+        let mut last_id: Option<String> = None;
+        loop {
+            let batch = repo.get_result_batch(
+                project_id,
+                last_timestamp.as_deref(),
+                last_id.as_deref(),
+                PAGE_BATCH_SIZE,
+            )?;
+            if batch.is_empty() {
+                break;
+            }
+            let mut issues_written: u64 = 0;
+            for p in &batch {
+                if let Some(ref js) = p.semantic_issues_json {
+                    if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) {
+                        for iss in &issues {
+                            if sheet_rows > MAX_ROWS_PER_SHEET {
+                                finalize_sheet(ws, MAX_ROWS_PER_SHEET, 7)?;
+                                ws.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                sheet_idx += 1;
+                                ws = workbook.add_worksheet_with_constant_memory();
+                                ws.set_name(sheet_name("Issues", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                for (col, h) in ISSUE_HEADERS.iter().enumerate() {
+                                    xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+                                }
+                                sheet_rows = 1;
+                            }
+                            write_issue_row(ws, sheet_rows, &p.url, iss, &wrap, &err_fmt, &warn_fmt, &info_fmt)?;
+                            sheet_rows += 1;
+                            issues_written += 1;
+                        }
+                    }
+                }
+            }
+            processed += issues_written;
+            emit_export_progress(app, "issues", processed, total);
+            let last = batch.last().expect("batch is not empty");
+            last_timestamp = Some(last.crawl_timestamp.clone());
+            last_id = Some(last.id.clone());
         }
-        finalize_sheet(wl, chunk.len() as u32, 5)?;
-        wl.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        finalize_sheet(ws, sheet_rows.saturating_sub(1), 7)?;
+        ws.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    }
+
+    // === Pass 3: Links sheets (streamed by rowid batch, split if > 1,048,575 links) ===
+    if total_links > 0 {
+        let num_sheets = sheet_count(total_links);
+        let mut sheet_idx: usize = 0;
+        let mut sheet_rows: u32 = 1;
+        let mut ws = workbook.add_worksheet_with_constant_memory();
+        ws.set_name(sheet_name("Links", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        for (col, h) in LINK_HEADERS.iter().enumerate() {
+            xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+        }
+
+        let mut last_rowid: Option<i64> = None;
+        loop {
+            let batch = repo.get_links_batch(project_id, last_rowid, LINK_BATCH_SIZE)?;
+            if batch.is_empty() {
+                break;
+            }
+            for (_, lk) in &batch {
+                if sheet_rows > MAX_ROWS_PER_SHEET {
+                    finalize_sheet(ws, MAX_ROWS_PER_SHEET, 5)?;
+                    ws.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    sheet_idx += 1;
+                    ws = workbook.add_worksheet_with_constant_memory();
+                    ws.set_name(sheet_name("Links", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    for (col, h) in LINK_HEADERS.iter().enumerate() {
+                        xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
+                    }
+                    sheet_rows = 1;
+                }
+                let r = sheet_rows;
+                let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
+                xlsx_str(ws, r, 0, &lk.from_url, f)?;
+                xlsx_str(ws, r, 1, &lk.to_url, f)?;
+                xlsx_str(ws, r, 2, &lk.link_type, f)?;
+                xlsx_str(ws, r, 3, lk.anchor_text.as_deref().unwrap_or(""), f)?;
+                xlsx_str(ws, r, 4, if lk.is_follow { "Yes" } else { "No" }, f)?;
+                sheet_rows += 1;
+            }
+            processed += batch.len() as u64;
+            emit_export_progress(app, "links", processed, total);
+            last_rowid = Some(batch.last().expect("batch is not empty").0);
+        }
+        finalize_sheet(ws, sheet_rows.saturating_sub(1), 5)?;
+        ws.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
     }
 
     workbook.save(file_path).map_err(|e| AppError::Crawl(e.to_string()))?;

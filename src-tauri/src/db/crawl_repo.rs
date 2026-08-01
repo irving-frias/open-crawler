@@ -941,41 +941,144 @@ impl<'a> CrawlRepo<'a> {
         Ok(settings)
     }
 
-    pub fn get_all_results(&self, project_id: &str, max_results: Option<u32>) -> Result<Vec<CrawlResult>, AppError> {
-        let limit = max_results.unwrap_or(100000);
-        let query = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body
-             FROM crawled_pages WHERE project_id = ?1
-             ORDER BY crawl_timestamp DESC
-             LIMIT {}",
-            limit
-        );
+    pub fn count_pages(&self, project_id: &str) -> Result<u32, AppError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
+    pub fn count_links(&self, project_id: &str) -> Result<u32, AppError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM page_links WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
+    pub fn count_issues(&self, project_id: &str) -> Result<u32, AppError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM crawled_pages, json_each(crawled_pages.semantic_issues_json)
+             WHERE project_id = ?1 AND json_type(crawled_pages.semantic_issues_json) = 'array'",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
+    /// Streams crawled pages for export, in `(crawl_timestamp DESC, id DESC)` order
+    /// (same order as `get_all_results`), without the heavy `html_body`/`hreflang_json`
+    /// columns. Pass the last row's `crawl_timestamp` + `id` from the previous batch.
+    pub fn get_result_batch(
+        &self,
+        project_id: &str,
+        last_timestamp: Option<&str>,
+        last_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<CrawlResult>, AppError> {
+        let cols = "id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json";
+        let query = if last_timestamp.is_some() {
+            format!(
+                "SELECT {} FROM crawled_pages
+                 WHERE project_id = ?1 AND (crawl_timestamp < ?2 OR (crawl_timestamp = ?2 AND id < ?3))
+                 ORDER BY crawl_timestamp DESC, id DESC
+                 LIMIT ?4",
+                cols
+            )
+        } else {
+            format!(
+                "SELECT {} FROM crawled_pages
+                 WHERE project_id = ?1
+                 ORDER BY crawl_timestamp DESC, id DESC
+                 LIMIT ?2",
+                cols
+            )
+        };
         let mut stmt = self.conn.prepare(&query)?;
-        let results = stmt
-            .query_map(params![project_id], Self::row_to_result)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let results = match (last_timestamp, last_id) {
+            (Some(ts), Some(id)) => stmt
+                .query_map(params![project_id, ts, id, limit], Self::row_to_result_export)?
+                .collect::<Result<Vec<_>, _>>()?,
+            _ => stmt
+                .query_map(params![project_id, limit], Self::row_to_result_export)?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
         Ok(results)
     }
 
-    pub fn get_links_for_project(&self, project_id: &str) -> Result<Vec<PageLink>, AppError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
-             FROM page_links WHERE project_id = ?1
-             LIMIT 100000",
-        )?;
-        let links = stmt
-            .query_map(params![project_id], |row| {
-                Ok(PageLink {
-                    from_url: row.get(0)?,
-                    to_url: row.get(1)?,
-                    config_id: row.get(2)?,
-                    project_id: row.get(3)?,
-                    link_type: row.get(4)?,
-                    anchor_text: row.get(5)?,
-                    is_follow: row.get::<_, i32>(6)? != 0,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+    /// Streams links for export via `rowid` keyset pagination. Returns `(rowid, link)`
+    /// pairs so the caller can continue paging with the last rowid.
+    pub fn get_links_batch(
+        &self,
+        project_id: &str,
+        last_rowid: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<(i64, PageLink)>, AppError> {
+        let query = if last_rowid.is_some() {
+            format!(
+                "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+                 FROM page_links WHERE project_id = ?1 AND rowid < ?2
+                 ORDER BY rowid DESC LIMIT ?3"
+            )
+        } else {
+            format!(
+                "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+                 FROM page_links WHERE project_id = ?1
+                 ORDER BY rowid DESC LIMIT ?2"
+            )
+        };
+        let mut stmt = self.conn.prepare(&query)?;
+        let links = match last_rowid {
+            Some(rid) => stmt
+                .query_map(params![project_id, rid, limit], Self::row_to_link_export)?
+                .collect::<Result<Vec<_>, _>>()?,
+            None => stmt
+                .query_map(params![project_id, limit], Self::row_to_link_export)?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
         Ok(links)
+    }
+
+    fn row_to_result_export(row: &rusqlite::Row) -> Result<CrawlResult, rusqlite::Error> {
+        Ok(CrawlResult {
+            id: row.get(0)?,
+            config_id: row.get(1)?,
+            project_id: row.get(2)?,
+            url: row.get(3)?,
+            status_code: row.get::<_, Option<i32>>(4)?.map(|s| s as u16),
+            title: row.get(5)?,
+            meta_description: row.get(6)?,
+            h1: row.get(7)?,
+            canonical: row.get(8)?,
+            size_bytes: row.get::<_, Option<i64>>(9)?.map(|s| s as usize),
+            load_time_ms: row.get::<_, Option<i64>>(10)?.map(|l| l as u64),
+            is_indexable: row.get::<_, Option<i32>>(11)?.map(|i| i != 0),
+            depth: row.get::<_, i32>(12)? as u32,
+            parent_url: row.get(13)?,
+            crawl_timestamp: row.get(14)?,
+            links: Vec::new(),
+            html_lang: row.get(15)?,
+            hreflang_json: None,
+            semantic_issues_json: row.get(16)?,
+            html_body: None,
+        })
+    }
+
+    fn row_to_link_export(row: &rusqlite::Row) -> Result<(i64, PageLink), rusqlite::Error> {
+        Ok((
+            row.get(0)?,
+            PageLink {
+                from_url: row.get(1)?,
+                to_url: row.get(2)?,
+                config_id: row.get(3)?,
+                project_id: row.get(4)?,
+                link_type: row.get(5)?,
+                anchor_text: row.get(6)?,
+                is_follow: row.get::<_, i32>(7)? != 0,
+            },
+        ))
     }
 }

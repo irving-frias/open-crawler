@@ -2,6 +2,14 @@
   import { invoke } from '@tauri-apps/api/core';
   import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
   import { m } from '$lib/paraglide/messages.js';
+  import { applyTheme as applyAppTheme } from '$lib/theme.js';
+  import * as Dialog from '$lib/components/ui/dialog/index.js';
+  import * as Select from '$lib/components/ui/select/index.js';
+  import { Label } from '$lib/components/ui/label/index.js';
+  import { Input } from '$lib/components/ui/input/index.js';
+  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Separator } from '$lib/components/ui/separator/index.js';
 
   let {
     open = $bindable(false),
@@ -18,7 +26,8 @@
   let respectRobots = $state(true);
   let checkSitemap = $state(true);
   let checkSemantics = $state(true);
-  let maxCrawlTime = $state(3600);
+  let maxCrawlTime = $state('3600');
+  let notificationsEnabled = $state(true);
   let saving = $state(false);
 
   $effect(() => {
@@ -35,7 +44,8 @@
       if (settings.respect_robots) respectRobots = settings.respect_robots === 'true';
       if (settings.check_sitemap) checkSitemap = settings.check_sitemap === 'true';
       if (settings.check_semantics) checkSemantics = settings.check_semantics === 'true';
-      if (settings.max_crawl_time) maxCrawlTime = parseInt(settings.max_crawl_time, 10);
+      if (settings.max_crawl_time) maxCrawlTime = settings.max_crawl_time;
+      if (settings.notifications_enabled !== undefined) notificationsEnabled = settings.notifications_enabled === 'true';
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -48,15 +58,16 @@
         language,
         theme,
         page_size: pageSize,
-        max_depth: maxDepth.toString(),
+        max_depth: maxDepth,
         respect_robots: respectRobots.toString(),
         check_sitemap: checkSitemap.toString(),
         check_semantics: checkSemantics.toString(),
-        max_crawl_time: maxCrawlTime.toString(),
+        max_crawl_time: maxCrawlTime,
+        notifications_enabled: notificationsEnabled.toString(),
       };
       await invoke('save_settings', { settings });
       setLocale(language as Locale);
-      applyTheme(theme);
+      applyAppTheme(theme);
       onsave?.(settings);
       open = false;
     } catch (e) {
@@ -66,265 +77,108 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') open = false;
-  }
-
-  function applyTheme(t: string) {
-    document.documentElement.setAttribute('data-theme', t);
-    localStorage.setItem('theme', t);
-  }
+  const languageLabel = $derived(language === 'en' ? m['language.en']() : m['language.es']());
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<Dialog.Root bind:open>
+  <Dialog.Content
+    class="max-h-[90dvh] overflow-y-auto sm:max-h-[min(90dvh,640px)] sm:max-w-lg"
+  >
+    <Dialog.Header>
+      <Dialog.Title>{m['settings.title']()}</Dialog.Title>
+    </Dialog.Header>
 
-{#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_tabindex -->
-  <div class="modal-overlay" onclick={() => open = false} role="presentation">
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" aria-label="Settings">
-      <div class="modal-header">
-        <h2>{m["settings.title"]()}</h2>
-        <button class="btn-close" onclick={() => open = false} aria-label="Close">✕</button>
+    <div class="flex flex-col gap-4">
+      <div class="grid gap-1.5">
+        <Label for="lang">{m['language.label']()}</Label>
+        <Select.Root type="single" bind:value={language}>
+          <Select.Trigger id="lang" class="w-full">
+            <span data-slot="select-value">{languageLabel}</span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="en" label={m['language.en']()} />
+            <Select.Item value="es" label={m['language.es']()} />
+          </Select.Content>
+        </Select.Root>
       </div>
 
-      <div class="modal-body">
-        <div class="setting-group">
-          <label for="lang">{m["language.label"]()}</label>
-          <select id="lang" bind:value={language}>
-            <option value="en">{m["language.en"]()}</option>
-            <option value="es">{m["language.es"]()}</option>
-          </select>
-        </div>
+      <div class="grid gap-1.5">
+        <Label for="theme">{m['theme.label']()}</Label>
+        <Select.Root type="single" bind:value={theme}>
+          <Select.Trigger id="theme" class="w-full">
+            <span data-slot="select-value">
+              {theme === 'light' ? m['theme.light']() : theme === 'dark' ? m['theme.dark']() : m['theme.system']()}
+            </span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="system" label={m['theme.system']()} />
+            <Select.Item value="light" label={m['theme.light']()} />
+            <Select.Item value="dark" label={m['theme.dark']()} />
+          </Select.Content>
+        </Select.Root>
+      </div>
 
-        <div class="setting-group">
-          <label for="theme">{m["theme.label"]()}</label>
-          <select id="theme" bind:value={theme}>
-            <option value="system">{m["theme.system"]()}</option>
-            <option value="light">{m["theme.light"]()}</option>
-            <option value="dark">{m["theme.dark"]()}</option>
-          </select>
-        </div>
+      <Separator />
 
-        <div class="setting-divider"></div>
+      <div class="grid gap-1.5">
+        <Label for="page-size">{m['settings.page_size']()}</Label>
+        <Select.Root type="single" bind:value={pageSize}>
+          <Select.Trigger id="page-size" class="w-full">
+            <span data-slot="select-value">{pageSize}</span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="25" label="25" />
+            <Select.Item value="50" label="50" />
+            <Select.Item value="100" label="100" />
+            <Select.Item value="200" label="200" />
+          </Select.Content>
+        </Select.Root>
+      </div>
 
-        <div class="setting-group">
-          <label for="page-size">{m["settings.page_size"]()}</label>
-          <select id="page-size" bind:value={pageSize}>
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
-        </div>
+      <Separator />
 
-        <div class="setting-divider"></div>
-
-        <h3>{m["settings.default_config"]()}</h3>
-
-        <div class="setting-group">
-          <label for="max-depth">{m["config.max_depth"]()}</label>
-          <input id="max-depth" type="number" bind:value={maxDepth} min="1" max="50" />
-        </div>
-
-        <div class="setting-group">
-          <label for="crawl-time">{m["config.time_limit"]()}</label>
-          <input id="crawl-time" type="number" bind:value={maxCrawlTime} min="60" max="86400" />
-        </div>
-
-        <div class="setting-row">
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={respectRobots} />
-            {m["config.respect_robots"]()}
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={checkSitemap} />
-            {m["config.check_sitemap"]()}
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <label class="checkbox-label">
-            <input type="checkbox" bind:checked={checkSemantics} />
-            {m["config.check_semantics"]()}
-          </label>
+      <div class="grid gap-2 pt-1">
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={notificationsEnabled} id="cfg-notifications" />
+          <Label for="cfg-notifications" class="cursor-pointer font-normal">{m['settings.notifications']()}</Label>
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick={() => open = false}>{m["settings.cancel"]()}</button>
-        <button class="btn btn-primary" onclick={save} disabled={saving}>
-          {saving ? '...' : m["settings.save"]()}
-        </button>
+      <Separator />
+
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        {m['settings.default_config']()}
+      </h3>
+
+      <div class="grid gap-1.5">
+        <Label for="max-depth">{m['config.max_depth']()}</Label>
+        <Input id="max-depth" type="number" bind:value={maxDepth} min="1" max="50" />
+      </div>
+
+      <div class="grid gap-1.5">
+        <Label for="crawl-time">{m['config.time_limit']()}</Label>
+        <Input id="crawl-time" type="number" bind:value={maxCrawlTime} min="60" max="86400" />
+      </div>
+
+      <div class="grid gap-2 pt-1">
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={respectRobots} id="cfg-respect-robots" />
+          <Label for="cfg-respect-robots" class="cursor-pointer font-normal">{m['config.respect_robots']()}</Label>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={checkSitemap} id="cfg-check-sitemap" />
+          <Label for="cfg-check-sitemap" class="cursor-pointer font-normal">{m['config.check_sitemap']()}</Label>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={checkSemantics} id="cfg-check-semantics" />
+          <Label for="cfg-check-semantics" class="cursor-pointer font-normal">{m['config.check_semantics']()}</Label>
+        </div>
       </div>
     </div>
-  </div>
-{/if}
 
-<style>
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: var(--z-modal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-md);
-  }
-
-  .modal {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    width: 100%;
-    max-width: 480px;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: var(--shadow-lg);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-lg);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .modal-header h2 {
-    margin: 0;
-    font-size: var(--text-lg);
-    color: var(--text);
-  }
-
-  .btn-close {
-    width: 32px;
-    height: 32px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 1rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition-base);
-  }
-  .btn-close:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-
-  .modal-body {
-    padding: var(--space-lg);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .setting-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  .setting-group label {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-weight: var(--weight-medium);
-  }
-
-  .setting-group select,
-  .setting-group input {
-    padding: 8px 12px;
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    color: var(--text);
-    font-size: var(--text-base);
-    transition: border-color var(--transition-base);
-  }
-
-  .setting-group select:focus,
-  .setting-group input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
-
-  .setting-row {
-    padding: var(--space-xs) 0;
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    cursor: pointer;
-    font-size: var(--text-base);
-    color: var(--text-secondary);
-  }
-
-  .checkbox-label input[type='checkbox'] {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--accent);
-  }
-
-  .setting-divider {
-    height: 1px;
-    background: var(--border);
-    margin: var(--space-xs) 0;
-  }
-
-  h3 {
-    font-size: var(--text-sm);
-    text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: var(--weight-semibold);
-    margin: 0;
-  }
-
-  .modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-sm);
-    padding: var(--space-lg);
-    border-top: 1px solid var(--border);
-  }
-
-  .btn {
-    padding: 8px 20px;
-    border: none;
-    border-radius: var(--radius-md);
-    font-size: var(--text-base);
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-    transition: all var(--transition-base);
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background: var(--accent-gradient);
-    color: white;
-  }
-  .btn-primary:hover:not(:disabled) {
-    box-shadow: var(--shadow-md);
-  }
-
-  .btn-secondary {
-    background: var(--border);
-    color: var(--text);
-  }
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-</style>
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => (open = false)}>{m['settings.cancel']()}</Button>
+      <Button onclick={save} disabled={saving}>{saving ? '...' : m['settings.save']()}</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

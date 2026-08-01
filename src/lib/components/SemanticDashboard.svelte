@@ -2,6 +2,15 @@
   import { invoke } from '@tauri-apps/api/core';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName } from '$lib/i18n-issues';
+  import {
+    ImageOff, FileText, Text, Link2, Unlink, Heading1, List, Globe, Bot,
+    Blocks, Monitor, Copy, Accessibility, LayoutGrid, TextCursorInput,
+    TriangleAlert, ChevronRight,
+  } from 'lucide-svelte';
+  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { cn } from '$lib/utils.js';
 
   let {
     projectId,
@@ -17,27 +26,35 @@
   let loading = $state(false);
   let error = $state('');
 
-  const ISSUE_ICONS: Record<string, string> = {
-    missing_alt: '🖼',
-    missing_title: '🏷',
-    missing_meta_desc: '📝',
-    missing_canonical: '🔗',
-    empty_link: '🔗',
-    missing_label: '📋',
-    missing_h1: '📰',
-    heading_skip: '🔤',
-    missing_lang: '🌐',
-    missing_robots: '🤖',
-    multiple_h1: '📰',
-    image_without_alt: '🖼',
-    form_without_label: '📋',
-    link_empty: '🔗',
-    skip_from_h1: '🔤',
-    invalid_nesting: '🧩',
-    missing_viewport: '📱',
-    duplicate_id: '🆔',
-    missing_aria: '♿',
+  type Icon = typeof ImageOff;
+
+  const ISSUE_ICONS: Record<string, Icon> = {
+    missing_alt: ImageOff,
+    image_without_alt: ImageOff,
+    missing_title: FileText,
+    missing_meta_desc: Text,
+    missing_canonical: Link2,
+    empty_link: Unlink,
+    link_empty: Unlink,
+    missing_label: TextCursorInput,
+    form_without_label: TextCursorInput,
+    missing_h1: Heading1,
+    multiple_h1: Heading1,
+    heading_skip: List,
+    skip_from_h1: List,
+    missing_lang: Globe,
+    missing_robots: Bot,
+    invalid_nesting: Blocks,
+    missing_viewport: Monitor,
+    duplicate_id: Copy,
+    missing_aria: Accessibility,
+    missing_main: LayoutGrid,
+    missing_header: LayoutGrid,
+    missing_footer: LayoutGrid,
+    missing_nav: LayoutGrid,
   };
+
+  const DEFAULT_ICON: Icon = TriangleAlert;
 
   $effect(() => {
     if (projectId) loadCounts();
@@ -72,17 +89,21 @@
     onFilterIssueType(null);
   }
 
-  // Severity colors handled via CSS classes
-
   function formatIssueType(type: string): string {
     return translateIssueName(type);
   }
 
-  function getIcon(issueType: string): string {
-    return ISSUE_ICONS[issueType] || '⚠';
+  function getIcon(issueType: string): Icon {
+    return ISSUE_ICONS[issueType] || DEFAULT_ICON;
   }
 
-  // Aggregate counts by severity for the bar
+  function getDominantSeverity(item: { error: number; warning: number; info: number }): string {
+    if (item.error > 0) return 'error';
+    if (item.warning > 0) return 'warning';
+    if (item.info > 0) return 'info';
+    return 'neutral';
+  }
+
   let severityTotals = $derived(() => {
     const totals: Record<string, number> = { error: 0, warning: 0, info: 0 };
     for (const item of issueCounts) {
@@ -96,7 +117,6 @@
     return t.error + t.warning + t.info;
   });
 
-  // Group issue types by unique type (combine severities)
   let groupedIssues = $derived(() => {
     const map = new Map<string, { issue_type: string; error: number; warning: number; info: number; total: number }>();
     for (const item of issueCounts) {
@@ -109,123 +129,111 @@
   });
 </script>
 
-<div class="dashboard">
-  <div class="dashboard-header">
-    <h3>{m["dashboard.title"]()}</h3>
+<Card class="dashboard-card">
+  <CardHeader class="flex-row items-center justify-between gap-2 space-y-0">
+    <CardTitle>{m["dashboard.title"]()}</CardTitle>
     {#if activeFilter}
-      <button class="btn-clear" onclick={clearFilter}>
+      <Button variant="outline" size="sm" onclick={clearFilter}>
         {m["dashboard.clear_filter"]({ type: formatIssueType(activeFilter) })} &times;
-      </button>
+      </Button>
     {/if}
-  </div>
+  </CardHeader>
 
-  {#if loading}
-    <div class="dashboard-loading">{m["dashboard.loading"]()}</div>
-  {:else if error}
-    <div class="dashboard-error">{error}</div>
-  {:else if issueCounts.length === 0}
-    <div class="dashboard-empty">{m["dashboard.no_issues"]()}</div>
-  {:else}
-    <!-- Severity Summary Bar -->
-    <div class="severity-bar">
-      {#if severityTotals().error > 0}
-        <div
-          class="severity-segment error"
-          style="flex: {severityTotals().error}"
-          title="{severityTotals().error} errors"
-        >
-          {severityTotals().error}
-        </div>
-      {/if}
-      {#if severityTotals().warning > 0}
-        <div
-          class="severity-segment warning"
-          style="flex: {severityTotals().warning}"
-          title="{severityTotals().warning} warnings"
-        >
-          {severityTotals().warning}
-        </div>
-      {/if}
-      {#if severityTotals().info > 0}
-        <div
-          class="severity-segment info"
-          style="flex: {severityTotals().info}"
-          title="{severityTotals().info} info"
-        >
-          {severityTotals().info}
-        </div>
-      {/if}
-    </div>
-    <div class="severity-legend">
-      <span class="legend-item"><span class="legend-dot error"></span> {m["dashboard.errors"]({ count: severityTotals().error.toString() })}</span>
-      <span class="legend-item"><span class="legend-dot warning"></span> {m["dashboard.warnings"]({ count: severityTotals().warning.toString() })}</span>
-      <span class="legend-item"><span class="legend-dot info"></span> {m["dashboard.info"]({ count: severityTotals().info.toString() })}</span>
-      <span class="legend-total">{m["dashboard.total_issues"]({ count: totalIssues().toString() })}</span>
-    </div>
-
-    <!-- Issue Type Cards -->
-    <div class="issue-cards">
-      {#each groupedIssues() as item}
-        <button
-          class="issue-card"
-          class:active={activeFilter === item.issue_type}
-          onclick={() => toggleFilter(item.issue_type)}
-        >
-          <div class="card-icon">{getIcon(item.issue_type)}</div>
-          <div class="card-content">
-            <div class="card-type">{formatIssueType(item.issue_type)}</div>
-            <div class="card-counts">
-              {#if item.error > 0}
-                <span class="count-badge error">{item.error}</span>
-              {/if}
-              {#if item.warning > 0}
-                <span class="count-badge warning">{item.warning}</span>
-              {/if}
-              {#if item.info > 0}
-                <span class="count-badge info">{item.info}</span>
-              {/if}
-              <span class="count-total">{item.total}</span>
-            </div>
+  <CardContent class="flex flex-col gap-4">
+    {#if loading}
+      <div class="flex flex-col gap-2">
+        <Skeleton class="h-12 w-full" />
+        <Skeleton class="h-12 w-full" />
+        <Skeleton class="h-12 w-3/4" />
+      </div>
+    {:else if error}
+      <div class="dashboard-error">{error}</div>
+    {:else if issueCounts.length === 0}
+      <div class="dashboard-empty">{m["dashboard.no_issues"]()}</div>
+    {:else}
+      <!-- Severity Summary Bar -->
+      <div class="severity-bar">
+        {#if severityTotals().error > 0}
+          <div
+            class="severity-segment error"
+            style="flex: {severityTotals().error}"
+            title="{severityTotals().error} errors"
+          >
+            {severityTotals().error}
           </div>
-          <div class="card-arrow">→</div>
-        </button>
-      {/each}
-    </div>
-  {/if}
-</div>
+        {/if}
+        {#if severityTotals().warning > 0}
+          <div
+            class="severity-segment warning"
+            style="flex: {severityTotals().warning}"
+            title="{severityTotals().warning} warnings"
+          >
+            {severityTotals().warning}
+          </div>
+        {/if}
+        {#if severityTotals().info > 0}
+          <div
+            class="severity-segment info"
+            style="flex: {severityTotals().info}"
+            title="{severityTotals().info} info"
+          >
+            {severityTotals().info}
+          </div>
+        {/if}
+      </div>
+      <div class="severity-legend">
+        <span class="legend-item"><span class="legend-dot error"></span> {m["dashboard.errors"]({ count: severityTotals().error.toString() })}</span>
+        <span class="legend-item"><span class="legend-dot warning"></span> {m["dashboard.warnings"]({ count: severityTotals().warning.toString() })}</span>
+        <span class="legend-item"><span class="legend-dot info"></span> {m["dashboard.info"]({ count: severityTotals().info.toString() })}</span>
+        <span class="legend-total">{m["dashboard.total_issues"]({ count: totalIssues().toString() })}</span>
+      </div>
+
+      <!-- Issue Type Cards -->
+      <div class="issue-cards">
+        {#each groupedIssues() as item}
+          {@const sev = getDominantSeverity(item)}
+          {@const Icon = getIcon(item.issue_type)}
+          <Button
+            variant="ghost"
+            class={cn(
+              'h-auto w-full justify-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+              activeFilter === item.issue_type
+                ? 'border-primary bg-card ring-1 ring-primary'
+                : 'border-transparent bg-muted/50 hover:bg-muted hover:text-foreground'
+            )}
+            onclick={() => toggleFilter(item.issue_type)}
+          >
+            <Icon class="card-icon sev-{sev}" />
+            <span class="card-content">
+              <span class="card-type">{formatIssueType(item.issue_type)}</span>
+              <span class="card-counts">
+                {#if item.error > 0}
+                  <span class="count-badge error">{item.error}</span>
+                {/if}
+                {#if item.warning > 0}
+                  <span class="count-badge warning">{item.warning}</span>
+                {/if}
+                {#if item.info > 0}
+                  <span class="count-badge info">{item.info}</span>
+                {/if}
+                <span class="count-total">{item.total}</span>
+              </span>
+            </span>
+            <ChevronRight class="card-arrow size-4" />
+          </Button>
+        {/each}
+      </div>
+    {/if}
+  </CardContent>
+</Card>
 
 <style>
-  .dashboard {
-    padding: 20px;
-    background: var(--bg-card);
-    border-radius: 12px;
+  :global(.dashboard-card) {
+    overflow: visible;
   }
 
-  .dashboard-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .dashboard-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: var(--text);
-  }
-
-  .btn-clear {
-    padding: 6px 12px;
-    background: var(--border);
-    border: 1px solid var(--text-muted);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-  .btn-clear:hover { background: var(--bg-hover); }
-
-  .dashboard-loading, .dashboard-error, .dashboard-empty {
+  .dashboard-error,
+  .dashboard-empty {
     padding: 24px;
     text-align: center;
     color: var(--text-muted);
@@ -239,7 +247,6 @@
     height: 32px;
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 8px;
     gap: 2px;
   }
 
@@ -261,9 +268,9 @@
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-bottom: 20px;
     font-size: 0.8rem;
     color: var(--text-secondary);
+    flex-wrap: wrap;
   }
 
   .legend-item {
@@ -294,46 +301,36 @@
     gap: 6px;
   }
 
-  .issue-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-deep);
-    border: 1px solid var(--bg-hover);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: left;
-    width: 100%;
-  }
-
-  .issue-card:hover {
-    border-color: var(--text-muted);
-    background: var(--bg-card);
-  }
-
-  .issue-card.active {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
-    background: var(--bg-card);
-  }
-
-  .card-icon {
-    font-size: 1.4rem;
+  :global(.card-icon) {
     width: 36px;
     height: 36px;
+    padding: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--bg-hover);
     border-radius: 8px;
     flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+  :global(.card-icon.sev-error) {
+    background: var(--bg-issue-error);
+    color: var(--danger);
+  }
+  :global(.card-icon.sev-warning) {
+    background: var(--bg-issue-warning);
+    color: var(--warning);
+  }
+  :global(.card-icon.sev-info) {
+    background: var(--bg-issue-info);
+    color: var(--info);
   }
 
   .card-content {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .card-type {
@@ -365,11 +362,13 @@
     margin-left: 4px;
   }
 
-  .card-arrow {
+  :global(.card-arrow) {
     color: var(--text-muted);
-    font-size: 0.9rem;
     flex-shrink: 0;
-    transition: color 0.15s;
+    transition: transform var(--transition-fast);
   }
-  .issue-card:hover .card-arrow { color: var(--text-secondary); }
+
+  :global(.issue-cards Button:hover .card-arrow) {
+    transform: translateX(2px);
+  }
 </style>

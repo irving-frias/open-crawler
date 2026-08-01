@@ -21,7 +21,6 @@
   "config.resume": "Reanudar / Iniciar",
   "config.stop": "Detener",
   "config.refresh": "Actualizar",
-  "config.export_csv": "Exportar CSV",
 
   "progress.title": "Progreso del Rastreo",
   "progress.crawled": "Rastreados: {count}",
@@ -41,6 +40,11 @@
 
   "results.showing": "Mostrando {from}-{to} de {total}",
   "results.no_results": "Aún no hay resultados.",
+  "results.search_placeholder": "Buscar por URL, título o H1...",
+  "results.search_match_one": "{count} resultado",
+  "results.search_matches": "{count} resultados",
+  "results.no_search_matches": "No hay resultados para \"{query}\"",
+  "results.clear_search": "Limpiar búsqueda",
   "results.filtered_by": "Filtrado por: {type}",
   "results.clear_filter": "Limpiar filtro",
   "results.page_size_show": "Mostrar:",
@@ -59,6 +63,7 @@
 
   "filter.status": "Código de estado",
   "filter.severity": "Severidad",
+  "filter.filters": "Filtros",
   "filter.domain": "Dominio",
   "filter.depth": "Profundidad",
   "filter.clear_all": "Limpiar todo",
@@ -73,6 +78,7 @@
   "filter.no_options": "Sin opciones disponibles",
 
   "detail.back": "← Resultados",
+  "detail.close": "Cerrar",
   "detail.loading": "Cargando detalles de la página...",
   "detail.overview": "Resumen",
   "detail.links": "Enlaces ({count})",
@@ -80,6 +86,7 @@
 
   "detail.seo_meta": "Meta SEO",
   "detail.title": "Título",
+  "detail.no_title": "Sin título",
   "detail.meta_description": "Meta Descripción",
   "detail.h1": "H1",
   "detail.canonical": "Canónico",
@@ -132,6 +139,13 @@
   "settings.cancel": "Cancelar",
   "settings.save": "Guardar",
   "settings.export": "Exportar XLSX/CSV",
+  "settings.notifications": "Notificaciones de Escritorio",
+  "export.xlsx": "Exportar XLSX",
+  "export.csv": "Exportar CSV",
+  "export.progress": "Exportando…",
+  "export.stage.pages": "Escribiendo páginas…",
+  "export.stage.issues": "Escribiendo problemas…",
+  "export.stage.links": "Escribiendo enlaces…",
 
   "issue.missing_html_lang.name": "Falta Idioma HTML",
   "issue.missing_html_lang.message": "Falta el atributo lang en el elemento <html>",
@@ -177,5 +191,15 @@
   "theme.label": "Tema",
   "theme.light": "Claro",
   "theme.dark": "Oscuro",
-  "theme.system": "Sistema"
+  "theme.system": "Sistema",
+
+  "notifications.crawl_started": "Rastreo Iniciado",
+  "notifications.crawl_started_desc": "El rastreo ha comenzado para el proyecto seleccionado.",
+  "notifications.crawl_complete": "Rastreo Completado",
+  "notifications.crawl_complete_desc": "El rastreo ha finalizado correctamente.",
+  "notifications.crawl_error": "Error en el Rastreo",
+  "notifications.crawl_stopped": "Rastreo Detenido",
+  "notifications.crawl_stopped_desc": "El rastreo fue detenido.",
+  "notifications.export_complete": "Exportación Completada",
+  "notifications.export_complete_desc": "La exportación ha finalizado correctamente."
 }

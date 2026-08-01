@@ -54,7 +54,6 @@
   --bg-link-internal: #1a2a3a;
   --bg-link-external: #2a1a3a;
   --bg-mark: #fef08a;
-  --bg-secondary: #f9fafb;
 
   color-scheme: dark;
 }
@@ -109,7 +108,6 @@
   --bg-link-internal: #d0ebff;
   --bg-link-external: #e5dbff;
   --bg-mark: #ffe066;
-  --bg-secondary: #f1f3f5;
 
   color-scheme: light;
 }
@@ -164,7 +162,6 @@
     --bg-link-internal: #d0ebff;
     --bg-link-external: #e5dbff;
     --bg-mark: #ffe066;
-    --bg-secondary: #f1f3f5;
 
     color-scheme: light;
   }
@@ -228,6 +225,37 @@
   --page-padding: var(--space-sm);
   --section-padding: var(--space-md);
   --sidebar-width: 0px;
+}
+
+/* ---- shadcn semantic tokens (mapped to the brand palette) ----
+   Resolved against the active theme vars above. Do NOT clobber the
+   brand tokens (--accent is the brand indigo; shadcn's accent is a
+   neutral hover tint exposed as a separate mapping). */
+:root {
+  --background: var(--bg-deep);
+  --foreground: var(--text);
+  --card: var(--bg-card);
+  --card-foreground: var(--text);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+   --secondary: var(--bg-hover);
+   --secondary-foreground: var(--text);
+   --muted: var(--bg-hover);
+   --muted-foreground: var(--text-muted);
+   --accent-neutral: var(--bg-hover);
+   --accent-neutral-foreground: var(--text);
+   --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border);
+  --ring: var(--accent);
+  --radius: 0.5rem;
+  --chart-1: var(--accent);
+  --chart-2: var(--purple);
+  --chart-3: var(--success);
+  --chart-4: var(--orange);
+  --chart-5: var(--info);
 }
 
 /* Tablet */
