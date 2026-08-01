@@ -251,10 +251,13 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 
 | # | Task | Status |
 |---|------|--------|
-| CI.1 | GitHub Actions `android.yml` — Android APK build | ✅ |
-| CI.2 | NDK toolchain setup + `aarch64-linux-android` target | ✅ |
+| CI.1 | GitHub Actions `android.yml` — Android APK/AAB build (`tauri android build -t aarch64`) | ✅ |
+| CI.2 | NDK r28 toolchain + `aarch64-linux-android24-clang` for CC/CXX/linker (ring/rusqlite) | ✅ |
 | CI.3 | reqwest → rustls (no OpenSSL on Android) | ✅ |
-| CI.4 | macOS Intel (x86_64) + Apple Silicon builds via cross-compilation | ✅ |
+| CI.4 | `src-tauri/gen/android` project committed (`tauri android init`) | ✅ |
+| CI.5 | Release signing via `keystore.properties` + `signingConfigs` in `build.gradle.kts` | ✅ |
+| CI.6 | Artifacts: `gen/android/app/build/outputs/{apk/universal/release,aab/universalRelease}` | ✅ |
+| CI.7 | Verified signed APK (`apksigner verify`, CN=Open Crawler) | ✅ |
 
 ---
 
