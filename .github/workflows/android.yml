@@ -44,24 +44,24 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r25b
+          ndk-version: r28
           link-to-sdk: true
 
       - name: Setup NDK environment
         run: |
           NDK="${{ steps.setup-ndk.outputs.ndk-path }}"
           echo "NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$NDK" >> $GITHUB_ENV
           echo "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-          echo "CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang" >> $GITHUB_ENV
-          echo "CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang++" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang" >> $GITHUB_ENV
-          ls -la "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep aarch64 || true
+          echo "CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" >> $GITHUB_ENV
+          echo "CXX=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" >> $GITHUB_ENV
 
       - name: Install Android cross-compilation toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld libssl-dev
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -71,21 +71,17 @@ jobs:
       - name: Add Android target
         run: rustup target add aarch64-linux-android
 
-      - name: Setup Keystore
+      - name: Setup Android signing
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/opencrawler.keystore
-          echo "KEYSTORE_PATH=android/opencrawler.keystore" >> $GITHUB_ENV
-          echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
+          base64 -d <<< "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" > "$RUNNER_TEMP/opencrawler.jks"
+          cd src-tauri/gen/android
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
+          echo "password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> keystore.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
+          echo "storeFile=$RUNNER_TEMP/opencrawler.jks" >> keystore.properties
 
       - name: Build Tauri App
         run: pnpm tauri build --target aarch64-linux-android
-        env:
-          ANDROID_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
-          ANDROID_KEY_ALIAS: ${{ env.KEY_ALIAS }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

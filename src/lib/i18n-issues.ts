@@ -20,6 +20,7 @@ const issueNames: Record<string, () => string> = {
   empty_link_text: () => m["issue.empty_link_text.name"](),
   missing_aria: () => m["issue.missing_aria.name"](),
   invalid_nesting: () => m["issue.invalid_nesting.name"](),
+  context_nesting: () => m["issue.context_nesting.name"](),
 };
 
 const issueMessages: Record<string, (params?: IssueParams) => string> = {
@@ -40,6 +41,7 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
   empty_link_text: (p) => m["issue.empty_link_text.message"]({ count: String(p?.count ?? 0) }),
   missing_aria: (p) => m["issue.missing_aria.message"]({ count: String(p?.count ?? 0) }),
   invalid_nesting: (p) => m["issue.invalid_nesting.message"]({ child: String(p?.child ?? ''), parent: String(p?.parent ?? '') }),
+  context_nesting: (p) => m["issue.context_nesting.message"]({ child: String(p?.child ?? ''), parent: String(p?.parent ?? '') }),
 };
 
 export function translateIssueName(issueType: string): string {
@@ -61,7 +63,7 @@ export function parseIssueParams(message: string, issueType: string): IssueParam
   } else if (['img_no_alt', 'input_no_id', 'input_no_label', 'empty_link_text', 'missing_aria'].includes(issueType)) {
     const m = message.match(/^(\d+)/);
     if (m) params.count = m[1];
-  } else if (issueType === 'invalid_nesting') {
+  } else if (issueType === 'invalid_nesting' || issueType === 'context_nesting') {
     const childM = message.match(/<(\w+)>/);
     const parentM = message.match(/<(\w+)>.*?<(\w+)>/);
     if (childM) params.child = childM[1];

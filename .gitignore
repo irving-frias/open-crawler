@@ -26,6 +26,9 @@ src-tauri/binaries/
 
 # Secrets (never commit private keys)
 .secrets/
+android/opencrawler.keystore
+src-tauri/gen/android/keystore.properties
+src-tauri/gen/android/local.properties
 
 # IDE
 .vscode/

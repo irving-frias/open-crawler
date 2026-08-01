@@ -166,7 +166,9 @@
   "issue.missing_aria.name": "Missing ARIA",
   "issue.missing_aria.message": "{count} form control(s) missing aria-label or aria-labelledby",
   "issue.invalid_nesting.name": "Invalid Nesting",
-  "issue.invalid_nesting.message": "<{child}> cannot be a child of <{parent}> (phrasing-only parent)",
+  "issue.invalid_nesting.message": "<{child}> cannot be a child of <{parent}>",
+  "issue.context_nesting.name": "Context-Dependent Nesting",
+  "issue.context_nesting.message": "<{child}> nesting inside <{parent}> depends on context",
 
   "severity.error": "Error",
   "severity.warning": "Warning",

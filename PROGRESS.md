@@ -1,10 +1,10 @@
 # Open Crawler - Development Progress
 
 ## Project Overview
-SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript**.
+SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + pnpm**.
 
-**Current Phase:** Phase 4.3 (Enhanced Semantic Issue Context)
-**Status:** Backend compiles, 0 clippy warnings, 18 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with nesting validation, pagination with page numbers, issues detail view, page preview (asset inlining + screenshot), enhanced semantic issues with element context
+**Current Phase:** Sprints 1-3 complete (UI quick wins, performance/filters, advanced crawl config) + caninclude replacement
+**Status:** Backend compiles, 0 clippy warnings, 30 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth), URL dedup, include/exclude glob patterns, custom headers + configurable timeout, theme system, i18n (en/es), Android CI workflow
 
 ---
 
@@ -151,16 +151,18 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | 3.4.4 | Sticky header, grid columns, a11y (role=button, keyboard) | ✅ |
 | 3.4.5 | Moved inline table styles to component scope | ✅ |
 
-### Phase 3.5: HTML Nesting Validation (caninclude API) ✅ COMPLETED
+### Phase 3.5: HTML Nesting Validation ✅ COMPLETED (caninclude API replaced)
 
 | # | Task | Status |
 |---|------|--------|
-| 3.5.1 | Static `NESTING_RULES` lookup table (~600 flow×phrasing combos) | ✅ |
-| 3.5.2 | `check_element_nesting()` walks DOM, checks parent-child pairs | ✅ |
-| 3.5.3 | API fallback via `reqwest::blocking` for unknown pairs (max 10/page) | ✅ |
-| 3.5.4 | `invalid_nesting` issue type (severity: error) | ✅ |
-| 3.5.5 | 6 unit tests: div-in-span, p-in-a, table-in-code, valid combos, table coverage | ✅ |
-| 3.5.6 | `blocking` feature added to reqwest in Cargo.toml | ✅ |
+| 3.5.1 | `check_element_nesting()` walks DOM, checks parent-child pairs | ✅ |
+| 3.5.2 | `invalid_nesting` issue type (severity: error) for forbidden pairs | ✅ |
+| 3.5.3 | `context_nesting` issue type (severity: info) for context-dependent pairs | ✅ |
+| 3.5.4 | 6+ unit tests: div-in-span, p-in-a, table-in-code, valid combos, table coverage | ✅ |
+| 3.5.5 | **Static `nesting_table.rs` (104×104 matrix) embedded — replaces `caninclude.onrender.com` API** | ✅ |
+| 3.5.6 | API fallback + `NESTING_RULES` HashMap removed from parser | ✅ |
+| 3.5.7 | `tools/generate_nesting_table.js` regenerates matrix from `src-tauri/data/` JSONs | ✅ |
+| 3.5.8 | 4 matrix unit tests (`test_valid_combinations`, `test_invalid_combinations`, `test_unknown_tag_returns_none`, `test_matrix_dimensions`) | ✅ |
 
 ### Phase 4.0: Page Preview & Screenshot Infrastructure ✅ COMPLETED
 
@@ -212,6 +214,48 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | 4.3.7 | `chromiumoxide` removed from Cargo.toml (replaced by CLI Chrome approach) | ✅ |
 | 4.3.8 | All ~20 `SemanticIssue` construction sites updated with `..Default::default()` | ✅ |
 
+### Sprint 1: UI Quick Wins ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| S1.1 | Toast notifications component | ✅ |
+| S1.2 | Server-side search in results table (400ms debounce) | ✅ |
+| S1.3 | Export CSV/Excel with Severity column | ✅ |
+| S1.4 | README documentation | ✅ |
+| S1.5 | Light/dark/system theme support via `tokens.css` + `[data-theme]` + `matchMedia` | ✅ |
+| S1.6 | SettingsModal theme selector (System/Light/Dark), persisted in localStorage | ✅ |
+
+### Sprint 2: Performance & Filters ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| S2.1 | Removed hardcoded colors: `PageDetailPanel` → `.issue-severity-error/warning/info` CSS classes | ✅ |
+| S2.2 | Backend filters: `status_filter`, `severity_filter`, `domain_filter`, `depth_filter` in `get_results` (dynamic SQL WHERE) | ✅ |
+| S2.3 | ResultsTable virtualized with `Virtualizer` class from `@tanstack/virtual-core` | ✅ |
+| S2.4 | `FilterBar.svelte` — status chips, severity chips, depth slider, clear-all (domain dropdown removed from UI) | ✅ |
+| S2.5 | i18n filter keys (`filter.*`) in en/es | ✅ |
+| S2.6 | Results cache type alias `ResultsCacheArc` + clippy cleanup | ✅ |
+
+### Sprint 3: Advanced Crawl Config ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| S3.1 | `crawler/dedup.rs` — `Deduplicator` URL normalization (fragments, host case, default ports, trailing slash, query param sort) | ✅ |
+| S3.2 | URL normalization integrated into `url_visited`/`mark_visited` in engine | ✅ |
+| S3.3 | 8 dedup unit tests | ✅ |
+| S3.4 | Include/exclude URL patterns via `glob = "0.3"` (`CrawlConfig.include_patterns`/`exclude_patterns`) | ✅ |
+| S3.5 | Custom headers (`CrawlConfig.custom_headers: Vec<(String,String)>`) applied per request | ✅ |
+| S3.6 | Configurable timeout (`CrawlConfig.request_timeout_ms`, default 30,000) via `HttpFetcher::new(user_agent, timeout_ms, custom_headers)` | ✅ |
+
+### CI/CD: Android Workflow ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| CI.1 | GitHub Actions `android.yml` — Android APK build | ✅ |
+| CI.2 | NDK toolchain setup + `aarch64-linux-android` target | ✅ |
+| CI.3 | reqwest → rustls (no OpenSSL on Android) | ✅ |
+| CI.4 | macOS Intel (x86_64) + Apple Silicon builds via cross-compilation | ✅ |
+
 ---
 
 ## What's Next
@@ -223,19 +267,14 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | 4.4 | Rewrite `HtmlTree.svelte` to use screenshot-based preview (img + overlay markers) | ⬜ |
 | 4.5 | Wire enhanced fields into `analyze_semantics()` — use `issue()` builder with element refs | ⬜ |
 | 4.6 | `SiteTree.svelte` - tree view | ⬜ |
-| 4.7 | `FilterBar.svelte` - filter by status, issues, domain | ⬜ |
 | 4.8 | Full CSV export with all SEO fields | ⬜ |
-| 4.9 | Excel export with formatting | ⬜ |
 | 4.10 | Filters: missing title, duplicate, 404, noindex | ⬜ |
-| 4.11 | Search in table by URL/title | ⬜ |
 
 ### Phase 5: Full Functionality
 
 | # | Task | Status |
 |---|------|--------|
-| 5.1 | `Deduplicator` - URL normalization (fragments, query params) | ⬜ |
-| 5.2 | Config: `include_patterns` / `exclude_patterns` (glob) | ⬜ |
-| 5.3 | Config: `custom_headers`, `proxy`, `timeout_ms` | ⬜ |
+| 5.3 | Config: `proxy` support | ⬜ |
 | 5.4 | Excel export - multiple sheets (All Pages, Issues, Links) | ⬜ |
 
 ### Phase 6: JS Rendering
@@ -252,10 +291,7 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 
 | # | Task | Status |
 |---|------|--------|
-| 7.1 | i18n with `svelte-i18n` or `paraglide` | ⬜ |
-| 7.2 | Accessibility (ARIA, focus management) | ⬜ |
 | 7.3 | Auto-updater with `tauri-plugin-updater` | ⬜ |
-| 7.4 | CI/CD: GitHub Actions multiplatform | 🔄 |
 | 7.5 | E2E tests with Playwright | ⬜ |
 | 7.6 | Documentation (README, CONTRIBUTING, cargo doc) | ⬜ |
 
@@ -268,14 +304,16 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 ```
 src-tauri/src/
 ├── main.rs                        # Entry point
-├── lib.rs                         # AppState, 21 command registrations
+├── lib.rs                         # AppState + ResultsCacheArc, command registrations, pub mod nesting_table
 ├── error.rs                       # AppError enum with Http variant
-├── commands/mod.rs                # Project CRUD + crawl + results + check_resumable_crawl + get_page_html + inline_assets + recrawl_page + capture_page_screenshot
+├── nesting_table.rs               # Static 104×104 nesting matrix (auto-generated)
+├── commands/mod.rs                # Project CRUD + crawl + get_results (with filters) + recrawl_page + screenshots
 ├── crawler/
 │   ├── mod.rs                     # Exports: CrawlEngine, SemanticIssue, assets, screenshot
-│   ├── engine.rs                  # CrawlEngine: parallel crawl, Frontier, RobotsChecker, resume, html_body storage
-│   ├── fetcher.rs                 # HtmlFetcher trait + HttpFetcher
-│   ├── parser.rs                  # SeoParser (17 semantic checks + nesting), compute_xpath/css_selector/snippet, issue() builder, NESTING_RULES
+│   ├── engine.rs                  # CrawlEngine: URL dedup, include/exclude patterns, resume, html_body storage
+│   ├── fetcher.rs                 # HtmlFetcher trait + HttpFetcher (headers + timeout)
+│   ├── parser.rs                  # SeoParser (17 semantic checks + nesting via can_include), issue() builder
+│   ├── dedup.rs                   # Deduplicator - URL normalization + dedup (8 tests)
 │   ├── sitemap.rs                 # SitemapParser - sitemap discovery
 │   ├── frontier.rs                # Frontier - priority queue with domain rotation
 │   ├── robots.rs                  # RobotsChecker - robots.txt cache + crawl-delay
@@ -284,13 +322,14 @@ src-tauri/src/
 │   └── db_writer.rs              # DbWriter actor - batch writes + streaming events
 ├── models/
 │   ├── mod.rs
-│   ├── crawl_config.rs            # CrawlConfig with project_id, pub const IMPLICIT_USER_AGENT
-│   ├── crawl_result.rs            # CrawlResult (with html_body), CrawlProgress, PageLink, SemanticIssue, ResultsFilter
+│   ├── crawl_config.rs            # CrawlConfig: project_id, IMPLICIT_USER_AGENT, patterns, headers, timeout
+│   ├── crawl_result.rs            # CrawlResult (with html_body), CrawlProgress, PageLink, SemanticIssue
 │   └── project.rs                 # Project, CreateProjectRequest, RenameProjectRequest
+├── data/                          # caninclude JSONs + generate.js (reference only for regeneration)
 └── db/
     ├── mod.rs
     ├── schema.rs                  # Migrations: v4 (crawl_sessions, queue), v5 (html_body), v6 (screenshot_png)
-    └── crawl_repo.rs              # CrawlRepo: project CRUD + session/queue persistence + batch writes + save_screenshot + get_screenshot + get_page_html + get_semantic_issue_counts
+    └── crawl_repo.rs              # CrawlRepo: filters, cache, sessions, screenshots, html_body
 ```
 
 ### Frontend (src/)
@@ -298,15 +337,27 @@ src-tauri/src/
 ```
 src/
 ├── lib/
+│   ├── tokens.css                 # Light/dark/system themes, semantic CSS variables
+│   ├── i18n-issues.ts             # Issue name/message translation + param parsing (incl. context_nesting)
 │   └── components/
-│       ├── ResultsTable.svelte        # Non-virtualized table with ↗ detail icon
-│       ├── PageDetailPanel.svelte     # Full-page overlay: header, tabs (Overview | Page Preview | Links)
-│       ├── SemanticDashboard.svelte   # Severity summary bar, emoji icons, grouped counts
+│       ├── ResultsTable.svelte        # Virtualized table (Virtualizer class)
+│       ├── FilterBar.svelte           # Filters: status chips, severity chips, depth slider
+│       ├── PageDetailPanel.svelte     # Full-page overlay: tabs (Overview | Page Preview | Links)
+│       ├── SemanticDashboard.svelte   # Severity summary bar
+│       ├── SettingsModal.svelte       # Theme selector (System/Light/Dark)
+│       ├── Toast.svelte               # Toast notifications
 │       └── HtmlTree.svelte            # iframe preview with CSS highlight injection
 ├── routes/
-│   ├── +layout.svelte                 # Root layout
+│   ├── +layout.svelte                 # Root layout + theme application
 │   ├── +layout.ts                     # Static adapter config (ssr = false)
-│   └── +page.svelte                   # Main UI: sidebar, config, resume dialog, pagination, tab system, semanticFilter, detailPageId
+│   └── +page.svelte                   # Main UI: sidebar, config, resume, filters, pagination, detailPageId
+```
+
+### Tooling
+
+```
+tools/generate_nesting_table.js   # Regenerates nesting_table.rs from src-tauri/data/ JSONs (node tools/generate_nesting_table.js)
+.github/workflows/android.yml     # Android APK build + NDK toolchain
 ```
 
 ---
@@ -316,6 +367,7 @@ src/
 ```
 AppState
 ├── db: Mutex<Connection>              # SQLite connection
+├── results_cache: ResultsCacheArc     # LRU results cache (Mutex<LruCache<ResultsCacheKey, ...>>)
 └── crawls: Arc<RwLock<HashMap<String, CrawlState>>>
     └── CrawlState
         ├── cancellation: CancellationToken
@@ -323,7 +375,7 @@ AppState
 
 CrawlEngine
 ├── frontier: Frontier                  # Domain-rotating priority queue
-├── visited: LruCache<String, ()>       # 500K capacity dedup
+├── visited: LruCache<String, ()>       # 500K capacity dedup (normalized URLs)
 ├── robots: RobotsChecker               # robots.txt cache per domain
 └── db_writer: DbWriter (via mpsc)      # Batch writes + streaming events
 
@@ -345,6 +397,9 @@ Persistent State (DB)
 - Asset inlining: CSS/images converted to data URIs for self-contained page preview
 - Screenshots via CLI Chrome headless (`--headless --screenshot`)
 - `SemanticIssue` carries optional element context (xpath, css_selector, snippet) for precise issue location
+- Nesting validation uses an embedded static matrix (`nesting_table.rs`) — zero network dependency, O(1) lookup
+- URL dedup normalizes before visiting (fragments, case, default ports, trailing slash, sorted query params)
+- Results table is virtualized — renders only visible rows regardless of result count
 
 ---
 
@@ -352,8 +407,8 @@ Persistent State (DB)
 
 ```bash
 cargo check:     ✅ Compiles successfully
-cargo clippy:    ✅ No warnings
-cargo test:      ✅ 18/18 tests pass
+cargo clippy:    ✅ No warnings (clippy -- -D warnings)
+cargo test:      ✅ 30/30 tests pass (parser 9, dedup 8, nesting_table 4, frontier 6, robots 3)
 pnpm build:      ✅ Frontend builds to /build
 ```
 
@@ -373,7 +428,13 @@ pnpm build:      ✅ Frontend builds to /build
 - `chromiumoxide` removed — screenshots use CLI Chrome instead (simpler, no Chromium download)
 - `tempfile` crate used for screenshot temp files
 - Asset inlining fetches in batches of 6, 10s timeout, 512KB max per resource
+- `@tanstack/virtual-core` exports the `Virtualizer` class (not `createVirtualizer`)
+- caninclude data JSONs (in `src-tauri/data/`) are reference-only; regenerate the matrix with `node tools/generate_nesting_table.js`
+- Nesting severity mapping: `Cant` → `invalid_nesting` (error), `Doubt` → `context_nesting` (info)
+- `Box<dyn ToSql>` cannot be cloned — dynamic filter params built as separate count/query `Vec`s
+- `HttpFetcher::new(user_agent: &str, timeout_ms: u64, custom_headers: Vec<(String, String)>)` — all call sites pass config values
+- Build requires Node 22 (`.nvmrc`): `source ~/.nvm/nvm.sh && nvm use 22 && pnpm build`
 
 ---
 
-*Last updated: Phase 4.3 (Enhanced Semantic Issue Context) completed*
+*Last updated: Sprints 1-3 + caninclude replacement completed, Android CI workflow added, 30 tests, i18n for context_nesting*

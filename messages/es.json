@@ -166,7 +166,9 @@
   "issue.missing_aria.name": "Falta ARIA",
   "issue.missing_aria.message": "{count} control(es) de formulario sin aria-label o aria-labelledby",
   "issue.invalid_nesting.name": "Anidamiento Inválido",
-  "issue.invalid_nesting.message": "<{child}> no puede ser hijo de <{parent}> (padre solo de frases)",
+  "issue.invalid_nesting.message": "<{child}> no puede ser hijo de <{parent}>",
+  "issue.context_nesting.name": "Anidamiento Dependiente del Contexto",
+  "issue.context_nesting.message": "El anidamiento de <{child}> dentro de <{parent}> depende del contexto",
 
   "severity.error": "Error",
   "severity.warning": "Advertencia",
