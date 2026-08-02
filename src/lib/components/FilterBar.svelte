@@ -20,11 +20,19 @@
     statusCodes: number[];
     severities: string[];
     depth: number | undefined;
+    missingTitle: boolean;
+    duplicateTitle: boolean;
+    noindexOnly: boolean;
+    is404: boolean;
   };
 
   let selectedStatuses = $state<number[]>([]);
   let selectedSeverities = $state<string[]>([]);
   let maxDepth = $state<number | undefined>(undefined);
+  let missingTitle = $state(false);
+  let duplicateTitle = $state(false);
+  let noindexOnly = $state(false);
+  let is404 = $state(false);
 
   const AVAILABLE_STATUSES = $derived.by(() => {
     let statusCount: Record<number, number> = {};
@@ -58,7 +66,11 @@
   const activeFilterCount = $derived(
     selectedStatuses.length +
     selectedSeverities.length +
-    (maxDepth !== undefined ? 1 : 0)
+    (maxDepth !== undefined ? 1 : 0) +
+    (missingTitle ? 1 : 0) +
+    (duplicateTitle ? 1 : 0) +
+    (noindexOnly ? 1 : 0) +
+    (is404 ? 1 : 0)
   );
 
   const sliderPct = $derived(((maxDepth ?? 10) / 10) * 100);
@@ -91,6 +103,10 @@
     selectedStatuses = [];
     selectedSeverities = [];
     maxDepth = undefined;
+    missingTitle = false;
+    duplicateTitle = false;
+    noindexOnly = false;
+    is404 = false;
     emitFilter();
   }
 
@@ -99,8 +115,51 @@
       statusCodes: selectedStatuses,
       severities: selectedSeverities,
       depth: maxDepth,
+      missingTitle,
+      duplicateTitle,
+      noindexOnly,
+      is404,
     });
   }
+
+  const seoChips = $derived([
+    {
+      key: 'missingTitle',
+      label: m["filter.missing_title"](),
+      state: missingTitle,
+      toggle: () => {
+        missingTitle = !missingTitle;
+        emitFilter();
+      },
+    },
+    {
+      key: 'duplicateTitle',
+      label: m["filter.duplicate_title"](),
+      state: duplicateTitle,
+      toggle: () => {
+        duplicateTitle = !duplicateTitle;
+        emitFilter();
+      },
+    },
+    {
+      key: 'noindexOnly',
+      label: m["filter.noindex"](),
+      state: noindexOnly,
+      toggle: () => {
+        noindexOnly = !noindexOnly;
+        emitFilter();
+      },
+    },
+    {
+      key: 'is404',
+      label: m["filter.is_404"](),
+      state: is404,
+      toggle: () => {
+        is404 = !is404;
+        emitFilter();
+      },
+    },
+  ]);
 </script>
 
 <div class="filter-bar">
@@ -187,6 +246,27 @@
               style="background: linear-gradient(to right, var(--accent) {sliderPct}%, var(--border) {sliderPct}%)"
             />
             <span class="depth-value">{maxDepth !== undefined ? maxDepth : '—'}</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.seo"]()}</div>
+          <div class="flex flex-wrap gap-1.5">
+            {#each seoChips as chip}
+              <Button
+                variant="ghost"
+                size="sm"
+                class={cn(
+                  'gap-1.5 rounded-full px-3',
+                  chip.state
+                    ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/80'
+                    : 'border-transparent bg-muted/70 text-muted-foreground hover:bg-muted hover:text-muted-foreground'
+                )}
+                onclick={chip.toggle}
+              >
+                {chip.label}
+              </Button>
+            {/each}
           </div>
         </div>
 

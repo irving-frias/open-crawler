@@ -4,7 +4,9 @@ use quick_xml::Reader;
 use std::io::Read;
 use tracing::{info, warn};
 
+use crate::crawler::client_with_proxy;
 use crate::error::AppError;
+use crate::models::ProxyConfig;
 
 #[derive(Debug, Clone)]
 pub struct SitemapUrl {
@@ -25,8 +27,8 @@ pub struct SitemapParser {
 }
 
 impl SitemapParser {
-    pub fn new(user_agent: &str) -> Result<Self, AppError> {
-        let client = reqwest::Client::builder()
+    pub fn new(user_agent: &str, proxy: Option<&ProxyConfig>) -> Result<Self, AppError> {
+        let client = client_with_proxy(proxy)?
             .user_agent(user_agent)
             .timeout(std::time::Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::limited(5))

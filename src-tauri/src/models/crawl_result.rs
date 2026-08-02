@@ -68,3 +68,12 @@ pub struct IssueCount {
     pub severity: String,
     pub count: u32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteTreeNode {
+    pub url: String,
+    pub title: Option<String>,
+    pub status_code: Option<u16>,
+    pub depth: u32,
+    pub has_children: bool,
+}

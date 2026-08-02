@@ -3,6 +3,16 @@ use serde::{Deserialize, Serialize};
 pub const IMPLICIT_USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 OpenCrawler/1.0";
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProxyConfig {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlConfig {
     pub id: Option<String>,
@@ -36,6 +46,8 @@ pub struct CrawlConfig {
     pub custom_headers: Vec<(String, String)>,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
+    #[serde(default)]
+    pub proxy: Option<ProxyConfig>,
 }
 
 fn default_max_depth() -> u32 {
@@ -86,6 +98,7 @@ impl Default for CrawlConfig {
             exclude_patterns: Vec::new(),
             custom_headers: Vec::new(),
             request_timeout_ms: default_request_timeout_ms(),
+            proxy: None,
         }
     }
 }

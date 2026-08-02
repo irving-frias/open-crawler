@@ -20,6 +20,7 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
   import * as Popover from '$lib/components/ui/popover/index.js';
 
   let PageDetailPanel = $state<typeof import('$lib/components/PageDetailPanel.svelte').default | null>(null);
+  let SiteTree = $state<typeof import('$lib/components/SiteTree.svelte').default | null>(null);
   let SemanticDashboard = $state<typeof import('$lib/components/SemanticDashboard.svelte').default | null>(null);
   let SettingsModal = $state<typeof import('$lib/components/SettingsModal.svelte').default | null>(null);
 
@@ -32,6 +33,9 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
   $effect(() => {
     if (activeTab === 'dashboard' && !SemanticDashboard) {
       import('$lib/components/SemanticDashboard.svelte').then(m => SemanticDashboard = m.default);
+    }
+    if (activeTab === 'site_tree' && !SiteTree) {
+      import('$lib/components/SiteTree.svelte').then(m => SiteTree = m.default);
     }
   });
 
@@ -56,6 +60,9 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
   let checkSitemap = $state(true);
   let checkSemantics = $state(true);
   let maxCrawlTime = $state(3600);
+  let proxyUrl = $state('');
+  let proxyUser = $state('');
+  let proxyPass = $state('');
 
   let seedUrlsByProject = $state<Record<string, string>>({});
 
@@ -71,6 +78,10 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
     statusCodes: [],
     severities: [],
     depth: undefined,
+    missingTitle: false,
+    duplicateTitle: false,
+    noindexOnly: false,
+    is404: false,
   });
 
   // Pagination
@@ -108,7 +119,7 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
   let expandedIssueUrl = $state('');
 
   // Tab + filter state
-  let activeTab = $state<'results' | 'dashboard'>('results');
+  let activeTab = $state<'results' | 'dashboard' | 'site_tree'>('results');
   let semanticFilter = $state('');
 
   // Detail panel
@@ -385,7 +396,12 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
 
     const un5 = await listen<any>('sitemap-discovered', (event) => {
       const p = event.payload;
-      sitemapInfo = `Sitemap: ${p.urls_found} URLs from ${p.sitemaps_checked} sitemaps`;
+      sitemapInfo = p.fallback
+        ? m['sitemap.fallback']()
+        : m['sitemap.found']({
+            count: String(p.urls_found),
+            sitemaps: String(p.sitemaps_checked),
+          });
     });
     unlistenFns.push(un5);
   }
@@ -421,6 +437,13 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
           check_sitemap: checkSitemap,
           check_semantics: checkSemantics,
           max_crawl_time_secs: maxCrawlTime,
+          proxy: proxyUrl.trim()
+            ? {
+                url: proxyUrl.trim(),
+                username: proxyUser.trim() || null,
+                password: proxyPass || null,
+              }
+            : null,
         },
       });
     } catch (e) {
@@ -463,6 +486,10 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
         statusFilter: activeFilters.statusCodes.length > 0 ? activeFilters.statusCodes : null,
         severityFilter: activeFilters.severities.length > 0 ? activeFilters.severities : null,
         depthFilter: activeFilters.depth,
+        missingTitle: activeFilters.missingTitle || null,
+        duplicateTitle: activeFilters.duplicateTitle || null,
+        noindexOnly: activeFilters.noindexOnly || null,
+        is404: activeFilters.is404 || null,
       });
       results = data;
     } catch (e) {
@@ -521,21 +548,27 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
   async function exportFull(format: 'xlsx' | 'csv') {
     if (!selectedProjectId || exportProgress.running) return;
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-
+      const mobile = await invoke<boolean>('is_mobile');
       const ext = format === 'xlsx' ? 'xlsx' : 'csv';
-      let path = await save({
-        defaultPath: `crawl-results-${selectedProjectId}.${ext}`,
-        filters: [
-          {
-            name: format === 'xlsx' ? 'Excel' : 'CSV',
-            extensions: [ext],
-          },
-        ],
-      });
-      if (!path) return;
+      const defaultName = `crawl-results-${selectedProjectId}.${ext}`;
 
-      if (!path.toLowerCase().endsWith(`.${ext}`)) path += `.${ext}`;
+      let path: string;
+      if (mobile) {
+        path = defaultName;
+      } else {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const picked = await save({
+          defaultPath: defaultName,
+          filters: [
+            {
+              name: format === 'xlsx' ? 'Excel' : 'CSV',
+              extensions: [ext],
+            },
+          ],
+        });
+        if (!picked) return;
+        path = picked.toLowerCase().endsWith(`.${ext}`) ? picked : `${picked}.${ext}`;
+      }
 
       exportProgress = { running: true, percent: 0, stage: '' };
       const unlisten = await listen<{ stage: string; percent: number }>('export-progress', (event) => {
@@ -553,7 +586,7 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
           format,
         });
         exportProgress = { running: false, percent: 100, stage: '' };
-        toast.success(`Exported to ${path.split(/[/\\]/).pop()}`);
+        toast.success(mobile ? m['export.shared']() : `Exported to ${path.split(/[/\\]/).pop()}`);
         if (notificationsEnabled) {
           notify(m['notifications.export_complete'](), m['notifications.export_complete_desc']());
         }
@@ -751,6 +784,29 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
           </div>
         </div>
 
+        <div class="form-group">
+          <Label for="proxyUrl">{m["config.proxy_url"]()}</Label>
+          <Input
+            id="proxyUrl"
+            type="text"
+            bind:value={proxyUrl}
+            placeholder={m["config.proxy_url_placeholder"]()}
+            disabled={status === 'running'}
+          />
+        </div>
+        {#if proxyUrl.trim()}
+          <div class="form-row">
+            <div class="form-group">
+              <Label for="proxyUser">{m["config.proxy_user"]()}</Label>
+              <Input id="proxyUser" type="text" bind:value={proxyUser} autocomplete="off" disabled={status === 'running'} />
+            </div>
+            <div class="form-group">
+              <Label for="proxyPass">{m["config.proxy_pass"]()}</Label>
+              <Input id="proxyPass" type="password" bind:value={proxyPass} autocomplete="off" disabled={status === 'running'} />
+            </div>
+          </div>
+        {/if}
+
         <div class="form-group checkboxes">
           <label class="checkbox-label">
             <Checkbox bind:checked={respectRobots} disabled={status === 'running'} />
@@ -866,6 +922,9 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
               </Tabs.Trigger>
               <Tabs.Trigger value="dashboard">
                 {m["tabs.issues_dashboard"]()}
+              </Tabs.Trigger>
+              <Tabs.Trigger value="site_tree">
+                {m["tabs.site_tree"]()}
               </Tabs.Trigger>
             </Tabs.List>
           </Tabs.Root>
@@ -999,13 +1058,17 @@ import { Settings, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight, ChevronsL
                 </div>
               {/if}
             {/if}
-          {:else}
+          {:else if activeTab === 'dashboard'}
             {#if SemanticDashboard}
               <SemanticDashboard
                 projectId={selectedProjectId}
                 onFilterIssueType={handleFilterIssueType}
                 bind:activeFilter={semanticFilter}
               />
+            {/if}
+          {:else if activeTab === 'site_tree'}
+            {#if SiteTree}
+              <SiteTree projectId={selectedProjectId} />
             {/if}
           {/if}
         </section>

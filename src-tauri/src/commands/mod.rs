@@ -1,6 +1,7 @@
+use std::path::Path;
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
@@ -14,6 +15,11 @@ use crate::models::{
 use crate::{AppState, CrawlState};
 
 // ==================== PROJECT COMMANDS ====================
+
+#[tauri::command]
+pub fn is_mobile() -> bool {
+    cfg!(mobile)
+}
 
 #[tauri::command]
 pub async fn create_project(
@@ -354,7 +360,7 @@ pub async fn recrawl_page(
 
     // Fetch the page
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher = crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new())?;
+    let fetcher = crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new(), None)?;
     let response = fetcher.fetch(&url).await?;
 
     // Parse SEO data
@@ -507,6 +513,10 @@ pub async fn get_results(
     severity_filter: Option<Vec<String>>,
     domain_filter: Option<String>,
     depth_filter: Option<u32>,
+    missing_title: Option<bool>,
+    duplicate_title: Option<bool>,
+    noindex_only: Option<bool>,
+    is_404: Option<bool>,
 ) -> Result<PaginatedResults, AppError> {
     let state = state.inner().clone();
     let state_read = state.read().await;
@@ -523,6 +533,10 @@ pub async fn get_results(
         severity_filter.as_deref(),
         domain_filter.as_deref(),
         depth_filter,
+        missing_title.unwrap_or(false),
+        duplicate_title.unwrap_or(false),
+        noindex_only.unwrap_or(false),
+        is_404.unwrap_or(false),
     )?;
 
     Ok(PaginatedResults {
@@ -531,6 +545,23 @@ pub async fn get_results(
         page,
         page_size,
     })
+}
+
+// ==================== SITE TREE COMMANDS ====================
+
+#[tauri::command]
+pub async fn get_site_tree(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    url: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<crate::models::SiteTreeNode>, AppError> {
+    let state = state.inner().clone();
+    let state_read = state.read().await;
+    let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
+
+    let repo = CrawlRepo::new(&db, None);
+    repo.get_site_tree(&project_id, url.as_deref(), limit.unwrap_or(100))
 }
 
 // ==================== SETTINGS COMMANDS ====================
@@ -612,6 +643,8 @@ pub async fn export_full(
         );
     }
 
+    let (write_path, share_after) = export_target(&app, &file_path, &format)?;
+
     if format == "xlsx" {
         let total_links = repo.count_links(&project_id)?;
         let total_issues = repo.count_issues(&project_id)?;
@@ -619,17 +652,83 @@ pub async fn export_full(
             &repo,
             &app,
             &project_id,
-            &file_path,
+            &write_path,
             total_pages,
             total_links,
             total_issues,
         )?;
     } else {
-        export_csv_single(&repo, &app, &project_id, &file_path, total_pages)?;
+        export_csv_single(&repo, &app, &project_id, &write_path, total_pages)?;
+    }
+
+    if share_after {
+        share_export(&app, &write_path, &format);
     }
 
     Ok(())
 }
+
+/// Resolves the destination file for an export.
+///
+/// On desktop the user picks a path via the save dialog and the file is
+/// written straight to it. On mobile that dialog returns a `content://` URI
+/// that `std::fs` cannot open (os error 2 / ENOENT), so the file is written to
+/// the app data dir instead and the native share sheet is opened afterwards.
+fn export_target(
+    app: &AppHandle,
+    file_path: &str,
+    format: &str,
+) -> Result<(String, bool), AppError> {
+    if !cfg!(mobile) {
+        return Ok((file_path.to_string(), false));
+    }
+
+    let ext = if format == "xlsx" { "xlsx" } else { "csv" };
+    let file_name = Path::new(file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty() && !n.starts_with("content:"))
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("crawl-results.{ext}"));
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Crawl(e.to_string()))?
+        .join("exports");
+    std::fs::create_dir_all(&dir)?;
+    let dest = dir.join(&file_name);
+
+    Ok((dest.to_string_lossy().into_owned(), true))
+}
+
+#[cfg(mobile)]
+fn share_export(app: &AppHandle, path: &str, format: &str) {
+    use tauri_plugin_share::ShareExt;
+
+    let mime = if format == "xlsx" {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    } else {
+        "text/csv"
+    };
+
+    let app = app.clone();
+    let path = path.to_string();
+    let mime = mime.to_string();
+
+    // The Android share plugin never resolves its invoke after launching the
+    // share sheet, so run it on a detached thread to avoid blocking.
+    std::thread::spawn(move || {
+        let _ = app.share_file().share_file(tauri_plugin_share::ShareRequest {
+            path: Some(path),
+            mime: Some(mime),
+            group: None,
+        });
+    });
+}
+
+#[cfg(not(mobile))]
+fn share_export(_app: &AppHandle, _path: &str, _format: &str) {}
 
 fn export_csv_single(
     repo: &CrawlRepo,
@@ -736,7 +835,7 @@ fn sheet_name(base: &str, index: usize, total: usize) -> String {
 }
 
 fn sheet_count(rows: u32) -> usize {
-    ((rows as u64 + MAX_ROWS_PER_SHEET as u64 - 1) / MAX_ROWS_PER_SHEET as u64) as usize
+    rows.div_ceil(MAX_ROWS_PER_SHEET) as usize
 }
 
 fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::models::CrawlResult, alt: &rust_xlsxwriter::Format, wrap: &rust_xlsxwriter::Format) -> Result<(), AppError> {
@@ -757,6 +856,7 @@ fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::mode
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_issue_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,

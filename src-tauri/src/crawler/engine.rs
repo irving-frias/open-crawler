@@ -134,13 +134,28 @@ impl CrawlEngine {
         }
         info!("Allowed origins: {:?}", self.allowed_origins);
 
-        // Create fetcher with implicit user agent
-        let fetcher = HttpFetcher::new(
-            config.user_agent(),
-            config.request_timeout_ms,
-            config.custom_headers.clone(),
-        )?;
-        self.fetcher = Some(Arc::new(Box::new(fetcher)));
+        // Create fetcher with implicit user agent. When JS rendering is
+        // enabled, fetch via HTTP for status/headers and re-render through
+        // the headless browser pool.
+        let fetcher: Arc<Box<dyn HtmlFetcher>> = if config.render_js {
+            let js_fetcher = crate::crawler::browser::JsFetcher::new(
+                config.user_agent(),
+                config.request_timeout_ms,
+                config.custom_headers.clone(),
+                config.proxy.as_ref(),
+            )
+            .await?;
+            Arc::new(Box::new(js_fetcher))
+        } else {
+            let http_fetcher = HttpFetcher::new(
+                config.user_agent(),
+                config.request_timeout_ms,
+                config.custom_headers.clone(),
+                config.proxy.as_ref(),
+            )?;
+            Arc::new(Box::new(http_fetcher))
+        };
+        self.fetcher = Some(fetcher);
 
         // Initialize frontier
         self.frontier = Some(Frontier::new(config.max_depth, 100_000));
@@ -163,16 +178,16 @@ impl CrawlEngine {
                 );
                 session_id = interrupted.id.clone();
 
+                // Load visited URLs from DB
+                let visited_urls = repo.get_visited_urls_for_project(&project_id)?;
+                for url in &visited_urls {
+                    self.mark_visited(url.clone());
+                }
+
                 // Load queue from DB
                 let queue_entries = repo.load_queue(&session_id)?;
                 let frontier = self.frontier.as_mut().unwrap();
                 frontier.restore(queue_entries);
-
-                // Load visited URLs from DB
-                let visited_urls = repo.get_visited_urls_for_project(&project_id)?;
-                for url in &visited_urls {
-                    self.visited.put(url.clone(), ());
-                }
 
                 is_resume = true;
                 info!(
@@ -196,7 +211,7 @@ impl CrawlEngine {
                     seed.clone()
                 };
                 info!("Adding seed URL: {}", normalized);
-                self.visited.put(normalized.clone(), ());
+                self.mark_visited(normalized.clone());
                 if let Some(ref mut frontier) = self.frontier {
                     frontier.push(normalized, 0);
                 }
@@ -205,7 +220,7 @@ impl CrawlEngine {
 
         // Sitemap discovery
         if config.check_sitemap {
-            let sitemap_parser = SitemapParser::new(config.user_agent())?;
+            let sitemap_parser = SitemapParser::new(config.user_agent(), config.proxy.as_ref())?;
             let origins_clone = self.allowed_origins.clone();
             for origin in &origins_clone {
                 info!("Discovering sitemaps for: {}", origin);
@@ -224,12 +239,17 @@ impl CrawlEngine {
                         }
                     }
                 }
+                let fallback = result.urls.is_empty();
+                if fallback {
+                    info!("No sitemap for {}, falling back to link discovery", origin);
+                }
                 let _ = app.emit(
                     "sitemap-discovered",
                     serde_json::json!({
                         "origin": origin,
                         "urls_found": result.urls.len(),
                         "sitemaps_checked": result.sitemaps_checked.len(),
+                        "fallback": fallback,
                     }),
                 );
             }
@@ -268,7 +288,7 @@ impl CrawlEngine {
         });
 
         // Create RobotsChecker
-        let mut robots_checker = RobotsChecker::new(config.user_agent())?;
+        let mut robots_checker = RobotsChecker::new(config.user_agent(), config.proxy.as_ref())?;
 
         info!("Frontier has {} URLs to process", {
             self.frontier.as_ref().map(|f| f.len()).unwrap_or(0)
@@ -284,12 +304,21 @@ impl CrawlEngine {
         let frontier_for_recv = Arc::new(tokio::sync::RwLock::new(Frontier::new(config.max_depth, 100_000)));
         let frontier_recv = frontier_for_recv.clone();
         let visited_for_recv = Arc::new(tokio::sync::RwLock::new(LruCache::new(NonZeroUsize::new(LRU_CAPACITY).unwrap())));
+        // Seed the discovery visited set with already-queued/visited URLs so that
+        // links pointing back to seeds or sitemap URLs are not crawled twice.
+        {
+            let mut visited = visited_for_recv.write().await;
+            for (url, _) in self.visited.iter() {
+                visited.put(url.clone(), ());
+            }
+        }
         let visited_recv_clone = visited_for_recv.clone();
         let recv_handle = tokio::spawn(async move {
             while let Some((new_url, depth)) = url_rx.recv().await {
+                let key = Deduplicator::normalize(&new_url);
                 let mut visited = visited_recv_clone.write().await;
-                if !visited.contains(&new_url) {
-                    visited.put(new_url.clone(), ());
+                if !visited.contains(&key) {
+                    visited.put(key, ());
                     frontier_recv.write().await.push(new_url, depth);
                 }
             }
@@ -692,7 +721,7 @@ impl CrawlEngine {
         let mut new_urls = 0u32;
         let visited_read = visited.read().await;
         for outgoing_url in &outgoing_urls {
-            if visited_read.contains(outgoing_url) {
+            if visited_read.contains(&Deduplicator::normalize(outgoing_url)) {
                 continue;
             }
             if !outgoing_url.starts_with("http://") && !outgoing_url.starts_with("https://") {
@@ -770,4 +799,194 @@ fn is_static_asset(url: &str) -> bool {
     //  /download/12345 is fine — it might be a page)
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Spawns a tiny local site WITHOUT robots.txt or sitemap.xml that exposes
+    /// two internal links (/a, /b) and one external link. Returns the origin.
+    async fn spawn_no_sitemap_site() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let origin = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = match listener.accept().await {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let req = String::from_utf8_lossy(&buf);
+                let path = req.split_whitespace().nth(1).unwrap_or("/");
+
+                let (status, content_type, body) = match path {
+                    "/" => (
+                        "200 OK",
+                        "text/html; charset=utf-8",
+                        r#"<!DOCTYPE html><html lang="en"><head><title>Home</title></head><body><h1>Home</h1><a href="/a">Page A</a><a href="/b">Page B</a><a href="https://external.example/">External</a></body></html>"#,
+                    ),
+                    "/a" => (
+                        "200 OK",
+                        "text/html; charset=utf-8",
+                        r#"<!DOCTYPE html><html lang="en"><head><title>A</title></head><body><h1>A</h1></body></html>"#,
+                    ),
+                    "/b" => (
+                        "200 OK",
+                        "text/html; charset=utf-8",
+                        r#"<!DOCTYPE html><html lang="en"><head><title>B</title></head><body><h1>B</h1></body></html>"#,
+                    ),
+                    _ => (
+                        "404 Not Found",
+                        "text/html; charset=utf-8",
+                        "<html><body>404</body></html>",
+                    ),
+                };
+
+                let resp = format!(
+                    "HTTP/1.1 {}\r\nContent-Length: {}\r\nContent-Type: {}\r\nConnection: close\r\n\r\n{}",
+                    status,
+                    body.len(),
+                    content_type,
+                    body
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        origin
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sitemap_discovery_empty_without_sitemap() {
+        let origin = spawn_no_sitemap_site().await;
+        let parser = SitemapParser::new("OpenCrawler/test", None).unwrap();
+        let result = parser.discover(&origin).await;
+        assert!(
+            result.urls.is_empty(),
+            "expected no sitemap URLs, got {:?}",
+            result.urls
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn link_discovery_without_sitemap() {
+        let origin = spawn_no_sitemap_site().await;
+        let seed = format!("{}/", origin);
+
+        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], None).unwrap();
+        let parser = SeoParser::new();
+        let visited =
+            Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let (url_tx, mut url_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        // Engine builds allowed origins without the port (see CrawlEngine::start).
+        let allowed = vec!["http://127.0.0.1".to_string()];
+
+        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            url_tx,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(pages, 1);
+        assert_eq!(new_urls, 2, "should discover the 2 internal links");
+
+        let mut discovered = Vec::new();
+        while let Ok((u, d)) = url_rx.try_recv() {
+            discovered.push((u, d));
+        }
+        assert_eq!(discovered.len(), 2);
+        assert!(
+            discovered.iter().any(|(u, _)| u.ends_with("/a")),
+            "missing /a in {:?}",
+            discovered
+        );
+        assert!(
+            discovered.iter().any(|(u, _)| u.ends_with("/b")),
+            "missing /b in {:?}",
+            discovered
+        );
+        assert!(
+            !discovered.iter().any(|(u, _)| u.contains("external")),
+            "external link should be filtered by same_origin_only"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn link_discovery_skips_visited_urls() {
+        let origin = spawn_no_sitemap_site().await;
+        let seed = format!("{}/", origin);
+
+        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], None).unwrap();
+        let parser = SeoParser::new();
+        // Simulate the discovery visited set pre-seeded with the seed URL and a
+        // sitemap URL (/a), exactly as CrawlEngine::start now does.
+        let visited =
+            Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        visited
+            .write()
+            .await
+            .put(Deduplicator::normalize(&seed), ());
+        visited
+            .write()
+            .await
+            .put(Deduplicator::normalize(&format!("{}/a", origin)), ());
+        let (url_tx, mut url_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+
+        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            url_tx,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(pages, 1);
+        assert_eq!(
+            new_urls, 1,
+            "should skip the already-visited /a and only discover /b"
+        );
+
+        let mut discovered = Vec::new();
+        while let Ok((u, d)) = url_rx.try_recv() {
+            discovered.push((u, d));
+        }
+        assert_eq!(discovered.len(), 1);
+        assert!(
+            discovered[0].0.ends_with("/b"),
+            "got {:?}",
+            discovered
+        );
+    }
 }

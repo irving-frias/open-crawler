@@ -281,6 +281,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         )?;
     }
 
+    // Migration v9: index on (project_id, title) for the duplicate-title filter
+    let idx_pages_title: bool = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_pages_title'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .is_ok();
+
+    if !idx_pages_title {
+        info!("Creating title index for duplicate-title detection");
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_pages_title ON crawled_pages(project_id, title)",
+        )?;
+    }
+
     // Ensure default project exists
     conn.execute(
         "INSERT OR IGNORE INTO projects (id, name, created_at, updated_at)

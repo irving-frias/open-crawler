@@ -2,12 +2,10 @@
   "app.title": "Open Crawler",
   "app.select_project": "Select or create a project",
   "app.select_project_hint": "Choose a project from the sidebar or create a new one to start crawling.",
-
   "sidebar.new_project_placeholder": "New project name...",
   "sidebar.no_projects": "No projects yet. Create one above.",
   "sidebar.rename": "Rename",
   "sidebar.delete": "Delete",
-
   "config.title": "Crawl Configuration",
   "config.seed_url": "Seed URL",
   "config.seed_url_placeholder": "https://example.com",
@@ -21,23 +19,24 @@
   "config.resume": "Resume / Start",
   "config.stop": "Stop",
   "config.refresh": "Refresh",
-
+  "config.proxy_url": "Proxy URL",
+  "config.proxy_url_placeholder": "http://proxy.example.com:8080",
+  "config.proxy_user": "Proxy Username",
+  "config.proxy_pass": "Proxy Password",
   "progress.title": "Crawl Progress",
   "progress.crawled": "Crawled: {count}",
   "progress.queued": "Queued: {count}",
   "progress.errors": "Errors: {count}",
   "progress.streamed": "{count} pages analyzed in this session",
-
   "resume.title": "Resume Previous Crawl?",
   "resume.found": "Found interrupted crawl with {pages} pages crawled, {urls} URLs remaining, elapsed {time}",
   "resume.resume_btn": "Resume Crawl",
   "resume.fresh_btn": "Start Fresh",
   "resume.cancel": "Cancel",
   "resume.hint": "Interrupted crawl: {pages} pages done, {urls} URLs remaining",
-
   "tabs.results": "Results ({count})",
   "tabs.issues_dashboard": "Issues Dashboard",
-
+  "tabs.site_tree": "Site Tree",
   "results.showing": "Showing {from}-{to} of {total}",
   "results.no_results": "No results yet.",
   "results.search_placeholder": "Search URL, title, or H1...",
@@ -50,7 +49,6 @@
   "results.page_size_show": "Show:",
   "results.page_of": "Page {current} of {total}",
   "results.view_details": "View page details",
-
   "results.col.url": "URL",
   "results.col.status": "Status",
   "results.col.title": "Title",
@@ -60,7 +58,6 @@
   "results.col.hreflang": "Hreflang",
   "results.col.issues": "Issues",
   "results.ok": "OK",
-
   "filter.status": "Status Code",
   "filter.severity": "Severity",
   "filter.filters": "Filters",
@@ -76,14 +73,22 @@
   "filter.warning": "Warning",
   "filter.info": "Info",
   "filter.no_options": "No options available",
-
+  "filter.missing_title": "Missing title",
+  "filter.duplicate_title": "Duplicate title",
+  "filter.noindex": "Noindex",
+  "filter.is_404": "404 errors",
+  "filter.seo": "SEO",
+  "tree.title": "Site Tree",
+  "tree.empty": "No pages found. Run a crawl first.",
+  "tree.error": "Failed to load site tree",
+  "tree.expand": "Expand",
+  "tree.collapse": "Collapse",
   "detail.back": "← Results",
   "detail.close": "Close",
   "detail.loading": "Loading page details...",
   "detail.overview": "Overview",
   "detail.links": "Links ({count})",
   "detail.no_links": "No outgoing links found",
-
   "detail.seo_meta": "SEO Meta",
   "detail.title": "Title",
   "detail.no_title": "No title",
@@ -97,24 +102,19 @@
   "detail.unknown": "Unknown",
   "detail.missing": "(missing)",
   "detail.none": "(none)",
-
   "detail.crawl_info": "Crawl Info",
   "detail.status": "Status",
   "detail.depth": "Depth",
   "detail.size": "Size",
   "detail.load_time": "Load Time",
   "detail.discovered_from": "Discovered from",
-
   "detail.hreflang": "Hreflang",
-
   "detail.semantic_issues": "Semantic Issues ({count})",
   "detail.copy_xpath": "Copy XPath",
   "detail.copied": "Copied!",
-
   "detail.links_type": "Type",
   "detail.links_url": "URL",
   "detail.links_anchor": "Anchor",
-
   "dashboard.title": "Issues Dashboard",
   "dashboard.loading": "Loading...",
   "dashboard.no_issues": "No issues found. Your pages look clean!",
@@ -123,16 +123,13 @@
   "dashboard.warnings": "{count} Warnings",
   "dashboard.info": "{count} Info",
   "dashboard.clear_filter": "Clear filter: {type}",
-
   "dialog.delete_title": "Delete Project",
   "dialog.delete_confirm": "Delete this project and all its crawl data?",
-
   "language.label": "Language",
   "language.en": "English",
   "language.es": "Español",
-
   "sitemap.found": "Sitemap: {count} URLs from {sitemaps} sitemaps",
-
+  "sitemap.fallback": "No sitemap found - discovering links from the seed URL",
   "settings.title": "Settings",
   "settings.page_size": "Results per page",
   "settings.default_config": "Default Crawl Config",
@@ -146,7 +143,7 @@
   "export.stage.pages": "Writing pages…",
   "export.stage.issues": "Writing issues…",
   "export.stage.links": "Writing links…",
-
+  "export.shared": "Export ready — choose where to save it in the share sheet",
   "issue.missing_html_lang.name": "Missing HTML Lang",
   "issue.missing_html_lang.message": "Missing lang attribute on <html> element",
   "issue.missing_title.name": "Missing Title",
@@ -183,16 +180,13 @@
   "issue.invalid_nesting.message": "<{child}> cannot be a child of <{parent}>",
   "issue.context_nesting.name": "Context-Dependent Nesting",
   "issue.context_nesting.message": "<{child}> nesting inside <{parent}> depends on context",
-
   "severity.error": "Error",
   "severity.warning": "Warning",
   "severity.info": "Info",
-
   "theme.label": "Theme",
   "theme.light": "Light",
   "theme.dark": "Dark",
   "theme.system": "System",
-
   "notifications.crawl_started": "Crawl Started",
   "notifications.crawl_started_desc": "Crawling has begun for the selected project.",
   "notifications.crawl_complete": "Crawl Complete",
@@ -201,5 +195,10 @@
   "notifications.crawl_stopped": "Crawl Stopped",
   "notifications.crawl_stopped_desc": "The crawl was stopped.",
   "notifications.export_complete": "Export Complete",
-  "notifications.export_complete_desc": "The export has finished successfully."
+  "notifications.export_complete_desc": "The export has finished successfully.",
+  "detail.preview": "Preview",
+  "detail.html_preview": "HTML Preview",
+  "detail.screenshot": "Screenshot",
+  "detail.no_preview": "No preview available",
+  "detail.no_screenshot": "No screenshot available"
 }

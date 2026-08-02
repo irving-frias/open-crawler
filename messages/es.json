@@ -2,12 +2,10 @@
   "app.title": "Open Crawler",
   "app.select_project": "Selecciona o crea un proyecto",
   "app.select_project_hint": "Elige un proyecto de la barra lateral o crea uno nuevo para comenzar a rastrear.",
-
   "sidebar.new_project_placeholder": "Nombre del nuevo proyecto...",
   "sidebar.no_projects": "Aún no hay proyectos. Crea uno arriba.",
   "sidebar.rename": "Renombrar",
   "sidebar.delete": "Eliminar",
-
   "config.title": "Configuración del Rastreo",
   "config.seed_url": "URL Semilla",
   "config.seed_url_placeholder": "https://ejemplo.com",
@@ -21,23 +19,24 @@
   "config.resume": "Reanudar / Iniciar",
   "config.stop": "Detener",
   "config.refresh": "Actualizar",
-
+  "config.proxy_url": "URL del Proxy",
+  "config.proxy_url_placeholder": "http://proxy.ejemplo.com:8080",
+  "config.proxy_user": "Usuario del Proxy",
+  "config.proxy_pass": "Contraseña del Proxy",
   "progress.title": "Progreso del Rastreo",
   "progress.crawled": "Rastreados: {count}",
   "progress.queued": "En cola: {count}",
   "progress.errors": "Errores: {count}",
   "progress.streamed": "{count} páginas analizadas en esta sesión",
-
   "resume.title": "¿Reanudar Rastreo Anterior?",
   "resume.found": "Se encontró un rastreo interrumpido con {pages} páginas rastreadas, {urls} URLs restantes, tiempo transcurrido {time}",
   "resume.resume_btn": "Reanudar Rastreo",
   "resume.fresh_btn": "Iniciar Fresh",
   "resume.cancel": "Cancelar",
   "resume.hint": "Rastreo interrumpido: {pages} páginas hechas, {urls} URLs restantes",
-
   "tabs.results": "Resultados ({count})",
   "tabs.issues_dashboard": "Panel de Problemas",
-
+  "tabs.site_tree": "Árbol del Sitio",
   "results.showing": "Mostrando {from}-{to} de {total}",
   "results.no_results": "Aún no hay resultados.",
   "results.search_placeholder": "Buscar por URL, título o H1...",
@@ -50,7 +49,6 @@
   "results.page_size_show": "Mostrar:",
   "results.page_of": "Página {current} de {total}",
   "results.view_details": "Ver detalles de la página",
-
   "results.col.url": "URL",
   "results.col.status": "Estado",
   "results.col.title": "Título",
@@ -60,7 +58,6 @@
   "results.col.hreflang": "Hreflang",
   "results.col.issues": "Problemas",
   "results.ok": "OK",
-
   "filter.status": "Código de estado",
   "filter.severity": "Severidad",
   "filter.filters": "Filtros",
@@ -76,14 +73,22 @@
   "filter.warning": "Advertencia",
   "filter.info": "Info",
   "filter.no_options": "Sin opciones disponibles",
-
+  "filter.missing_title": "Título faltante",
+  "filter.duplicate_title": "Título duplicado",
+  "filter.noindex": "No indexable",
+  "filter.is_404": "Errores 404",
+  "filter.seo": "SEO",
+  "tree.title": "Árbol del Sitio",
+  "tree.empty": "No se encontraron páginas. Ejecuta un rastreo primero.",
+  "tree.error": "No se pudo cargar el árbol del sitio",
+  "tree.expand": "Expandir",
+  "tree.collapse": "Colapsar",
   "detail.back": "← Resultados",
   "detail.close": "Cerrar",
   "detail.loading": "Cargando detalles de la página...",
   "detail.overview": "Resumen",
   "detail.links": "Enlaces ({count})",
   "detail.no_links": "No se encontraron enlaces salientes",
-
   "detail.seo_meta": "Meta SEO",
   "detail.title": "Título",
   "detail.no_title": "Sin título",
@@ -97,24 +102,19 @@
   "detail.unknown": "Desconocido",
   "detail.missing": "(falta)",
   "detail.none": "(ninguno)",
-
   "detail.crawl_info": "Info del Rastreo",
   "detail.status": "Estado",
   "detail.depth": "Profundidad",
   "detail.size": "Tamaño",
   "detail.load_time": "Tiempo de Carga",
   "detail.discovered_from": "Descubierto desde",
-
   "detail.hreflang": "Hreflang",
-
   "detail.semantic_issues": "Problemas Semánticos ({count})",
   "detail.copy_xpath": "Copiar XPath",
   "detail.copied": "¡Copiado!",
-
   "detail.links_type": "Tipo",
   "detail.links_url": "URL",
   "detail.links_anchor": "Ancla",
-
   "dashboard.title": "Panel de Problemas",
   "dashboard.loading": "Cargando...",
   "dashboard.no_issues": "No se encontraron problemas. ¡Tus páginas se ven bien!",
@@ -123,16 +123,13 @@
   "dashboard.warnings": "{count} Advertencias",
   "dashboard.info": "{count} Info",
   "dashboard.clear_filter": "Limpiar filtro: {type}",
-
   "dialog.delete_title": "Eliminar Proyecto",
   "dialog.delete_confirm": "¿Eliminar este proyecto y todos sus datos de rastreo?",
-
   "language.label": "Idioma",
   "language.en": "English",
   "language.es": "Español",
-
   "sitemap.found": "Sitemap: {count} URLs de {sitemaps} sitemaps",
-
+  "sitemap.fallback": "No se encontró sitemap - descubriendo enlaces desde la URL semilla",
   "settings.title": "Configuración",
   "settings.page_size": "Resultados por página",
   "settings.default_config": "Configuración por Defecto",
@@ -146,7 +143,7 @@
   "export.stage.pages": "Escribiendo páginas…",
   "export.stage.issues": "Escribiendo problemas…",
   "export.stage.links": "Escribiendo enlaces…",
-
+  "export.shared": "Exportación lista — elige dónde guardarla en el menú de compartir",
   "issue.missing_html_lang.name": "Falta Idioma HTML",
   "issue.missing_html_lang.message": "Falta el atributo lang en el elemento <html>",
   "issue.missing_title.name": "Falta Título",
@@ -183,16 +180,13 @@
   "issue.invalid_nesting.message": "<{child}> no puede ser hijo de <{parent}>",
   "issue.context_nesting.name": "Anidamiento Dependiente del Contexto",
   "issue.context_nesting.message": "El anidamiento de <{child}> dentro de <{parent}> depende del contexto",
-
   "severity.error": "Error",
   "severity.warning": "Advertencia",
   "severity.info": "Info",
-
   "theme.label": "Tema",
   "theme.light": "Claro",
   "theme.dark": "Oscuro",
   "theme.system": "Sistema",
-
   "notifications.crawl_started": "Rastreo Iniciado",
   "notifications.crawl_started_desc": "El rastreo ha comenzado para el proyecto seleccionado.",
   "notifications.crawl_complete": "Rastreo Completado",
@@ -201,5 +195,10 @@
   "notifications.crawl_stopped": "Rastreo Detenido",
   "notifications.crawl_stopped_desc": "El rastreo fue detenido.",
   "notifications.export_complete": "Exportación Completada",
-  "notifications.export_complete_desc": "La exportación ha finalizado correctamente."
+  "notifications.export_complete_desc": "La exportación ha finalizado correctamente.",
+  "detail.preview": "Vista previa",
+  "detail.html_preview": "Vista previa HTML",
+  "detail.screenshot": "Captura de pantalla",
+  "detail.no_preview": "No hay vista previa disponible",
+  "detail.no_screenshot": "No hay captura de pantalla disponible"
 }

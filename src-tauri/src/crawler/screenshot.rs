@@ -47,7 +47,7 @@ pub fn capture_screenshot(url: &str) -> Result<Vec<u8>, AppError> {
     Ok(png_data)
 }
 
-fn find_chrome() -> Result<String, AppError> {
+pub(crate) fn find_chrome() -> Result<String, AppError> {
     let paths = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",

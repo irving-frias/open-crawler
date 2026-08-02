@@ -7,6 +7,15 @@
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { Badge } from '$lib/components/ui/badge/index.js';
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+  import { Separator } from '$lib/components/ui/separator/index.js';
+  import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '$lib/components/ui/tooltip/index.js';
+  import { Accordion, AccordionItem, AccordionHeader, AccordionTrigger, AccordionContent } from '$lib/components/ui/accordion/index.js';
+  import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '$lib/components/ui/table/index.js';
+  import { Alert } from '$lib/components/ui/alert/index.js';
+  import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
+  import { Progress } from '$lib/components/ui/progress/index.js';
   import { cn } from '$lib/utils.js';
 
   let {
@@ -21,17 +30,101 @@
   let links = $state<any[]>([]);
   let loading = $state(false);
   let error = $state('');
-  let activeTab = $state<'overview' | 'links'>('overview');
+  let activeTab = $state<'overview' | 'links' | 'preview'>('overview');
+  let previewHtml = $state<string | null>(null);
+  let previewLoading = $state(false);
+  let previewError = $state('');
+
+  type Overlay = {
+    xpath: string;
+    x: number;
+    y: number;
+    severity: string;
+    issueType: string;
+    label: string;
+  };
+
+  let previewIframe = $state<HTMLIFrameElement | null>(null);
+  let overlays = $state<Overlay[]>([]);
+  let highlightedXpath = $state('');
+
+  function evalXPath(doc: Document, xpath: string): Element | null {
+    try {
+      const result = doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      const node = result.singleNodeValue;
+      return node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function computeOverlays() {
+    const frame = previewIframe;
+    const doc = frame?.contentDocument;
+    const win = frame?.contentWindow;
+    if (!doc || !win || !detail) {
+      overlays = [];
+      return;
+    }
+    const root = doc.documentElement;
+    const height = Math.max(root.scrollHeight, root.clientHeight, win.innerHeight || 0);
+    frame.style.height = `${height}px`;
+    overlays = computeOverlayList(doc, win);
+  }
+
+  function computeOverlayList(doc: Document, win: Window): Overlay[] {
+    const issues = parseIssues(detail.semantic_issues_json);
+    const list: Overlay[] = [];
+    for (const issue of issues) {
+      if (!issue.xpath) continue;
+      const el = evalXPath(doc, issue.xpath);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue;
+      list.push({
+        xpath: issue.xpath,
+        x: Math.round(rect.left + win.scrollX),
+        y: Math.round(rect.top + win.scrollY),
+        severity: issue.severity || 'info',
+        issueType: issue.issue_type,
+        label: translateIssueName(issue.issue_type),
+      });
+    }
+    return list;
+  }
+
+  function onPreviewLoad() {
+    computeOverlays();
+    setTimeout(computeOverlays, 600);
+  }
+
+  function jumpToOverlay(overlay: Overlay) {
+    const doc = previewIframe?.contentDocument;
+    if (!doc) return;
+    if (highlightedXpath) {
+      evalXPath(doc, highlightedXpath)?.classList.remove('oc-overlay-hl');
+    }
+    const el = evalXPath(doc, overlay.xpath);
+    if (!el) return;
+    el.classList.add('oc-overlay-hl');
+    highlightedXpath = overlay.xpath;
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+  }
 
   $effect(() => {
     if (pageId) loadDetail();
-    else { detail = null; links = []; activeTab = 'overview'; }
+    else { detail = null; links = []; activeTab = 'overview'; previewHtml = null; }
+  });
+
+  $effect(() => {
+    if (activeTab === 'preview' && pageId) loadPreview();
   });
 
   async function loadDetail() {
     loading = true;
     error = '';
     activeTab = 'overview';
+    previewHtml = null;
     try {
       const result = await invoke<[any, any[]]>('get_page_detail', { pageId });
       detail = result[0];
@@ -40,6 +133,32 @@
       error = String(e);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadPreview() {
+    previewLoading = true;
+    previewError = '';
+    previewHtml = null;
+    overlays = [];
+    try {
+      const html = await invoke<string | null>('get_page_html', { pageId });
+      let preview = html;
+      if (html && detail?.url) {
+        try {
+          preview = await invoke<string>('inline_assets', { html, baseUrl: detail.url });
+        } catch {
+          preview = html;
+        }
+      }
+      if (preview) {
+        preview = preview.replace(/<script[\s\S]*?<\/script>/gi, '');
+      }
+      previewHtml = preview;
+    } catch (e) {
+      previewError = String(e);
+    } finally {
+      previewLoading = false;
     }
   }
 
@@ -73,6 +192,22 @@
     try { return JSON.parse(json); } catch { return []; }
   }
 
+  function statusBadgeVariant(code: number): 'default' | 'warning' | 'destructive' {
+    if (code >= 500) return 'destructive';
+    if (code >= 400) return 'warning';
+    return 'default';
+  }
+
+  function severityBadgeVariant(severity: string): 'default' | 'warning' | 'destructive' {
+    if (severity === 'error') return 'destructive';
+    if (severity === 'warning') return 'warning';
+    return 'default';
+  }
+
+  function truncateUrl(url: string, maxLen: number = 80): string {
+    if (url.length <= maxLen) return url;
+    return url.slice(0, maxLen - 3) + '...';
+  }
 </script>
 
 {#if pageId}
@@ -83,11 +218,24 @@
           <ArrowLeft class="size-4" />
           {m["detail.back"]()}
         </Button>
-        <h3 class="page-url" title={detail?.url}>{detail?.url || m["detail.loading"]()}</h3>
+        {#if detail}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <h3 class="page-url">
+                  {detail.url}
+                </h3>
+              </TooltipTrigger>
+              <TooltipContent>
+                {detail.url}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        {/if}
       </div>
       <div class="header-right">
         {#if detail}
-          <span class="header-badge status-{Math.floor(detail.status_code / 100)}xx">{detail.status_code}</span>
+          <Badge variant={statusBadgeVariant(detail.status_code)}>{detail.status_code}</Badge>
           <span class="header-meta">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}</span>
           <span class="header-meta">{detail.load_time_ms ? `${detail.load_time_ms}ms` : ''}</span>
         {/if}
@@ -113,6 +261,7 @@
       >
         <Tabs.Trigger value="overview">{m["detail.overview"]()}</Tabs.Trigger>
         <Tabs.Trigger value="links">{m["detail.links"]({ count: links.length.toString() })}</Tabs.Trigger>
+        <Tabs.Trigger value="preview">{m["detail.preview"]()}</Tabs.Trigger>
       </Tabs.List>
 
       {#if loading}
@@ -138,167 +287,154 @@
           </div>
         </Tabs.Content>
       {:else if error}
-        <div class="fullpage-error">{error}</div>
+        <div class="fullpage-error">
+          <Alert variant="destructive">
+            {error}
+          </Alert>
+        </div>
       {:else if detail}
         <Tabs.Content value="overview" class="min-h-0 flex-1 overflow-hidden">
           <div class="fullpage-body">
-            <div class="overview-grid">
-            <Card size="sm">
-              <CardHeader class="pb-2">
-                <CardTitle class="text-xs uppercase tracking-wider text-muted-foreground">{m["detail.seo_meta"]()}</CardTitle>
-              </CardHeader>
-              <CardContent class="flex flex-col gap-2">
-                <div class="field">
-                  <span class="field-label">{m["detail.title"]()}</span>
-                  <span class="field-value">{detail.title || m["detail.missing"]()}</span>
-                </div>
-                <div class="field">
-                  <span class="field-label">{m["detail.meta_description"]()}</span>
-                  <span class="field-value">{detail.meta_description || m["detail.missing"]()}</span>
-                </div>
-                <div class="field">
-                  <span class="field-label">{m["detail.h1"]()}</span>
-                  <span class="field-value">{detail.h1 || m["detail.missing"]()}</span>
-                </div>
-                <div class="field-row">
-                  <div class="field">
-                    <span class="field-label">{m["detail.canonical"]()}</span>
-                    <span class="field-value">{detail.canonical || m["detail.none"]()}</span>
-                  </div>
-                  <div class="field">
-                    <span class="field-label">{m["detail.html_lang"]()}</span>
-                    <span class="field-value">{detail.html_lang || m["detail.none"]()}</span>
-                  </div>
-                </div>
-                <div class="field">
-                  <span class="field-label">{m["detail.indexable"]()}</span>
-                  <span class="field-value">{detail.is_indexable === true ? m["detail.yes"]() : detail.is_indexable === false ? m["detail.no"]() : m["detail.unknown"]()}</span>
-                </div>
-              </CardContent>
-            </Card>
+            <ScrollArea class="h-full">
+              <Accordion type="single" class="w-full max-w-[1200px] mx-auto">
+                <AccordionItem value="seo-meta">
+                  <AccordionHeader>
+                    <AccordionTrigger>{m["detail.seo_meta"]()}</AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    {@render seoMetaContent()}
+                  </AccordionContent>
+                </AccordionItem>
 
-            <Card size="sm">
-              <CardHeader class="pb-2">
-                <CardTitle class="text-xs uppercase tracking-wider text-muted-foreground">{m["detail.crawl_info"]()}</CardTitle>
-              </CardHeader>
-              <CardContent class="flex flex-col gap-2">
-                <div class="field-row stats-row">
-                  <div class="field">
-                    <span class="field-label">{m["detail.status"]()}</span>
-                    <span class="field-value status-code status-{Math.floor(detail.status_code / 100)}xx">{detail.status_code}</span>
-                  </div>
-                  <div class="field">
-                    <span class="field-label">{m["detail.depth"]()}</span>
-                    <span class="field-value">{detail.depth}</span>
-                  </div>
-                  <div class="field">
-                    <span class="field-label">{m["detail.size"]()}</span>
-                    <span class="field-value">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}</span>
-                  </div>
-                  <div class="field">
-                    <span class="field-label">{m["detail.load_time"]()}</span>
-                    <span class="field-value">{detail.load_time_ms ? `${detail.load_time_ms}ms` : '-'}</span>
-                  </div>
-                </div>
-                {#if detail.parent_url}
-                  <div class="field">
-                    <span class="field-label">{m["detail.discovered_from"]()}</span>
-                    <a href={detail.parent_url} target="_blank" class="field-value">{detail.parent_url}</a>
-                  </div>
+                <AccordionItem value="crawl-info">
+                  <AccordionHeader>
+                    <AccordionTrigger>{m["detail.crawl_info"]()}</AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    {@render crawlInfoContent()}
+                  </AccordionContent>
+                </AccordionItem>
+
+                {#if parseHreflang(detail.hreflang_json).length > 0}
+                  <AccordionItem value="hreflang">
+                    <AccordionHeader>
+                      <AccordionTrigger>{m["detail.hreflang"]()}</AccordionTrigger>
+                    </AccordionHeader>
+                    <AccordionContent>
+                      {@render hreflangContent()}
+                    </AccordionContent>
+                  </AccordionItem>
                 {/if}
-              </CardContent>
-            </Card>
 
-            {#if parseHreflang(detail.hreflang_json).length > 0}
-              <Card size="sm">
-                <CardHeader class="pb-2">
-                  <CardTitle class="text-xs uppercase tracking-wider text-muted-foreground">{m["detail.hreflang"]()}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div class="hreflang-list">
-                    {#each parseHreflang(detail.hreflang_json) as hl}
-                      <span class="hreflang-tag">{hl.lang}: {hl.href}</span>
-                    {/each}
-                  </div>
-                </CardContent>
-              </Card>
-            {/if}
-
-            {#if parseIssues(detail.semantic_issues_json).length > 0}
-              <Card size="sm" class="overview-full">
-                <CardHeader class="pb-2">
-                  <CardTitle class="text-xs uppercase tracking-wider text-muted-foreground">
-                    {m["detail.semantic_issues"]({ count: parseIssues(detail.semantic_issues_json).length.toString() })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div class="issue-list">
-                    {#each parseIssues(detail.semantic_issues_json) as issue}
-                      {@const params = parseIssueParams(issue.message, issue.issue_type)}
-                      <div class="issue-card issue-{issue.severity}">
-                        <div class="issue-header">
-                          <span class="issue-severity issue-severity-{issue.severity}">{translateSeverity(issue.severity)}</span>
-                          <span class="issue-type">{translateIssueName(issue.issue_type)}</span>
-                        </div>
-                        <div class="issue-message">{translateIssueMessage(issue.issue_type, params)}</div>
-                        <div class="issue-details">
-                          {#if issue.element}
-                            <span class="issue-detail"><code>{issue.element}</code></span>
-                          {/if}
-                          {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              class={cn(
-                                'issue-detail issue-xpath copy-btn h-auto px-2.5 py-1.5',
-                                copiedField === `xpath-${issue.xpath}` && 'copied'
-                              )}
-                              onclick={() => copyToClipboard(issue.xpath, `xpath-${issue.xpath}`)}
-                              title={m["detail.copy_xpath"]()}
-                            >
-                              <span class="copy-icon">
-                                {#if copiedField === `xpath-${issue.xpath}`}
-                                  <Check class="size-3.5" />
-                                {:else}
-                                  <Copy class="size-3.5" />
-                                {/if}
-                              </span>
-                              <span class="copy-text">{copiedField === `xpath-${issue.xpath}` ? m["detail.copied"]() : m["detail.copy_xpath"]()}</span>
-                              <code class="copy-value">{issue.xpath}</code>
-                            </Button>
-                          {:else if issue.xpath}
-                            <span class="issue-detail issue-xpath">{issue.xpath}</span>
-                          {/if}
-                        </div>
-                      </div>
-                    {/each}
-                  </div>
-                </CardContent>
-              </Card>
-            {/if}
-          </div>
+                {#if parseIssues(detail.semantic_issues_json).length > 0}
+                  <AccordionItem value="semantic-issues" class="overview-full">
+                    <AccordionHeader>
+                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: parseIssues(detail.semantic_issues_json).length.toString() })}</AccordionTrigger>
+                    </AccordionHeader>
+                    <AccordionContent>
+                      {@render issuesContent()}
+                    </AccordionContent>
+                  </AccordionItem>
+                {/if}
+              </Accordion>
+            </ScrollArea>
           </div>
         </Tabs.Content>
 
         <Tabs.Content value="links" class="min-h-0 flex-1 overflow-hidden">
           <div class="fullpage-body">
             {#if links.length > 0}
-              <div class="links-table">
-                <div class="links-header">
-                  <span>{m["detail.links_type"]()}</span>
-                  <span>{m["detail.links_url"]()}</span>
-                  <span>{m["detail.links_anchor"]()}</span>
-                </div>
-                {#each links as link}
-                  <div class="links-row">
-                    <span class="link-type link-type-{link.link_type}">{link.link_type}</span>
-                    <a href={link.to_url} target="_blank" class="link-url">{link.to_url}</a>
-                    <span class="link-anchor">{link.anchor_text || '-'}</span>
-                  </div>
-                {/each}
-              </div>
+              <ScrollArea class="h-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{m["detail.links_type"]()}</TableHead>
+                      <TableHead>{m["detail.links_url"]()}</TableHead>
+                      <TableHead>{m["detail.links_anchor"]()}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {#each links as link}
+                      <TableRow>
+                        <TableCell>
+                          <Badge variant="secondary" class="text-xs">{link.link_type}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <a href={link.to_url} target="_blank" class="link-url">
+                                  {truncateUrl(link.to_url)}
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {link.to_url}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                        <TableCell>
+                          <span class="link-anchor">{link.anchor_text || '-'}</span>
+                        </TableCell>
+                      </TableRow>
+                    {/each}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
             {:else}
               <div class="empty-tab">{m["detail.no_links"]()}</div>
+            {/if}
+          </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="preview" class="min-h-0 flex-1 overflow-hidden">
+          <div class="fullpage-body">
+            {#if previewLoading}
+              <div class="flex items-center justify-center h-full">
+                <Skeleton class="h-64 w-full" />
+              </div>
+            {:else if previewError}
+              <Alert variant="destructive">
+                {previewError}
+              </Alert>
+            {:else if previewHtml}
+              <div class="preview-container">
+                <div class="preview-iframe-wrap">
+                  {#if overlays.length > 0}
+                    <div class="overlay-legend">
+                      {#each ['error', 'warning', 'info'] as sev}
+                        {#if overlays.some((o) => o.severity === sev)}
+                          <span class="overlay-legend-item">
+                            <span class="overlay-dot ov-{sev}"></span>
+                            {translateSeverity(sev)}
+                          </span>
+                        {/if}
+                      {/each}
+                      <span class="overlay-legend-count">{overlays.length}</span>
+                    </div>
+                  {/if}
+                  {#each overlays as overlay}
+                    <button
+                      type="button"
+                      class="overlay-marker ov-{overlay.severity}"
+                      style="left: {overlay.x}px; top: {overlay.y}px"
+                      title={overlay.label}
+                      aria-label={overlay.label}
+                      onclick={() => jumpToOverlay(overlay)}
+                    ></button>
+                  {/each}
+                  <iframe
+                    title="HTML Preview"
+                    srcdoc={previewHtml}
+                    sandbox="allow-same-origin"
+                    class="preview-iframe"
+                    bind:this={previewIframe}
+                    onload={onPreviewLoad}
+                  ></iframe>
+                </div>
+              </div>
+            {:else}
+              <div class="empty-tab">{m["detail.no_preview"]()}</div>
             {/if}
           </div>
         </Tabs.Content>
@@ -306,6 +442,159 @@
     </Tabs.Root>
   </div>
 {/if}
+
+{#snippet seoMetaContent()}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-2 pt-4">
+      <div class="field">
+        <span class="field-label">{m["detail.title"]()}</span>
+        <span class="field-value">{detail.title || m["detail.missing"]()}</span>
+      </div>
+      <div class="field">
+        <span class="field-label">{m["detail.meta_description"]()}</span>
+        <span class="field-value">{detail.meta_description || m["detail.missing"]()}</span>
+      </div>
+      <div class="field">
+        <span class="field-label">{m["detail.h1"]()}</span>
+        <span class="field-value">{detail.h1 || m["detail.missing"]()}</span>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">{m["detail.canonical"]()}</span>
+          <span class="field-value">{detail.canonical || m["detail.none"]()}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">{m["detail.html_lang"]()}</span>
+          <span class="field-value">{detail.html_lang || m["detail.none"]()}</span>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">{m["detail.indexable"]()}</span>
+        <span class="field-value">{detail.is_indexable === true ? m["detail.yes"]() : detail.is_indexable === false ? m["detail.no"]() : m["detail.unknown"]()}</span>
+      </div>
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet crawlInfoContent()}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-2 pt-4">
+      <div class="field-row stats-row">
+        <div class="field">
+          <span class="field-label">{m["detail.status"]()}</span>
+          <Badge variant={statusBadgeVariant(detail.status_code)}>{detail.status_code}</Badge>
+        </div>
+        <div class="field">
+          <span class="field-label">{m["detail.depth"]()}</span>
+          <span class="field-value">{detail.depth}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">{m["detail.size"]()}</span>
+          <span class="field-value">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">{m["detail.load_time"]()}</span>
+          <span class="field-value">{detail.load_time_ms ? `${detail.load_time_ms}ms` : '-'}</span>
+        </div>
+      </div>
+      {#if detail.load_time_ms !== undefined}
+        <div class="flex items-center gap-2">
+          <span class="field-label">{m["detail.load_time"]()}</span>
+          <Progress
+            value={Math.min(100, (detail.load_time_ms / 10000) * 100)}
+            max={100}
+            class="flex-1"
+          />
+        </div>
+      {/if}
+      {#if detail.parent_url}
+        <div class="field">
+          <span class="field-label">{m["detail.discovered_from"]()}</span>
+          <a href={detail.parent_url} target="_blank" class="field-value">{detail.parent_url}</a>
+        </div>
+      {/if}
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet hreflangContent()}
+  <Card size="sm">
+    <CardContent class="pt-4">
+      <div class="hreflang-list">
+        {#each parseHreflang(detail.hreflang_json) as hl}
+          <span class="hreflang-tag">{hl.lang}: {hl.href}</span>
+        {/each}
+      </div>
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet issuesContent()}
+  <Card size="sm">
+    <CardContent class="pt-4">
+      <div class="issue-list">
+        {#each parseIssues(detail.semantic_issues_json) as issue}
+          {@const params = parseIssueParams(issue.message, issue.issue_type)}
+          <div class="issue-card issue-{issue.severity}">
+            <div class="issue-header">
+              <Badge variant={severityBadgeVariant(issue.severity)}>{translateSeverity(issue.severity)}</Badge>
+              <span class="issue-type">{translateIssueName(issue.issue_type)}</span>
+            </div>
+            <div class="issue-message">{translateIssueMessage(issue.issue_type, params)}</div>
+            <div class="issue-details">
+              {#if issue.element}
+                <span class="issue-detail"><code>{issue.element}</code></span>
+              {/if}
+              {#if issue.xpath}
+                <Popover>
+                  <PopoverTrigger>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class={cn(
+                        'issue-detail issue-xpath copy-btn h-auto px-2.5 py-1.5',
+                        copiedField === `xpath-${issue.xpath}` && 'copied'
+                      )}
+                    >
+                      {#if copiedField === `xpath-${issue.xpath}`}
+                        <Check class="size-3.5" />
+                        <span class="copy-text">{m["detail.copied"]()}</span>
+                      {:else}
+                        <Copy class="size-3.5" />
+                        <span class="copy-text">{m["detail.copy_xpath"]()}</span>
+                      {/if}
+                      <code class="copy-value">{issue.xpath}</code>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent class="w-80">
+                    <div class="flex flex-col gap-2">
+                      <span class="text-xs font-medium text-muted-foreground">{m["detail.copy_xpath"]()}</span>
+                      <code class="text-xs font-mono break-all">{issue.xpath}</code>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="w-fit"
+                        onclick={() => copyToClipboard(issue.xpath, `xpath-${issue.xpath}`)}
+                      >
+                        {#if copiedField === `xpath-${issue.xpath}`}
+                          <Check class="size-3.5" />
+                          {m["detail.copied"]()}
+                        {:else}
+                          <Copy class="size-3.5" />
+                          {m["detail.copy_xpath"]()}
+                        {/if}
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </CardContent>
+  </Card>
+{/snippet}
 
 <style>
   .fullpage {
@@ -361,18 +650,6 @@
     flex-shrink: 0;
   }
 
-  .header-badge {
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 3px 10px;
-    border-radius: var(--radius-pill);
-    font-variant-numeric: tabular-nums;
-  }
-  .status-2xx { background: var(--bg-status-2xx); color: var(--success); }
-  .status-3xx { background: var(--bg-status-3xx); color: var(--warning); }
-  .status-4xx { background: var(--bg-status-4xx); color: var(--orange); }
-  .status-5xx { background: var(--bg-status-5xx); color: var(--danger); }
-
   .header-meta {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -393,8 +670,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--danger);
-    font-size: 0.9rem;
+    padding: 24px;
   }
 
   /* Overview */
@@ -443,7 +719,9 @@
   }
   .field-row .field { flex: 1 1 0; min-width: 140px; }
 
-  .status-code { font-weight: 600; }
+  .stats-row {
+    align-items: center;
+  }
 
   .hreflang-list {
     display: flex;
@@ -486,33 +764,6 @@
     flex-wrap: wrap;
   }
 
-  .issue-severity {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
-  }
-
-  .issue-severity-error {
-    background: var(--bg-issue-error);
-    color: var(--danger);
-    border: 1px solid var(--danger);
-  }
-
-  .issue-severity-warning {
-    background: var(--bg-issue-warning);
-    color: var(--warning);
-    border: 1px solid var(--warning);
-  }
-
-  .issue-severity-info {
-    background: var(--bg-issue-info);
-    color: var(--info);
-    border: 1px solid var(--info);
-  }
-
   .issue-type {
     font-size: 0.82rem;
     font-weight: 600;
@@ -532,6 +783,7 @@
     flex-wrap: wrap;
     gap: 8px;
     font-size: 0.72rem;
+    align-items: center;
   }
 
   .issue-detail {
@@ -592,45 +844,6 @@
   }
 
   /* Links */
-  .links-table {
-    max-width: 1000px;
-  }
-
-  .links-header {
-    display: grid;
-    grid-template-columns: 60px minmax(0, 1fr) 150px;
-    gap: 12px;
-    padding: 8px 12px;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .links-row {
-    display: grid;
-    grid-template-columns: 60px minmax(0, 1fr) 150px;
-    gap: 12px;
-    padding: 8px 12px;
-    font-size: 0.82rem;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    transition: background var(--transition-fast);
-  }
-  .links-row:hover { background: var(--bg-card); }
-
-  .link-type {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-weight: 600;
-    text-transform: uppercase;
-    text-align: center;
-  }
-  .link-type-internal { background: var(--bg-link-internal); color: var(--info); }
-  .link-type-external { background: var(--bg-link-external); color: var(--purple); }
-
   .link-url {
     color: var(--text-secondary);
     text-decoration: none;
@@ -658,6 +871,87 @@
     padding: 60px 20px;
     font-size: 0.9rem;
   }
+
+  /* Preview */
+  .preview-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .preview-iframe-wrap {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .preview-iframe {
+    width: 100%;
+    border: none;
+    background: white;
+    display: block;
+  }
+
+  .overlay-marker {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    border: 2px solid var(--bg-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s ease;
+  }
+  .overlay-marker:hover {
+    transform: translate(-50%, -50%) scale(1.4);
+    z-index: 5;
+  }
+  .overlay-marker.ov-error { background: var(--danger); }
+  .overlay-marker.ov-warning { background: var(--warning); }
+  .overlay-marker.ov-info { background: var(--info); }
+
+  .overlay-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    backdrop-filter: blur(4px);
+  }
+  .overlay-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: capitalize;
+  }
+  .overlay-legend-count {
+    font-weight: 600;
+    color: var(--text);
+    padding-left: 4px;
+    border-left: 1px solid var(--border);
+  }
+  .overlay-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    display: inline-block;
+  }
+  .overlay-dot.ov-error { background: var(--danger); }
+  .overlay-dot.ov-warning { background: var(--warning); }
+  .overlay-dot.ov-info { background: var(--info); }
 
   /* ========== Responsive ========== */
 
@@ -690,37 +984,6 @@
 
     .field-row .field {
       min-width: 120px;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .links-header {
-      display: none;
-    }
-
-    .links-row {
-      grid-template-columns: 1fr;
-      gap: 4px;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      margin-bottom: 8px;
-      background: var(--bg-card);
-    }
-
-    .link-type {
-      justify-self: start;
-    }
-
-    .link-anchor {
-      font-size: 0.78rem;
-      white-space: normal;
-      overflow-wrap: break-word;
-    }
-
-    .link-url {
-      white-space: normal;
-      overflow-wrap: break-word;
     }
   }
 

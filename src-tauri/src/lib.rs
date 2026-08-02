@@ -25,6 +25,10 @@ pub struct ResultsCacheKey {
     pub severity_filter: Vec<String>,
     pub domain_filter: Option<String>,
     pub depth_filter: Option<u32>,
+    pub missing_title: bool,
+    pub duplicate_title: bool,
+    pub noindex_only: bool,
+    pub is_404: bool,
 }
 
 pub struct CrawlState {
@@ -56,6 +60,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_share::init())
         .setup(|app| {
             let app_data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
@@ -107,6 +112,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            crate::commands::is_mobile,
             crate::commands::create_project,
             crate::commands::list_projects,
             crate::commands::get_project,
@@ -119,6 +125,7 @@ pub fn run() {
             crate::commands::get_running_crawls,
             crate::commands::check_resumable_crawl,
             crate::commands::get_results,
+            crate::commands::get_site_tree,
             crate::commands::get_page_detail,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,

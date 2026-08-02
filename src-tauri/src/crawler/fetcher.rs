@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::time::Duration;
 use url::Url;
 
+use crate::crawler::client_with_proxy;
 use crate::error::AppError;
+use crate::models::ProxyConfig;
 
 #[derive(Debug, Clone)]
 pub struct FetchResponse {
@@ -30,8 +32,9 @@ impl HttpFetcher {
         user_agent: &str,
         timeout_ms: u64,
         custom_headers: Vec<(String, String)>,
+        proxy: Option<&ProxyConfig>,
     ) -> Result<Self, AppError> {
-        let client = reqwest::Client::builder()
+        let client = client_with_proxy(proxy)?
             .user_agent(user_agent)
             .timeout(Duration::from_millis(timeout_ms))
             .redirect(reqwest::redirect::Policy::limited(10))

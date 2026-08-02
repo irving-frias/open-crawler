@@ -5,7 +5,9 @@ use reqwest::Client;
 use tracing::{info, warn};
 use url::Url;
 
+use crate::crawler::client_with_proxy;
 use crate::error::AppError;
+use crate::models::ProxyConfig;
 
 const ROBOTS_CACHE_TTL_SECS: u64 = 3600;
 const DEFAULT_CRAWL_DELAY_MS: u64 = 1000;
@@ -25,8 +27,8 @@ pub struct RobotsChecker {
 }
 
 impl RobotsChecker {
-    pub fn new(user_agent: &str) -> Result<Self, AppError> {
-        let client = Client::builder()
+    pub fn new(user_agent: &str, proxy: Option<&ProxyConfig>) -> Result<Self, AppError> {
+        let client = client_with_proxy(proxy)?
             .user_agent(user_agent)
             .timeout(Duration::from_secs(10))
             .build()?;
@@ -219,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_parse_robots_basic() {
-        let checker = RobotsChecker::new("TestBot/1.0").unwrap();
+        let checker = RobotsChecker::new("TestBot/1.0", None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -243,7 +245,7 @@ Sitemap: https://example.com/sitemap2.xml
 
     #[test]
     fn test_parse_robots_specific_agent() {
-        let checker = RobotsChecker::new("MyBot/1.0").unwrap();
+        let checker = RobotsChecker::new("MyBot/1.0", None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -262,7 +264,7 @@ Crawl-delay: 10
 
     #[test]
     fn test_parse_robots_empty() {
-        let checker = RobotsChecker::new("TestBot/1.0").unwrap();
+        let checker = RobotsChecker::new("TestBot/1.0", None).unwrap();
         let data = checker.parse_robots("", "example.com");
         assert!(data.disallow_paths.is_empty());
         assert_eq!(data.crawl_delay_ms, DEFAULT_CRAWL_DELAY_MS);
