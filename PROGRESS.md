@@ -3,8 +3,8 @@
 ## Project Overview
 SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + pnpm**.
 
-**Current Phase:** Sprints 1-3 complete (UI quick wins, performance/filters, advanced crawl config) + caninclude replacement
-**Status:** Backend compiles, 0 clippy warnings, 30 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth), URL dedup, include/exclude glob patterns, custom headers + configurable timeout, theme system, i18n (en/es), Android CI workflow
+**Current Phase:** Sprints 1-3 complete (UI quick wins, performance/filters, advanced crawl config) + caninclude replacement + **Sprint 4 (advanced SEO features F0-F8) complete**
+**Status:** Backend compiles, 0 clippy warnings, 53 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth), URL dedup, include/exclude glob patterns, custom headers + configurable timeout, theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view
 
 ---
 
@@ -259,6 +259,88 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | CI.6 | Artifacts: `gen/android/app/build/outputs/{apk/universal/release,aab/universalRelease}` | ✅ |
 | CI.7 | Verified signed APK (`apksigner verify`, CN=Open Crawler) | ✅ |
 
+### Sprint 4: Advanced SEO Features (F0-F8) ✅ COMPLETED
+
+**Phase 0: Foundation (migrations + models + parser)**
+
+| # | Task | Status |
+|---|------|--------|
+| F0.1 | SQL migration runner (`db/migrations/mod.rs`) — `.sql` files via `include_str!`, `schema_migrations` table, transactional, idempotent; invoked from `schema.rs::run_migrations` | ✅ |
+| F0.2 | `simhash = "0.3"` for content fingerprinting | ✅ |
+| F0.3 | `AppError::Pagespeed(String)` variant | ✅ |
+| F0.4 | Model fields: `content_hash`, `keywords_json`, `word_count`, `readability_score`, `og_title`, `og_description`, `og_image`, `og_image_alt`, `og_type`, `og_url`, `og_site_name`, `twitter_card`, `twitter_title`, `twitter_description`, `twitter_image` | ✅ |
+| F0.5 | Parser: `extract_visible_text`, `compute_readability` (Flesch, clamped 0-100), `compute_content_hash` (simhash hex), `extract_keywords` (top 20, EN+ES stopwords), `extract_og_meta` | ✅ |
+| F0.6 | Persistence in `save_result`/`save_results_batch`/`get_results`/`get_page_detail`/`row_to_result_export` + test helper `page()` | ✅ |
+
+**F1: Dashboard Overview**
+
+| # | Task | Status |
+|---|------|--------|
+| F1.1 | `DashboardStats`/`StatusBucket` models | ✅ |
+| F1.2 | `get_dashboard_stats(project_id)` repo + registered command | ✅ |
+| F1.3 | `Dashboard.svelte` + `charts/DonutChart.svelte` + `charts/BarChart.svelte` (pure SVG) | ✅ |
+| F1.4 | "Overview" tab in `+page.svelte` | ✅ |
+
+**F2: Crawl Comparison**
+
+| # | Task | Status |
+|---|------|--------|
+| F2.1 | Models `CrawlSnapshot`, `SnapshotStats`, `UrlFieldDiff`, `ChangedUrl`, `CompareResult` | ✅ |
+| F2.2 | Repo: `create_crawl_snapshot` (transactional full-dump to `crawl_snapshot_data`), `list_crawl_snapshots`, `snapshot_stats`, `snapshot_rows`, `compare_crawl_snapshots` (7 diff fields) | ✅ |
+| F2.3 | Engine hook after `crawl-complete` — non-blocking `tokio::spawn` snapshot | ✅ |
+| F2.4 | Commands `list_crawl_snapshots`, `compare_crawls` + `Comparador.svelte` (A/B select, new/removed/changed/unchanged cards) | ✅ |
+
+**F3: Site Tree**
+
+| # | Task | Status |
+|---|------|--------|
+| F3.1 | `SiteTreeNode.issue_count` + SQL `json_array_length(semantic_issues_json)` in root/children queries | ✅ |
+| F3.2 | `SiteTree.svelte` with issue-count badges (destructive variant) + All/With issues/Without issues filter | ✅ |
+
+**F4: PageSpeed Insights**
+
+| # | Task | Status |
+|---|------|--------|
+| F4.1 | `pagespeed.rs` module — Google PSI v5 client (`runPagespeed`, strategy=desktop, category=performance, 90s timeout) → `PageSpeedData { score, fcp, lcp, cls, tbt, speed_index, error }` | ✅ |
+| F4.2 | Repo `find_page_id`/`get_pagespeed`/`update_pagespeed` — cache persisted in `pagespeed_json` column | ✅ |
+| F4.3 | `get_pagespeed_score` command (cache-first, API fallback) | ✅ |
+| F4.4 | PageDetailPanel: circular score ring (≥90 success / ≥50 warning / <50 danger) + metrics + Run/Re-run; `pagespeed_api_key` setting in SettingsModal | ✅ |
+
+**F5: Readability**
+
+| # | Task | Status |
+|---|------|--------|
+| F5.1 | ResultsTable badge (BookOpenText icon) + tooltip with label/variant per score | ✅ |
+| F5.2 | PageDetailPanel Progress bar + value/label | ✅ |
+
+**F6: Duplicate Content**
+
+| # | Task | Status |
+|---|------|--------|
+| F6.1 | `compute_duplicate_groups` — loads content hashes, union-find on `simhash::hamming_distance <= 10`, gid only for groups ≥2 members | ✅ |
+| F6.2 | `get_duplicate_groups` (grouped, sorted size DESC) + engine hook on crawl complete + registered command | ✅ |
+| F6.3 | `Duplicates.svelte` (groups, copy-URL button with execCommand fallback) + "Duplicates" tab | ✅ |
+
+**F7: Keyword Aggregation**
+
+| # | Task | Status |
+|---|------|--------|
+| F7.1 | `KeywordAggregate { keyword, count, pages }` — aggregates `keywords_json` across pages | ✅ |
+| F7.2 | `get_project_keywords` command + `Keywords.svelte` (proportional bars, normalized) + "Keywords" tab | ✅ |
+
+**F8: Open Graph / Twitter Cards**
+
+| # | Task | Status |
+|---|------|--------|
+| F8.1 | PageDetailPanel "Social & Open Graph" accordion — `parseOg` maps og_* + twitter_* fields, preview image, linkable URLs | ✅ |
+
+**F9: Final Verification**
+
+| # | Task | Status |
+|---|------|--------|
+| F9.1 | `cargo check` clean, `cargo test --lib` → 53 passed / 3 ignored, `cargo clippy -- -D warnings` clean, `pnpm build` + `pnpm check` 0 errors | ✅ |
+| F9.2 | 13 commands registered in `lib.rs` invoke_handler | ✅ |
+
 ---
 
 ## What's Next
@@ -307,15 +389,16 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 ```
 src-tauri/src/
 ├── main.rs                        # Entry point
-├── lib.rs                         # AppState + ResultsCacheArc, command registrations, pub mod nesting_table
-├── error.rs                       # AppError enum with Http variant
+├── lib.rs                         # AppState + ResultsCacheArc, command registrations (13), pub mod nesting_table, pagespeed
+├── error.rs                       # AppError enum with Http + Pagespeed variants
+├── pagespeed.rs                   # Google PSI v5 client → PageSpeedData (score/fcp/lcp/cls/tbt/speed_index)
 ├── nesting_table.rs               # Static 104×104 nesting matrix (auto-generated)
-├── commands/mod.rs                # Project CRUD + crawl + get_results (with filters) + recrawl_page + screenshots
+├── commands/mod.rs                # Project CRUD + crawl + get_results + recrawl_page + screenshots + dashboard/comparator/pagespeed/duplicates/keywords
 ├── crawler/
 │   ├── mod.rs                     # Exports: CrawlEngine, SemanticIssue, assets, screenshot
-│   ├── engine.rs                  # CrawlEngine: URL dedup, include/exclude patterns, resume, html_body storage
+│   ├── engine.rs                  # CrawlEngine: URL dedup, include/exclude patterns, resume, html_body, snapshot+duplicates hooks
 │   ├── fetcher.rs                 # HtmlFetcher trait + HttpFetcher (headers + timeout)
-│   ├── parser.rs                  # SeoParser (17 semantic checks + nesting via can_include), issue() builder
+│   ├── parser.rs                  # SeoParser (17 semantic checks + nesting), readability, simhash, keywords, OG meta, visible text
 │   ├── dedup.rs                   # Deduplicator - URL normalization + dedup (8 tests)
 │   ├── sitemap.rs                 # SitemapParser - sitemap discovery
 │   ├── frontier.rs                # Frontier - priority queue with domain rotation
@@ -326,13 +409,14 @@ src-tauri/src/
 ├── models/
 │   ├── mod.rs
 │   ├── crawl_config.rs            # CrawlConfig: project_id, IMPLICIT_USER_AGENT, patterns, headers, timeout
-│   ├── crawl_result.rs            # CrawlResult (with html_body), CrawlProgress, PageLink, SemanticIssue
+│   ├── crawl_result.rs            # CrawlResult (+7 SEO fields), CrawlProgress, PageLink, SemanticIssue
 │   └── project.rs                 # Project, CreateProjectRequest, RenameProjectRequest
 ├── data/                          # caninclude JSONs + generate.js (reference only for regeneration)
 └── db/
     ├── mod.rs
-    ├── schema.rs                  # Migrations: v4 (crawl_sessions, queue), v5 (html_body), v6 (screenshot_png)
-    └── crawl_repo.rs              # CrawlRepo: filters, cache, sessions, screenshots, html_body
+    ├── schema.rs                  # Migrations: v4 (sessions/queue), v5 (html_body), v6 (screenshot_png) + runs migrations runner
+    ├── migrations/                # mod.rs runner + 001-004 .sql migrations
+    └── crawl_repo.rs              # CrawlRepo: filters, cache, sessions, screenshots, dashboard, snapshots, pagespeed, duplicates, keywords
 ```
 
 ### Frontend (src/)
@@ -343,17 +427,24 @@ src/
 │   ├── tokens.css                 # Light/dark/system themes, semantic CSS variables
 │   ├── i18n-issues.ts             # Issue name/message translation + param parsing (incl. context_nesting)
 │   └── components/
-│       ├── ResultsTable.svelte        # Virtualized table (Virtualizer class)
+│       ├── ResultsTable.svelte        # Virtualized table (Virtualizer class) + readability badge
 │       ├── FilterBar.svelte           # Filters: status chips, severity chips, depth slider
-│       ├── PageDetailPanel.svelte     # Full-page overlay: tabs (Overview | Page Preview | Links)
+│       ├── PageDetailPanel.svelte     # Full-page overlay: Overview | Page Preview | Links | PageSpeed | Social/OG
 │       ├── SemanticDashboard.svelte   # Severity summary bar
-│       ├── SettingsModal.svelte       # Theme selector (System/Light/Dark)
+│       ├── Dashboard.svelte           # Overview stats (status donut + keyword bars)
+│       ├── Comparador.svelte          # Crawl A/B comparison (snapshots)
+│       ├── SiteTree.svelte            # Tree view with issue badges + filter
+│       ├── Duplicates.svelte          # Duplicate content groups (simhash)
+│       ├── Keywords.svelte            # Keyword aggregation bars
+│       ├── charts/DonutChart.svelte   # Pure-SVG donut
+│       ├── charts/BarChart.svelte     # Pure-SVG bar chart
+│       ├── SettingsModal.svelte       # Theme selector + pagespeed_api_key
 │       ├── Toast.svelte               # Toast notifications
 │       └── HtmlTree.svelte            # iframe preview with CSS highlight injection
 ├── routes/
 │   ├── +layout.svelte                 # Root layout + theme application
 │   ├── +layout.ts                     # Static adapter config (ssr = false)
-│   └── +page.svelte                   # Main UI: sidebar, config, resume, filters, pagination, detailPageId
+│   └── +page.svelte                   # Main UI: sidebar, config, resume, filters, tabs (Results/Dashboard/Tree/Compare/Duplicates/Keywords), detailPageId
 ```
 
 ### Tooling
@@ -411,8 +502,9 @@ Persistent State (DB)
 ```bash
 cargo check:     ✅ Compiles successfully
 cargo clippy:    ✅ No warnings (clippy -- -D warnings)
-cargo test:      ✅ 30/30 tests pass (parser 9, dedup 8, nesting_table 4, frontier 6, robots 3)
+cargo test:      ✅ 53/53 tests pass (parser 13, dedup 8, nesting_table 4, frontier 6, robots 3, migrations 2, duplicates 1)
 pnpm build:      ✅ Frontend builds to /build
+pnpm check:      ✅ 0 errors / 0 warnings
 ```
 
 ---
@@ -437,7 +529,13 @@ pnpm build:      ✅ Frontend builds to /build
 - `Box<dyn ToSql>` cannot be cloned — dynamic filter params built as separate count/query `Vec`s
 - `HttpFetcher::new(user_agent: &str, timeout_ms: u64, custom_headers: Vec<(String, String)>)` — all call sites pass config values
 - Build requires Node 22 (`.nvmrc`): `source ~/.nvm/nvm.sh && nvm use 22 && pnpm build`
+- SQL migrations live in `src-tauri/src/db/migrations/*.sql`, run by the `db/migrations/mod.rs` runner (transactional + idempotent, tracked in `schema_migrations`)
+- PageSpeed uses the Google PSI v5 API (`runPagespeed`) — no API key required at low volume; set `pagespeed_api_key` in Settings to raise quota; results cached in `pagespeed_json`
+- Duplicate detection uses `simhash::simhash` + `hamming_distance <= 10` (tunable); runs automatically after each crawl via non-blocking `tokio::spawn`
+- Crawl snapshots are dumped transactionally to `crawl_snapshot_data` after each crawl for A/B comparison
+- Content hash is `format!("{:x}", simhash::simhash(text))`; readability is Flesch Reading Ease clamped to 0-100
+- Edits to `messages/en.json`/`es.json` require `pnpm build` to regenerate Paraglide (`src/lib/paraglide/`) before `pnpm check`
 
 ---
 
-*Last updated: Sprints 1-3 + caninclude replacement completed, Android CI workflow added, 30 tests, i18n for context_nesting*
+*Last updated: Sprint 4 (F0-F8 advanced SEO features) completed — 53 tests, clippy clean, pnpm build/check 0 errors*

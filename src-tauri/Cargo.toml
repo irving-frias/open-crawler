@@ -43,6 +43,7 @@ rust_xlsxwriter = { version = "0.80", features = ["constant_memory"] }
 glob = "0.3"
 tauri-plugin-share = "2"
 chromiumoxide = { version = "0.9", features = ["bytes", "fetcher", "rustls", "zip0"] }
+simhash = "0.3"
 
 [features]
 default = ["custom-protocol"]

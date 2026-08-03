@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { getSiteTree } from '$lib/api/results';
+  import type { SiteTreeNode as TreeNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { ChevronRight, ChevronDown, FileText, Loader2, TriangleAlert, RefreshCw } from 'lucide-svelte';
   import { Card, CardContent } from '$lib/components/ui/card/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import * as Select from '$lib/components/ui/select/index.js';
   import { cn } from '$lib/utils.js';
 
   let { projectId }: { projectId: string } = $props();
@@ -16,6 +18,7 @@
     status_code: number | null;
     depth: number;
     has_children: boolean;
+    issue_count: number;
   };
 
   type NodeState = {
@@ -25,16 +28,19 @@
     expanded: boolean;
   };
 
+  type IssueFilter = 'all' | 'issues' | 'clean';
+
   let roots = $state<NodeState[]>([]);
   let loading = $state(false);
   let error = $state('');
+  let issueFilter = $state<IssueFilter>('all');
 
   async function loadRoots() {
     if (!projectId) return;
     loading = true;
     error = '';
     try {
-      const data = await invoke<TreeNode[]>('get_site_tree', { projectId, limit: 200 });
+      const data = await getSiteTree(projectId, null, 200);
       roots = data.map(n => ({ node: n, children: null, loading: false, expanded: false }));
     } catch (e) {
       error = String(e);
@@ -48,7 +54,7 @@
     if (ns.expanded && ns.children === null && ns.node.has_children) {
       ns.loading = true;
       try {
-        const data = await invoke<TreeNode[]>('get_site_tree', { projectId, url: ns.node.url, limit: 200 });
+        const data = await getSiteTree(projectId, ns.node.url, 200);
         ns.children = data.map(n => ({ node: n, children: null, loading: false, expanded: false }));
       } catch (e) {
         error = String(e);
@@ -60,8 +66,16 @@
 
   const visibleNodes = $derived.by(() => {
     const out: { ns: NodeState; level: number }[] = [];
+    const seen = new Set<string>();
     function walk(list: NodeState[], level: number) {
       for (const ns of list) {
+        const matches =
+          issueFilter === 'all' ||
+          (issueFilter === 'issues' && ns.node.issue_count > 0) ||
+          (issueFilter === 'clean' && ns.node.issue_count === 0);
+        if (!matches) continue;
+        if (seen.has(ns.node.url)) continue;
+        seen.add(ns.node.url);
         out.push({ ns, level });
         if (ns.expanded && ns.children) {
           walk(ns.children, level + 1);
@@ -89,17 +103,35 @@
       <FileText class="size-4" />
       {m["tree.title"]()}
     </div>
-    <Button
-      variant="ghost"
-      size="icon"
-      class="size-7"
-      onclick={() => loadRoots()}
-      aria-label={m["config.refresh"]()}
-      title={m["config.refresh"]()}
-      disabled={loading}
-    >
-      <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
-    </Button>
+    <div class="tree-tools">
+      <Select.Root
+        type="single"
+        value={issueFilter}
+        onValueChange={(v) => {
+          if (v) issueFilter = v as IssueFilter;
+        }}
+      >
+        <Select.Trigger class="h-7 w-40 justify-between text-xs">
+          {issueFilter === 'all' ? m["tree.filter_all"]() : issueFilter === 'issues' ? m["tree.filter_issues"]() : m["tree.filter_clean"]()}
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value="all">{m["tree.filter_all"]()}</Select.Item>
+          <Select.Item value="issues">{m["tree.filter_issues"]()}</Select.Item>
+          <Select.Item value="clean">{m["tree.filter_clean"]()}</Select.Item>
+        </Select.Content>
+      </Select.Root>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="size-7"
+        onclick={() => loadRoots()}
+        aria-label={m["config.refresh"]()}
+        title={m["config.refresh"]()}
+        disabled={loading}
+      >
+        <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
+      </Button>
+    </div>
   </div>
 
   {#if loading && roots.length === 0}
@@ -153,6 +185,15 @@
 
           <span class="tree-title">{row.ns.node.title || row.ns.node.url}</span>
           <span class="tree-url" title={row.ns.node.url}>{row.ns.node.url}</span>
+
+          {#if row.ns.node.issue_count > 0}
+            <Badge variant="destructive" class="gap-1 shrink-0" title={`${row.ns.node.issue_count} issues`}>
+              <TriangleAlert class="size-3" />
+              {row.ns.node.issue_count}
+            </Badge>
+          {:else}
+            <span class="tree-clean"></span>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -170,7 +211,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 4px 8px 0;
+    flex-wrap: wrap;
+  }
+
+  .tree-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .tree-list {
@@ -228,5 +277,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 40ch;
+    flex: 1;
+  }
+
+  .tree-clean {
+    flex-shrink: 0;
+    width: 4px;
   }
 </style>

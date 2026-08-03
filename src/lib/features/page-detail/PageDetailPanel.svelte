@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { getPageDetail, getPagespeedScore } from '$lib/api';
+  import type { PageLink, PageSpeedData } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
-  import { ArrowLeft, X, Copy, Check } from 'lucide-svelte';
+  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2 } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -12,11 +13,11 @@
   import { Separator } from '$lib/components/ui/separator/index.js';
   import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '$lib/components/ui/tooltip/index.js';
   import { Accordion, AccordionItem, AccordionHeader, AccordionTrigger, AccordionContent } from '$lib/components/ui/accordion/index.js';
-  import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '$lib/components/ui/table/index.js';
   import { Alert } from '$lib/components/ui/alert/index.js';
   import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
   import { Progress } from '$lib/components/ui/progress/index.js';
   import { cn } from '$lib/utils.js';
+  import LinksSection from './sections/LinksSection.svelte';
 
   let {
     pageId = $bindable(''),
@@ -27,108 +28,30 @@
   } = $props();
 
   let detail = $state<any>(null);
-  let links = $state<any[]>([]);
+  let links = $state<PageLink[]>([]);
   let loading = $state(false);
   let error = $state('');
   let activeTab = $state<'overview' | 'links' | 'preview'>('overview');
-  let previewHtml = $state<string | null>(null);
-  let previewLoading = $state(false);
-  let previewError = $state('');
-
-  type Overlay = {
-    xpath: string;
-    x: number;
-    y: number;
-    severity: string;
-    issueType: string;
-    label: string;
-  };
-
-  let previewIframe = $state<HTMLIFrameElement | null>(null);
-  let overlays = $state<Overlay[]>([]);
-  let highlightedXpath = $state('');
-
-  function evalXPath(doc: Document, xpath: string): Element | null {
-    try {
-      const result = doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-      const node = result.singleNodeValue;
-      return node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function computeOverlays() {
-    const frame = previewIframe;
-    const doc = frame?.contentDocument;
-    const win = frame?.contentWindow;
-    if (!doc || !win || !detail) {
-      overlays = [];
-      return;
-    }
-    const root = doc.documentElement;
-    const height = Math.max(root.scrollHeight, root.clientHeight, win.innerHeight || 0);
-    frame.style.height = `${height}px`;
-    overlays = computeOverlayList(doc, win);
-  }
-
-  function computeOverlayList(doc: Document, win: Window): Overlay[] {
-    const issues = parseIssues(detail.semantic_issues_json);
-    const list: Overlay[] = [];
-    for (const issue of issues) {
-      if (!issue.xpath) continue;
-      const el = evalXPath(doc, issue.xpath);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) continue;
-      list.push({
-        xpath: issue.xpath,
-        x: Math.round(rect.left + win.scrollX),
-        y: Math.round(rect.top + win.scrollY),
-        severity: issue.severity || 'info',
-        issueType: issue.issue_type,
-        label: translateIssueName(issue.issue_type),
-      });
-    }
-    return list;
-  }
-
-  function onPreviewLoad() {
-    computeOverlays();
-    setTimeout(computeOverlays, 600);
-  }
-
-  function jumpToOverlay(overlay: Overlay) {
-    const doc = previewIframe?.contentDocument;
-    if (!doc) return;
-    if (highlightedXpath) {
-      evalXPath(doc, highlightedXpath)?.classList.remove('oc-overlay-hl');
-    }
-    const el = evalXPath(doc, overlay.xpath);
-    if (!el) return;
-    el.classList.add('oc-overlay-hl');
-    highlightedXpath = overlay.xpath;
-    el.scrollIntoView({ block: 'center', inline: 'center' });
-  }
+  let pagespeed = $state<PageSpeedData | null>(null);
+  let pagespeedLoading = $state(false);
+  let pagespeedError = $state('');
 
   $effect(() => {
     if (pageId) loadDetail();
-    else { detail = null; links = []; activeTab = 'overview'; previewHtml = null; }
-  });
-
-  $effect(() => {
-    if (activeTab === 'preview' && pageId) loadPreview();
+    else { detail = null; links = []; activeTab = 'overview'; pagespeed = null; pagespeedError = ''; }
   });
 
   async function loadDetail() {
     loading = true;
     error = '';
     activeTab = 'overview';
-    previewHtml = null;
+    pagespeed = null;
+    pagespeedError = '';
     try {
-      const result = await invoke<[any, any[]]>('get_page_detail', { pageId });
-      detail = result[0];
-      links = result[1];
+      const result = await getPageDetail(pageId);
+      detail = result.page;
+      links = result.links;
+      pagespeed = parsePagespeed(detail?.pagespeed_json);
     } catch (e) {
       error = String(e);
     } finally {
@@ -136,30 +59,44 @@
     }
   }
 
-  async function loadPreview() {
-    previewLoading = true;
-    previewError = '';
-    previewHtml = null;
-    overlays = [];
+  function parsePagespeed(json: string | null): any | null {
+    if (!json) return null;
+    try { return JSON.parse(json); } catch { return null; }
+  }
+
+  async function runPagespeedAudit() {
+    if (!detail?.url) return;
+    pagespeedLoading = true;
+    pagespeedError = '';
     try {
-      const html = await invoke<string | null>('get_page_html', { pageId });
-      let preview = html;
-      if (html && detail?.url) {
-        try {
-          preview = await invoke<string>('inline_assets', { html, baseUrl: detail.url });
-        } catch {
-          preview = html;
-        }
+      pagespeed = await getPagespeedScore(detail.project_id, detail.url);
+      if (pagespeed?.score != null) {
+        detail.pagespeed_score = pagespeed.score;
+        detail.pagespeed_json = JSON.stringify(pagespeed);
       }
-      if (preview) {
-        preview = preview.replace(/<script[\s\S]*?<\/script>/gi, '');
-      }
-      previewHtml = preview;
     } catch (e) {
-      previewError = String(e);
+      pagespeedError = String(e);
     } finally {
-      previewLoading = false;
+      pagespeedLoading = false;
     }
+  }
+
+  function scoreColor(score: number): string {
+    if (score >= 90) return 'var(--success)';
+    if (score >= 50) return 'var(--warning)';
+    return 'var(--danger)';
+  }
+
+  function readabilityLabel(score: number): string {
+    if (score >= 70) return m["dashboard.readability.easy"]();
+    if (score >= 40) return m["dashboard.readability.medium"]();
+    return m["dashboard.readability.hard"]();
+  }
+
+  function readabilityColor(score: number): string {
+    if (score >= 70) return 'var(--success)';
+    if (score >= 40) return 'var(--warning)';
+    return 'var(--danger)';
   }
 
   let copiedField = $state('');
@@ -192,6 +129,32 @@
     try { return JSON.parse(json); } catch { return []; }
   }
 
+  function parseOg(json: string | null): any {
+    if (!json) return {};
+    try { return JSON.parse(json); } catch { return {}; }
+  }
+
+  function ogFields(og: any): { key: string; value: string }[] {
+    const out: { key: string; value: string }[] = [];
+    const mapping: [string, string][] = [
+      ['og:title', og.og_title],
+      ['og:description', og.og_description],
+      ['og:image', og.og_image],
+      ['og:image:alt', og.og_image_alt],
+      ['og:type', og.og_type],
+      ['og:url', og.og_url],
+      ['og:site_name', og.og_site_name],
+      ['twitter:card', og.twitter_card],
+      ['twitter:title', og.twitter_title],
+      ['twitter:description', og.twitter_description],
+      ['twitter:image', og.twitter_image],
+    ];
+    for (const [key, value] of mapping) {
+      if (value) out.push({ key, value: String(value) });
+    }
+    return out;
+  }
+
   function statusBadgeVariant(code: number): 'default' | 'warning' | 'destructive' {
     if (code >= 500) return 'destructive';
     if (code >= 400) return 'warning';
@@ -202,11 +165,6 @@
     if (severity === 'error') return 'destructive';
     if (severity === 'warning') return 'warning';
     return 'default';
-  }
-
-  function truncateUrl(url: string, maxLen: number = 80): string {
-    if (url.length <= maxLen) return url;
-    return url.slice(0, maxLen - 3) + '...';
   }
 </script>
 
@@ -261,7 +219,6 @@
       >
         <Tabs.Trigger value="overview">{m["detail.overview"]()}</Tabs.Trigger>
         <Tabs.Trigger value="links">{m["detail.links"]({ count: links.length.toString() })}</Tabs.Trigger>
-        <Tabs.Trigger value="preview">{m["detail.preview"]()}</Tabs.Trigger>
       </Tabs.List>
 
       {#if loading}
@@ -315,6 +272,23 @@
                   </AccordionContent>
                 </AccordionItem>
 
+                <AccordionItem value="pagespeed" class="overview-full">
+                  <AccordionHeader>
+                    <AccordionTrigger>
+                      <span class="inline-flex items-center gap-2">
+                        <Gauge class="size-4" />
+                        {m["detail.pagespeed"]()}
+                        {#if pagespeed?.score != null}
+                          <span class="pagespeed-chip" style="color: {scoreColor(pagespeed.score)}">{pagespeed.score}</span>
+                        {/if}
+                      </span>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    {@render pagespeedContent()}
+                  </AccordionContent>
+                </AccordionItem>
+
                 {#if parseHreflang(detail.hreflang_json).length > 0}
                   <AccordionItem value="hreflang">
                     <AccordionHeader>
@@ -322,6 +296,23 @@
                     </AccordionHeader>
                     <AccordionContent>
                       {@render hreflangContent()}
+                    </AccordionContent>
+                  </AccordionItem>
+                {/if}
+
+                {@const og = parseOg(detail.og_json)}
+                {#if ogFields(og).length > 0}
+                  <AccordionItem value="social">
+                    <AccordionHeader>
+                      <AccordionTrigger>
+                        <span class="inline-flex items-center gap-2">
+                          <Share2 class="size-4" />
+                          {m["detail.social"]()}
+                        </span>
+                      </AccordionTrigger>
+                    </AccordionHeader>
+                    <AccordionContent>
+                      {@render socialContent()}
                     </AccordionContent>
                   </AccordionItem>
                 {/if}
@@ -342,101 +333,7 @@
         </Tabs.Content>
 
         <Tabs.Content value="links" class="min-h-0 flex-1 overflow-hidden">
-          <div class="fullpage-body">
-            {#if links.length > 0}
-              <ScrollArea class="h-full">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{m["detail.links_type"]()}</TableHead>
-                      <TableHead>{m["detail.links_url"]()}</TableHead>
-                      <TableHead>{m["detail.links_anchor"]()}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {#each links as link}
-                      <TableRow>
-                        <TableCell>
-                          <Badge variant="secondary" class="text-xs">{link.link_type}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <a href={link.to_url} target="_blank" class="link-url">
-                                  {truncateUrl(link.to_url)}
-                                </a>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {link.to_url}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableCell>
-                        <TableCell>
-                          <span class="link-anchor">{link.anchor_text || '-'}</span>
-                        </TableCell>
-                      </TableRow>
-                    {/each}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            {:else}
-              <div class="empty-tab">{m["detail.no_links"]()}</div>
-            {/if}
-          </div>
-        </Tabs.Content>
-
-        <Tabs.Content value="preview" class="min-h-0 flex-1 overflow-hidden">
-          <div class="fullpage-body">
-            {#if previewLoading}
-              <div class="flex items-center justify-center h-full">
-                <Skeleton class="h-64 w-full" />
-              </div>
-            {:else if previewError}
-              <Alert variant="destructive">
-                {previewError}
-              </Alert>
-            {:else if previewHtml}
-              <div class="preview-container">
-                <div class="preview-iframe-wrap">
-                  {#if overlays.length > 0}
-                    <div class="overlay-legend">
-                      {#each ['error', 'warning', 'info'] as sev}
-                        {#if overlays.some((o) => o.severity === sev)}
-                          <span class="overlay-legend-item">
-                            <span class="overlay-dot ov-{sev}"></span>
-                            {translateSeverity(sev)}
-                          </span>
-                        {/if}
-                      {/each}
-                      <span class="overlay-legend-count">{overlays.length}</span>
-                    </div>
-                  {/if}
-                  {#each overlays as overlay}
-                    <button
-                      type="button"
-                      class="overlay-marker ov-{overlay.severity}"
-                      style="left: {overlay.x}px; top: {overlay.y}px"
-                      title={overlay.label}
-                      aria-label={overlay.label}
-                      onclick={() => jumpToOverlay(overlay)}
-                    ></button>
-                  {/each}
-                  <iframe
-                    title="HTML Preview"
-                    srcdoc={previewHtml}
-                    sandbox="allow-same-origin"
-                    class="preview-iframe"
-                    bind:this={previewIframe}
-                    onload={onPreviewLoad}
-                  ></iframe>
-                </div>
-              </div>
-            {:else}
-              <div class="empty-tab">{m["detail.no_preview"]()}</div>
-            {/if}
-          </div>
+          <LinksSection links={links} />
         </Tabs.Content>
       {/if}
     </Tabs.Root>
@@ -507,6 +404,19 @@
           />
         </div>
       {/if}
+      {#if detail.readability_score != null}
+        <div class="flex items-center gap-2">
+          <span class="field-label">{m["dashboard.readability.label"]()}</span>
+          <Progress
+            value={detail.readability_score}
+            max={100}
+            class="flex-1"
+          />
+          <span class="readability-value" style="color: {readabilityColor(detail.readability_score)}">
+            {Math.round(detail.readability_score)} · {readabilityLabel(detail.readability_score)}
+          </span>
+        </div>
+      {/if}
       {#if detail.parent_url}
         <div class="field">
           <span class="field-label">{m["detail.discovered_from"]()}</span>
@@ -525,6 +435,106 @@
           <span class="hreflang-tag">{hl.lang}: {hl.href}</span>
         {/each}
       </div>
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet socialContent()}
+  {@const og = parseOg(detail.og_json)}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-2 pt-4">
+      {#if og.og_image}
+        <div class="og-image">
+          <img src={og.og_image} alt={og.og_image_alt || ''} loading="lazy" />
+        </div>
+      {/if}
+      {#each ogFields(og) as field (field.key)}
+        <div class="field">
+          <span class="field-label">{field.key}</span>
+          {#if field.key === 'og:image' || field.key === 'og:url' || field.key === 'twitter:image'}
+            <a href={field.value} target="_blank" rel="noreferrer" class="field-value">{field.value}</a>
+          {:else}
+            <span class="field-value">{field.value}</span>
+          {/if}
+        </div>
+      {/each}
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet pagespeedContent()}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-3 pt-4">
+      {#if pagespeedLoading}
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="size-4 animate-spin" />
+          {m["detail.pagespeed_running"]()}
+        </div>
+      {:else if pagespeedError}
+        <Alert variant="destructive">{pagespeedError}</Alert>
+        <div>
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit}>
+            <RotateCw class="size-3.5" />
+            {m["detail.pagespeed_run"]()}
+          </Button>
+        </div>
+      {:else if pagespeed?.score != null}
+        <div class="pagespeed-row">
+          <div
+            class="pagespeed-score"
+            style="--score-color: {scoreColor(pagespeed.score)}"
+          >
+            <span class="pagespeed-score-value">{pagespeed.score}</span>
+            <span class="pagespeed-score-label">{m["detail.pagespeed_performance"]()}</span>
+          </div>
+          <div class="pagespeed-metrics">
+            {#if pagespeed.fcp}
+              <div class="field">
+                <span class="field-label">{m["detail.pagespeed_fcp"]()}</span>
+                <span class="field-value">{pagespeed.fcp}</span>
+              </div>
+            {/if}
+            {#if pagespeed.lcp}
+              <div class="field">
+                <span class="field-label">{m["detail.pagespeed_lcp"]()}</span>
+                <span class="field-value">{pagespeed.lcp}</span>
+              </div>
+            {/if}
+            {#if pagespeed.cls}
+              <div class="field">
+                <span class="field-label">{m["detail.pagespeed_cls"]()}</span>
+                <span class="field-value">{pagespeed.cls}</span>
+              </div>
+            {/if}
+            {#if pagespeed.tbt}
+              <div class="field">
+                <span class="field-label">{m["detail.pagespeed_tbt"]()}</span>
+                <span class="field-value">{pagespeed.tbt}</span>
+              </div>
+            {/if}
+            {#if pagespeed.speed_index}
+              <div class="field">
+                <span class="field-label">{m["detail.pagespeed_speed_index"]()}</span>
+                <span class="field-value">{pagespeed.speed_index}</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit} disabled={pagespeedLoading}>
+            <RotateCw class="size-3.5" />
+            {m["detail.pagespeed_rerun"]()}
+          </Button>
+        </div>
+      {:else}
+        <p class="text-sm text-muted-foreground">{m["detail.pagespeed_empty"]()}</p>
+        <div>
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit} disabled={pagespeedLoading}>
+            <Gauge class="size-3.5" />
+            {m["detail.pagespeed_run"]()}
+          </Button>
+        </div>
+      {/if}
     </CardContent>
   </Card>
 {/snippet}
@@ -555,6 +565,7 @@
                         'issue-detail issue-xpath copy-btn h-auto px-2.5 py-1.5',
                         copiedField === `xpath-${issue.xpath}` && 'copied'
                       )}
+                      onclick={() => copyToClipboard(issue.xpath, `xpath-${issue.xpath}`)}
                     >
                       {#if copiedField === `xpath-${issue.xpath}`}
                         <Check class="size-3.5" />
@@ -740,6 +751,74 @@
     grid-column: 1 / -1;
   }
 
+  .pagespeed-chip {
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .pagespeed-row {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .pagespeed-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 120px;
+    height: 120px;
+    border-radius: 9999px;
+    border: 6px solid var(--score-color);
+    flex-shrink: 0;
+  }
+
+  .pagespeed-score-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--score-color);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .pagespeed-score-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .pagespeed-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    flex: 1;
+    min-width: 280px;
+  }
+
+  .readability-value {
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .og-image {
+    max-width: 320px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .og-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   .issue-list {
     display: flex;
     flex-direction: column;
@@ -842,116 +921,6 @@
     background: none;
     padding: 0;
   }
-
-  /* Links */
-  .link-url {
-    color: var(--text-secondary);
-    text-decoration: none;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .link-url:hover { color: var(--accent); }
-  .link-url:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: 2px;
-  }
-
-  .link-anchor {
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .empty-tab {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 60px 20px;
-    font-size: 0.9rem;
-  }
-
-  /* Preview */
-  .preview-container {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .preview-iframe-wrap {
-    position: relative;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-  }
-
-  .preview-iframe {
-    width: 100%;
-    border: none;
-    background: white;
-    display: block;
-  }
-
-  .overlay-marker {
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    transform: translate(-50%, -50%);
-    border-radius: 9999px;
-    border: 2px solid var(--bg-card);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-    cursor: pointer;
-    padding: 0;
-    transition: transform 0.15s ease;
-  }
-  .overlay-marker:hover {
-    transform: translate(-50%, -50%) scale(1.4);
-    z-index: 5;
-  }
-  .overlay-marker.ov-error { background: var(--danger); }
-  .overlay-marker.ov-warning { background: var(--warning); }
-  .overlay-marker.ov-info { background: var(--info); }
-
-  .overlay-legend {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 6;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-    border: 1px solid var(--border);
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    backdrop-filter: blur(4px);
-  }
-  .overlay-legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    text-transform: capitalize;
-  }
-  .overlay-legend-count {
-    font-weight: 600;
-    color: var(--text);
-    padding-left: 4px;
-    border-left: 1px solid var(--border);
-  }
-  .overlay-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 9999px;
-    display: inline-block;
-  }
-  .overlay-dot.ov-error { background: var(--danger); }
-  .overlay-dot.ov-warning { background: var(--warning); }
-  .overlay-dot.ov-info { background: var(--info); }
 
   /* ========== Responsive ========== */
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import PageDetailPanel from '$lib/components/PageDetailPanel.svelte';
+  import PageDetailPanel from '$lib/features/page-detail/PageDetailPanel.svelte';
 
   let pageId = $state('mock-page');
 </script>

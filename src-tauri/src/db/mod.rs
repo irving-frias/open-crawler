@@ -1,4 +1,6 @@
-pub mod crawl_repo;
+pub mod migrations;
+pub mod repos;
 pub mod schema;
 
-pub use crawl_repo::CrawlRepo;
+pub use repos::CrawlRepo;
+pub use repos::CrawlSessionInfo;

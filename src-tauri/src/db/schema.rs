@@ -297,12 +297,62 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         )?;
     }
 
+    // Migration v10: indexes on FK config_id columns to speed up delete_project
+    let idx_pages_config: bool = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_pages_config'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .is_ok();
+
+    if !idx_pages_config {
+        info!("Creating config_id indexes for fast project deletion");
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_pages_config ON crawled_pages(config_id);
+             CREATE INDEX IF NOT EXISTS idx_links_config ON page_links(config_id);
+             CREATE INDEX IF NOT EXISTS idx_errors_config ON crawl_errors(config_id);
+             CREATE INDEX IF NOT EXISTS idx_sessions_project ON crawl_sessions(project_id);
+             CREATE INDEX IF NOT EXISTS idx_queue_session ON crawl_queue(session_id);",
+        )?;
+    }
+
+    // Migration v11: unique (project_id, url) on crawled_pages. Re-crawls used
+    // to accumulate one row per URL per session (INSERT OR REPLACE keyed by id),
+    // which produced duplicate URLs and broke keyed each blocks (site tree,
+    // duplicates, ...). Deduplicate keeping the newest row, then enforce it.
+    let idx_pages_project_url: bool = conn
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_pages_project_url'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .is_ok();
+
+    if !idx_pages_project_url {
+        info!("Deduplicating crawled_pages rows and adding unique (project_id, url) index");
+        conn.execute_batch(
+            "DELETE FROM crawled_pages
+             WHERE id NOT IN (
+                 SELECT id FROM (
+                     SELECT id,
+                            ROW_NUMBER() OVER (PARTITION BY project_id, url ORDER BY crawl_timestamp DESC) AS rn
+                     FROM crawled_pages
+                 )
+                 WHERE rn = 1
+             );
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_project_url ON crawled_pages(project_id, url);",
+        )?;
+    }
+
     // Ensure default project exists
     conn.execute(
         "INSERT OR IGNORE INTO projects (id, name, created_at, updated_at)
          VALUES ('default', 'Default', datetime('now'), datetime('now'))",
         [],
     )?;
+
+    crate::db::migrations::run(conn)?;
 
     info!("Database migrations completed");
     Ok(())

@@ -2,8 +2,10 @@ pub mod commands;
 pub mod crawler;
 pub mod db;
 pub mod error;
+pub mod features;
 pub mod models;
 pub mod nesting_table;
+pub mod pagespeed;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -112,18 +114,24 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // app
             crate::commands::is_mobile,
+            crate::commands::get_favicon,
+            // projects
             crate::commands::create_project,
             crate::commands::list_projects,
             crate::commands::get_project,
             crate::commands::rename_project,
             crate::commands::delete_project,
             crate::commands::get_project_stats,
+            // crawl
             crate::commands::start_crawl,
             crate::commands::stop_crawl,
             crate::commands::get_crawl_status,
             crate::commands::get_running_crawls,
             crate::commands::check_resumable_crawl,
+            crate::commands::get_last_crawl_config,
+            // results
             crate::commands::get_results,
             crate::commands::get_site_tree,
             crate::commands::get_page_detail,
@@ -132,8 +140,19 @@ pub fn run() {
             crate::commands::inline_assets,
             crate::commands::recrawl_page,
             crate::commands::capture_page_screenshot,
+            // analytics
+            crate::commands::get_dashboard_stats,
+            crate::commands::get_duplicate_groups,
+            crate::commands::get_project_keywords,
+            // snapshots
+            crate::commands::list_crawl_snapshots,
+            crate::commands::compare_crawls,
+            // pagespeed
+            crate::commands::get_pagespeed_score,
+            // settings
             crate::commands::get_settings,
             crate::commands::save_settings,
+            // export
             crate::commands::export_full,
         ])
         .run(tauri::generate_context!())

@@ -6,7 +6,7 @@ use lru::LruCache;
 use tauri::Emitter;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use url::Url;
 use uuid::Uuid;
 
@@ -235,7 +235,11 @@ impl CrawlEngine {
                     if !self.url_visited(&url) {
                         self.mark_visited(url.clone());
                         if let Some(ref mut frontier) = self.frontier {
-                            frontier.push(url, 0);
+                            // Sitemap URLs are discovered from a seed, not seeds
+                            // themselves: mark them depth 1 so the site tree keeps
+                            // seeds as its only roots instead of flattening every
+                            // page to depth 0.
+                            frontier.push(url, 1);
                         }
                     }
                 }
@@ -606,6 +610,65 @@ impl CrawlEngine {
             }),
         );
 
+        // Create a crawl snapshot for later comparison (non-blocking)
+        {
+            let state = state.clone();
+            let project_id = project_id.clone();
+            let config_id = config_id.clone();
+            tokio::spawn(async move {
+                let state_read = state.read().await;
+                let lock_result = state_read.db.lock();
+                match lock_result {
+                    Ok(db) => {
+                        let repo = CrawlRepo::new(&db, None);
+                        match repo.create_crawl_snapshot(&project_id, &config_id) {
+                            Ok(snapshot) => {
+                                info!(
+                                    "Created crawl snapshot {} for project {} ({} pages)",
+                                    snapshot.id, project_id, snapshot.total_pages
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to create crawl snapshot: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to lock DB for snapshot: {}", e);
+                    }
+                }
+            });
+        }
+
+        // Detect duplicate content groups (simhash hamming distance, non-blocking)
+        {
+            let state = state.clone();
+            let project_id = project_id.clone();
+            tokio::spawn(async move {
+                let state_read = state.read().await;
+                let lock_result = state_read.db.lock();
+                match lock_result {
+                    Ok(db) => {
+                        let repo = CrawlRepo::new(&db, None);
+                        match repo.compute_duplicate_groups(&project_id) {
+                            Ok(groups) => {
+                                info!(
+                                    "Duplicate detection for project {}: {} groups",
+                                    project_id, groups
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to compute duplicate groups: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to lock DB for duplicate detection: {}", e);
+                    }
+                }
+            });
+        }
+
         info!(
             "=== CRAWL COMPLETE for project {}: {} pages, {} errors, {:.1}s ===",
             project_id,
@@ -655,6 +718,20 @@ impl CrawlEngine {
             None
         } else {
             serde_json::to_string(&seo_data.semantic_issues).ok()
+        };
+
+        // Serialize keywords
+        let keywords_json = if seo_data.keywords.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&seo_data.keywords).ok()
+        };
+
+        // Serialize Open Graph / Twitter meta
+        let og_json = if seo_data.og_meta.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&seo_data.og_meta).ok()
         };
 
         // Store first 100KB of HTML for DOM tree analysis
@@ -709,6 +786,13 @@ impl CrawlEngine {
             hreflang_json,
             semantic_issues_json,
             html_body,
+            readability_score: seo_data.readability_score,
+            content_hash: seo_data.content_hash,
+            duplicate_group_id: None,
+            keywords_json,
+            og_json,
+            pagespeed_score: None,
+            pagespeed_json: None,
         };
 
         // Send result to DbWriter (async, non-blocking)

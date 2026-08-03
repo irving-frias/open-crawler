@@ -172,7 +172,113 @@ fn replace_urls(
         }
     }
 
+    // Strip Subresource Integrity / CORS attrs from <link>/<script> tags. The
+    // preview may load the original external asset (inlining can be partial),
+    // and a stale `integrity` hash blocks it with an SRI failure.
+    result = strip_sri_attrs(&result);
+
     result
+}
+
+/// Remove `integrity` and `crossorigin` attributes from `<link ...>` and
+/// `<script ...>` opening tags so stale SRI hashes can't block the preview.
+fn strip_sri_attrs(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    loop {
+        match rest.find('<') {
+            None => {
+                out.push_str(rest);
+                break;
+            }
+            Some(pos) => {
+                out.push_str(&rest[..pos]);
+                let after = &rest[pos + 1..];
+                let is_target = (after.len() >= 4 && after[..4].eq_ignore_ascii_case("link"))
+                    || (after.len() >= 6 && after[..6].eq_ignore_ascii_case("script"));
+                if !is_target {
+                    out.push('<');
+                    rest = after;
+                    continue;
+                }
+                let mut in_quote = false;
+                let mut quote = b'\0';
+                let mut end = after.len();
+                for (idx, c) in after.char_indices() {
+                    if !in_quote && c == '>' {
+                        end = idx;
+                        break;
+                    }
+                    if !in_quote && (c == '"' || c == '\'') {
+                        in_quote = true;
+                        quote = c as u8;
+                    } else if in_quote && (c as u8) == quote {
+                        in_quote = false;
+                    }
+                }
+                let tag = format!("<{}", &after[..=end]);
+                out.push_str(&strip_sri_tag(&tag));
+                rest = &after[end + 1..];
+            }
+        }
+    }
+    out
+}
+
+/// Rebuild a single tag, dropping `integrity`/`crossorigin` attributes.
+fn strip_sri_tag(tag: &str) -> String {
+    let mut out = String::with_capacity(tag.len());
+    let bytes = tag.as_bytes();
+    let n = bytes.len();
+
+    let mut i = 0;
+    while i < n && !bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    out.push_str(&tag[..i]);
+
+    while i < n {
+        while i < n && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= n {
+            break;
+        }
+        if bytes[i] == b'>' {
+            out.push('>');
+            break;
+        }
+        let mut k = i;
+        let mut in_quote = false;
+        let mut quote = b'\0';
+        while k < n {
+            let c = bytes[k];
+            if in_quote {
+                if c == quote {
+                    in_quote = false;
+                }
+            } else if c == b'"' || c == b'\'' {
+                in_quote = true;
+                quote = c;
+            } else if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' || c == b'>' {
+                break;
+            }
+            k += 1;
+        }
+        let attr = &tag[i..k];
+        let name = attr
+            .split('=')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if name != "integrity" && name != "crossorigin" {
+            out.push(' ');
+            out.push_str(attr);
+        }
+        i = k;
+    }
+    out
 }
 
 fn resolve_url(base: &Url, relative: &str) -> Option<String> {
@@ -232,4 +338,35 @@ async fn fetch_asset_as_data_uri(client: &Client, url: String) -> Result<String,
 fn use_base64(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_sri_removes_integrity_and_crossorigin() {
+        let html = r#"<html><head>
+<link rel="stylesheet" href="/css/a.css" integrity="sha256-AAAA" crossorigin>
+<link rel="stylesheet" href="/css/b.css" crossorigin="anonymous" integrity="sha256-BBBB">
+<script src="/app.js" integrity="sha256-CCCC"></script>
+<link rel="icon" href="/favicon.ico">
+</head></html>"#;
+        let out = strip_sri_attrs(html);
+        assert!(!out.contains("integrity"), "integrity not stripped: {out}");
+        assert!(!out.contains("crossorigin"), "crossorigin not stripped: {out}");
+        assert!(out.contains("href=\"/css/a.css\""), "href lost: {out}");
+        assert!(out.contains("href=\"/css/b.css\""), "href lost: {out}");
+        assert!(out.contains("src=\"/app.js\""), "script src lost: {out}");
+        assert!(out.contains("href=\"/favicon.ico\""), "other link lost: {out}");
+    }
+
+    #[test]
+    fn strip_sri_preserves_other_attrs_and_text() {
+        let html = r#"<p>integrity="keep this text"</p><link data-x="a>b" rel="stylesheet" href="/x.css" integrity="sha256-X">"#;
+        let out = strip_sri_attrs(html);
+        assert!(!out.contains("integrity=\"sha256-X\""), "integrity attr not stripped: {out}");
+        assert!(out.contains("data-x=\"a>b\""), "attr with > mangled: {out}");
+        assert!(out.contains("integrity=\"keep this text\""), "text content altered: {out}");
+    }
 }

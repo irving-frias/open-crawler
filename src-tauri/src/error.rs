@@ -31,6 +31,9 @@ pub enum AppError {
 
     #[error("Engine already running")]
     EngineAlreadyRunning,
+
+    #[error("PageSpeed API error: {0}")]
+    Pagespeed(String),
 }
 
 impl Serialize for AppError {

@@ -42,6 +42,10 @@ pub struct SeoData {
     pub html_lang: Option<String>,
     pub hreflang_links: Vec<HreflangLink>,
     pub semantic_issues: Vec<SemanticIssue>,
+    pub readability_score: Option<f64>,
+    pub content_hash: Option<String>,
+    pub keywords: Vec<Keyword>,
+    pub og_meta: OgMeta,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +53,43 @@ pub struct OutgoingLink {
     pub url: String,
     pub anchor_text: String,
     pub is_follow: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Keyword {
+    pub keyword: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OgMeta {
+    pub og_title: Option<String>,
+    pub og_description: Option<String>,
+    pub og_image: Option<String>,
+    pub og_image_alt: Option<String>,
+    pub og_type: Option<String>,
+    pub og_url: Option<String>,
+    pub og_site_name: Option<String>,
+    pub twitter_card: Option<String>,
+    pub twitter_title: Option<String>,
+    pub twitter_description: Option<String>,
+    pub twitter_image: Option<String>,
+}
+
+impl OgMeta {
+    pub fn is_empty(&self) -> bool {
+        self.og_title.is_none()
+            && self.og_description.is_none()
+            && self.og_image.is_none()
+            && self.og_image_alt.is_none()
+            && self.og_type.is_none()
+            && self.og_url.is_none()
+            && self.og_site_name.is_none()
+            && self.twitter_card.is_none()
+            && self.twitter_title.is_none()
+            && self.twitter_description.is_none()
+            && self.twitter_image.is_none()
+    }
 }
 
 /// Compute XPath for a scraper ElementRef
@@ -95,6 +136,11 @@ fn build_absolute_xpath(el: &scraper::ElementRef) -> String {
 }
 
 fn collect_upward(el: &scraper::ElementRef, out: &mut Vec<String>) {
+    if let Some(id) = el.value().id() {
+        out.push(format!("//*[@id='{}']", id));
+        return;
+    }
+
     let tag = el.value().name().to_string();
 
     let position = el
@@ -118,11 +164,6 @@ fn collect_upward(el: &scraper::ElementRef, out: &mut Vec<String>) {
 
     out.push(step);
 
-    if let Some(id) = el.value().id() {
-        out.push(format!("//*[@id='{}']", id));
-        return;
-    }
-
     if let Some(parent) = el.parent().and_then(scraper::ElementRef::wrap) {
         collect_upward(&parent, out);
     }
@@ -132,7 +173,7 @@ fn build_accessible_xpath(el: &scraper::ElementRef) -> String {
     let mut parts: Vec<String> = Vec::new();
     collect_upward(el, &mut parts);
 
-    if parts.len() >= 2 && parts.last().map(|s| s.starts_with("//*[@id='")) == Some(true) {
+    if !parts.is_empty() && parts.last().map(|s| s.starts_with("//*[@id='")) == Some(true) {
         parts.reverse();
         if parts.len() > 4 {
             parts.truncate(4);
@@ -328,6 +369,11 @@ impl SeoParser {
         let html_lang = self.extract_html_lang(&document);
         let hreflang_links = self.extract_hreflang(&document, base_url);
         let semantic_issues = self.analyze_semantics(&document);
+        let visible_text = self.extract_visible_text(&document);
+        let readability_score = self.compute_readability(&visible_text);
+        let content_hash = self.compute_content_hash(&visible_text);
+        let keywords = self.extract_keywords(&visible_text);
+        let og_meta = self.extract_og_meta(&document);
 
         let outgoing_urls: Vec<String> = outgoing_links.iter().map(|l| l.url.clone()).collect();
 
@@ -344,6 +390,10 @@ impl SeoParser {
                 html_lang,
                 hreflang_links,
                 semantic_issues,
+                readability_score,
+                content_hash,
+                keywords,
+                og_meta,
             },
             outgoing_urls,
         )
@@ -550,35 +600,6 @@ impl SeoParser {
         let nesting_issues = self.check_element_nesting(document);
         issues.extend(nesting_issues);
 
-        // Post-process: assign context-aware XPath
-        // Count issues by type to decide full vs short XPath
-        let mut type_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for issue in &issues {
-            *type_counts.entry(issue.issue_type.clone()).or_insert(0) += 1;
-        }
-
-        // For element-level issues: use accessible XPath anchored at nearest ancestor with id
-        // Limit to element + up to 3 ancestor steps, e.g. //*[@id='x']/div[1]/a/article
-        for issue in &mut issues {
-            if issue.xpath.is_some() {
-                if let Some(ref full) = issue.xpath.clone() {
-                    if full.starts_with("/") {
-                        if let Some(id_pos) = full.rfind("[@id='") {
-                            if let Some(end) = full[id_pos..].find("']") {
-                                let id_val = &full[id_pos + 7..id_pos + end + 2];
-                                let from_id = &full[id_pos..];
-                                let mut segments: Vec<&str> = from_id.split('/').collect();
-                                if segments.len() > 4 {
-                                    segments.truncate(4);
-                                }
-                                issue.xpath = Some(format!("//*[@id='{}']{}", id_val, segments.join("/")));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         issues
     }
 
@@ -771,7 +792,7 @@ impl SeoParser {
                     Some(NestingStatus::Cant) => {
                         seen_pairs.insert(pair.clone());
                         let selector = compute_css_selector(&element);
-                        let xpath = compute_xpath_full(&element);
+                        let xpath = compute_xpath(&element);
                         issues.push(SemanticIssue {
                             issue_type: "invalid_nesting".to_string(),
                             severity: "error".to_string(),
@@ -788,7 +809,7 @@ impl SeoParser {
                     Some(NestingStatus::Doubt) => {
                         seen_pairs.insert(pair.clone());
                         let selector = compute_css_selector(&element);
-                        let xpath = compute_xpath_full(&element);
+                        let xpath = compute_xpath(&element);
                         issues.push(SemanticIssue {
                             issue_type: "context_nesting".to_string(),
                             severity: "info".to_string(),
@@ -968,6 +989,248 @@ impl SeoParser {
             })
             .collect()
     }
+
+    // ==================== READABILITY, KEYWORDS, SIMHASH, SOCIAL META ====================
+
+    /// Extract the visible text of the page (skips script/style/noscript/template/svg
+    /// and hidden or aria-hidden elements).
+    fn extract_visible_text(&self, document: &Html) -> String {
+        let body_selector = match Selector::parse("body") {
+            Ok(s) => s,
+            Err(_) => return String::new(),
+        };
+        let Some(body) = document.select(&body_selector).next() else {
+            return String::new();
+        };
+        let mut parts: Vec<String> = Vec::new();
+        collect_visible_text(&body, &mut parts);
+        parts.join(" ")
+    }
+
+    /// Flesch Reading Ease (0-100). `None` when there is not enough text.
+    fn compute_readability(&self, text: &str) -> Option<f64> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.len() < 30 {
+            return None;
+        }
+
+        let sentences = count_sentences(text);
+        if sentences == 0 {
+            return None;
+        }
+
+        let syllables: usize = words.iter().map(|w| count_syllables(w)).sum();
+        let asl = words.len() as f64 / sentences as f64;
+        let asw = syllables as f64 / words.len() as f64;
+        let score = 206.835 - (1.015 * asl) - (84.6 * asw);
+
+        Some(score.clamp(0.0, 100.0))
+    }
+
+    /// Simhash fingerprint of the visible text, hex-encoded.
+    fn compute_content_hash(&self, text: &str) -> Option<String> {
+        if text.trim().is_empty() {
+            return None;
+        }
+        Some(format!("{:x}", simhash::simhash(text)))
+    }
+
+    /// Top keywords (word frequency), filtered by stopwords, capped at 20.
+    fn extract_keywords(&self, text: &str) -> Vec<Keyword> {
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        for raw in text.split_whitespace() {
+            let word: String = raw
+                .chars()
+                .filter(|c| c.is_alphabetic() || *c == '\'')
+                .collect::<String>()
+                .to_lowercase();
+            if word.len() < 4 {
+                continue;
+            }
+            if is_stopword(&word) {
+                continue;
+            }
+            *counts.entry(word).or_insert(0) += 1;
+        }
+
+        let mut keywords: Vec<Keyword> = counts
+            .into_iter()
+            .map(|(keyword, count)| Keyword { keyword, count })
+            .collect();
+        keywords.sort_by(|a, b| b.count.cmp(&a.count).then(a.keyword.cmp(&b.keyword)));
+        keywords.truncate(20);
+        keywords
+    }
+
+    /// Extract Open Graph and Twitter Card meta tags.
+    fn extract_og_meta(&self, document: &Html) -> OgMeta {
+        let mut meta = OgMeta::default();
+
+        let prop_selector = match Selector::parse(r#"meta[property^="og:"], meta[name^="og:"]"#) {
+            Ok(s) => s,
+            Err(_) => return meta,
+        };
+
+        for el in document.select(&prop_selector) {
+            let key = el
+                .value()
+                .attr("property")
+                .or_else(|| el.value().attr("name"))
+                .unwrap_or("")
+                .to_string();
+            let content = el
+                .value()
+                .attr("content")
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if content.is_empty() {
+                continue;
+            }
+            match key.as_str() {
+                "og:title" => meta.og_title = Some(content),
+                "og:description" => meta.og_description = Some(content),
+                "og:image" => meta.og_image = Some(content),
+                "og:image:alt" => meta.og_image_alt = Some(content),
+                "og:type" => meta.og_type = Some(content),
+                "og:url" => meta.og_url = Some(content),
+                "og:site_name" => meta.og_site_name = Some(content),
+                _ => {}
+            }
+        }
+
+        let twitter_selector = match Selector::parse(r#"meta[name^="twitter:"]"#) {
+            Ok(s) => s,
+            Err(_) => return meta,
+        };
+
+        for el in document.select(&twitter_selector) {
+            let key = el.value().attr("name").unwrap_or("").to_string();
+            let content = el
+                .value()
+                .attr("content")
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if content.is_empty() {
+                continue;
+            }
+            match key.as_str() {
+                "twitter:card" => meta.twitter_card = Some(content),
+                "twitter:title" => meta.twitter_title = Some(content),
+                "twitter:description" => meta.twitter_description = Some(content),
+                "twitter:image" => meta.twitter_image = Some(content),
+                _ => {}
+            }
+        }
+
+        meta
+    }
+}
+
+fn collect_visible_text(el: &scraper::ElementRef, out: &mut Vec<String>) {
+    let name = el.value().name();
+    if matches!(name, "script" | "style" | "noscript" | "template" | "svg") {
+        return;
+    }
+    if el.value().attr("hidden").is_some() || el.value().attr("aria-hidden").is_some() {
+        return;
+    }
+    for child in el.children() {
+        match child.value() {
+            scraper::node::Node::Text(t) => {
+                let text = t.trim();
+                if !text.is_empty() {
+                    out.push(text.to_string());
+                }
+            }
+            scraper::node::Node::Element(_) => {
+                if let Some(child_el) = scraper::ElementRef::wrap(child) {
+                    collect_visible_text(&child_el, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn count_sentences(text: &str) -> usize {
+    let mut count = 0usize;
+    let mut prev_end = false;
+    for c in text.chars() {
+        if matches!(c, '.' | '!' | '?') {
+            if !prev_end {
+                count += 1;
+                prev_end = true;
+            }
+        } else {
+            prev_end = false;
+        }
+    }
+    count.max(1)
+}
+
+fn count_syllables(word: &str) -> usize {
+    let lower = word.to_lowercase();
+    let mut count = 0usize;
+    let mut prev_vowel = false;
+
+    for c in lower.chars() {
+        let is_vowel = matches!(
+            c,
+            'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ü' | 'y'
+        );
+        if is_vowel && !prev_vowel {
+            count += 1;
+        }
+        prev_vowel = is_vowel;
+    }
+
+    if count == 0 {
+        return 1;
+    }
+
+    // Silent final 'e' (English heuristic, e.g. "home")
+    if lower.ends_with('e') && !lower.ends_with("le") {
+        count -= 1;
+    }
+
+    count.max(1)
+}
+
+fn is_stopword(word: &str) -> bool {
+    const STOPWORDS: &[&str] = &[
+        // English
+        "the", "and", "for", "with", "that", "this", "from", "have", "are", "was", "were",
+        "been", "will", "would", "could", "should", "shall", "might", "must", "can", "may",
+        "their", "there", "these", "those", "them", "they", "than", "then", "which", "what",
+        "when", "where", "while", "who", "whom", "whose", "why", "how", "your", "yours",
+        "you", "our", "ours", "his", "her", "hers", "its", "not", "but", "also", "into",
+        "about", "after", "before", "between", "over", "under", "again", "once", "out",
+        "down", "off", "very", "just", "because", "every", "some", "such", "only", "other",
+        "each", "both", "more", "most", "few", "same", "here", "upon", "through", "during",
+        "above", "below", "does", "did", "doing", "has", "had", "having", "get", "got",
+        "one", "two", "three", "first", "second", "next", "last", "any", "another", "those",
+        "being", "been", "come", "go", "goes", "going", "am", "is",
+        // Spanish
+        "como", "para", "por", "con", "los", "las", "una", "uno", "unas", "unos", "del",
+        "que", "cual", "quien", "este", "esta", "esto", "ese", "esa", "eso", "aquel",
+        "aquella", "ello", "ella", "ellos", "ellas", "usted", "ustedes", "nosotros",
+        "nosotras", "vosotros", "vosotras", "sido", "ser", "estos", "estas", "entre",
+        "sobre", "hacia", "desde", "hasta", "durante", "contra", "mediante", "tambien",
+        "pero", "aunque", "porque", "sino", "sino", "si", "no", "ni", "ya", "mas",
+        "menos", "todo", "toda", "todos", "todas", "nada", "algo", "alguien", "nadie",
+        "muy", "tan", "tanto", "cuando", "donde", "el", "me", "te", "se", "lo", "la",
+        "le", "les", "mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra",
+        "vuestro", "vuestra", "estan", "estas", "son", "era", "fue", "sera",
+    ];
+    STOPWORDS.contains(&word)
 }
 
 #[cfg(test)]
@@ -1050,6 +1313,69 @@ mod tests {
             .collect();
         assert!(!nesting_issues.is_empty(), "Should detect div inside span");
         assert!(nesting_issues.iter().any(|i| i.message.contains("<div>") && i.message.contains("<span>")));
+    }
+
+    #[test]
+    fn test_invalid_nesting_xpath_is_clean_single_id() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>Test</title></head>
+<body>
+    <div id="menu-items">
+        <span>
+            <div>This is wrong</div>
+        </span>
+    </div>
+</body>
+</html>"#;
+        let document = Html::parse_document(html);
+        let issues = parser.analyze_semantics(&document);
+
+        let nesting_issues: Vec<_> = issues.iter()
+            .filter(|i| i.issue_type == "invalid_nesting")
+            .collect();
+        assert!(!nesting_issues.is_empty(), "Should detect div inside span");
+        for issue in nesting_issues {
+            let xpath = issue.xpath.as_deref().expect("nesting issue should have xpath");
+            assert_eq!(xpath.matches("[@id='").count(), 1, "xpath has duplicate id selector: {xpath}");
+            assert!(!xpath.contains("']'"), "xpath has mangled id value: {xpath}");
+            assert!(xpath.contains("menu-items"), "xpath lost id value: {xpath}");
+        }
+    }
+
+    #[test]
+    fn test_compute_xpath_clean_single_id_path() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>Test</title></head>
+<body>
+    <ul id="menu-items">
+        <li>1</li>
+        <li>2</li>
+        <li>3</li>
+        <li>4</li>
+        <li><a href="/x"><span>Link</span></a></li>
+    </ul>
+</body>
+</html>"#;
+        let document = Html::parse_document(html);
+        let selector = Selector::parse("ul#menu-items li:nth-of-type(5) a span").unwrap();
+        let span = document.select(&selector).next().expect("span not found");
+        let xpath = compute_xpath(&span);
+        assert_eq!(xpath, "//*[@id='menu-items']/li[5]/a/span", "unexpected xpath: {xpath}");
+
+        let issues = parser.analyze_semantics(&document);
+        let nesting_issues: Vec<_> = issues.iter()
+            .filter(|i| i.issue_type == "invalid_nesting" || i.issue_type == "context_nesting")
+            .collect();
+        for issue in nesting_issues {
+            if let Some(xpath) = issue.xpath.as_deref() {
+                assert_eq!(xpath.matches("[@id='").count(), 1, "xpath has duplicate id selector: {xpath}");
+                assert!(!xpath.contains("']'"), "xpath has mangled id value: {xpath}");
+            }
+        }
     }
 
     #[test]
@@ -1174,5 +1500,91 @@ mod tests {
         assert_eq!(can_include("ul", "li"), Some(NestingStatus::Can));
         assert_eq!(can_include("tr", "td"), Some(NestingStatus::Can));
         assert_eq!(can_include("table", "tr"), Some(NestingStatus::Can));
+    }
+
+    #[test]
+    fn test_readability_and_keywords() {
+        let parser = SeoParser::new();
+        let mut body = String::from("<p>");
+        for i in 0..20 {
+            body.push_str(&format!(
+                "The quick brown fox jumps over the lazy dog near the riverbank number {}.",
+                i
+            ));
+        }
+        body.push_str("</p>");
+        let html = format!("<!DOCTYPE html><html lang='en'><head><title>Test</title></head><body>{}</body></html>", body);
+        let url = Url::parse("https://example.com").unwrap();
+        let (data, _) = parser.parse(&html, &url);
+
+        let score = data.readability_score.expect("should compute readability");
+        assert!((0.0..=100.0).contains(&score));
+        assert!(!data.keywords.is_empty());
+        assert!(data.keywords.iter().any(|k| k.keyword == "riverbank"));
+        assert!(data.content_hash.is_some());
+    }
+
+    #[test]
+    fn test_content_hash_stable_for_similar_text() {
+        let parser = SeoParser::new();
+        let h1 = parser.compute_content_hash("lorem ipsum dolor sit amet consectetur adipiscing");
+        let h2 = parser.compute_content_hash("lorem ipsum dolor sit amet consectetur adipiscing");
+        let h3 = parser.compute_content_hash("totally different content goes here instead");
+        assert_eq!(h1, h2);
+        assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn test_visible_text_skips_scripts() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html><html lang="en"><head><title>T</title>
+            <script>var secret = "should not appear";</script>
+            <style>.hidden{color:red}</style>
+        </head><body>
+            <p>Visible paragraph text</p>
+            <div aria-hidden="true">Hidden from screen readers</div>
+            <noscript>noscript fallback</noscript>
+        </body></html>"#;
+        let url = Url::parse("https://example.com").unwrap();
+        let (data, _) = parser.parse(html, &url);
+        let text = parser.extract_visible_text(&parser_doc(html));
+        assert!(text.contains("Visible paragraph text"));
+        assert!(!text.contains("should not appear"));
+        assert!(!text.contains("Hidden from screen readers"));
+        assert!(!text.contains("noscript fallback"));
+        assert!(data.content_hash.is_some());
+    }
+
+    fn parser_doc(html: &str) -> Html {
+        Html::parse_document(html)
+    }
+
+    #[test]
+    fn test_og_meta_extraction() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html><html lang="en"><head><title>T</title>
+            <meta property="og:title" content="My Awesome Page">
+            <meta property="og:description" content="A great description">
+            <meta property="og:image" content="https://example.com/img.png">
+            <meta property="og:type" content="article">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:title" content="Tweet Title">
+        </head><body><h1>Hello</h1></body></html>"#;
+        let url = Url::parse("https://example.com").unwrap();
+        let (data, _) = parser.parse(html, &url);
+
+        assert_eq!(data.og_meta.og_title.as_deref(), Some("My Awesome Page"));
+        assert_eq!(
+            data.og_meta.og_description.as_deref(),
+            Some("A great description")
+        );
+        assert_eq!(data.og_meta.og_image.as_deref(), Some("https://example.com/img.png"));
+        assert_eq!(data.og_meta.og_type.as_deref(), Some("article"));
+        assert_eq!(
+            data.og_meta.twitter_card.as_deref(),
+            Some("summary_large_image")
+        );
+        assert_eq!(data.og_meta.twitter_title.as_deref(), Some("Tweet Title"));
+        assert!(!data.og_meta.is_empty());
     }
 }

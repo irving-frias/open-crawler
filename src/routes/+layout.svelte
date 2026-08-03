@@ -77,6 +77,5 @@
   .app {
     max-width: 1920px;
     margin: 0 auto;
-    padding: var(--space-lg);
   }
 </style>

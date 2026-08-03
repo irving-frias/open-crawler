@@ -12,7 +12,6 @@ use crate::AppState;
 const DEFAULT_BATCH_SIZE: usize = 50;
 const MAX_BATCH_SIZE: usize = 500;
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2000;
-const BATCH_EVENT_INTERVAL: u32 = 500;
 
 pub enum CrawlResultMsg {
     Page(Box<CrawlResult>),
@@ -40,7 +39,6 @@ pub struct DbWriter {
     project_id: String,
     total_crawled: u32,
     total_errors: u32,
-    last_event_count: u32,
 }
 
 impl DbWriter {
@@ -62,7 +60,6 @@ impl DbWriter {
             project_id,
             total_crawled: 0,
             total_errors: 0,
-            last_event_count: 0,
         }
     }
 
@@ -166,9 +163,9 @@ impl DbWriter {
             }
         };
 
-        let repo = CrawlRepo::new(&db, None);
+        let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
 
-        // Batch insert pages
+        // Batch insert pages (this also invalidates the results cache for the project)
         if let Err(e) = repo.save_results_batch(&results) {
             error!("Failed to batch save {} results: {}", count, e);
         }
@@ -189,9 +186,8 @@ impl DbWriter {
             self.batch_size = (self.batch_size / 2).max(DEFAULT_BATCH_SIZE);
         }
 
-        // Emit crawl-batch event for real-time frontend updates (throttled)
-        if count > 0 && self.total_crawled - self.last_event_count >= BATCH_EVENT_INTERVAL {
-            self.last_event_count = self.total_crawled;
+        // Emit crawl-batch event on every flush so results appear on-demand
+        if count > 0 {
             if let Err(e) = self.app_handle.emit(
                 "crawl-batch",
                 serde_json::json!({

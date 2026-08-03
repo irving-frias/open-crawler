@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { getSettings, saveSettings } from '$lib/api/settings';
+  import type { SettingsMap } from '$lib/api/types';
   import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
   import { m } from '$lib/paraglide/messages.js';
   import { applyTheme as applyAppTheme } from '$lib/theme.js';
@@ -28,6 +29,7 @@
   let checkSemantics = $state(true);
   let maxCrawlTime = $state('3600');
   let notificationsEnabled = $state(true);
+  let pagespeedApiKey = $state('');
   let saving = $state(false);
 
   $effect(() => {
@@ -36,7 +38,7 @@
 
   async function loadSettings() {
     try {
-      const settings = await invoke<Record<string, string>>('get_settings');
+      const settings = await getSettings();
       if (settings.language) language = settings.language as Locale;
       if (settings.theme) theme = settings.theme;
       if (settings.page_size) pageSize = settings.page_size;
@@ -46,6 +48,7 @@
       if (settings.check_semantics) checkSemantics = settings.check_semantics === 'true';
       if (settings.max_crawl_time) maxCrawlTime = settings.max_crawl_time;
       if (settings.notifications_enabled !== undefined) notificationsEnabled = settings.notifications_enabled === 'true';
+      if (settings.pagespeed_api_key) pagespeedApiKey = settings.pagespeed_api_key;
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -54,7 +57,7 @@
   async function save() {
     saving = true;
     try {
-      const settings: Record<string, string> = {
+      const settings: SettingsMap = {
         language,
         theme,
         page_size: pageSize,
@@ -64,8 +67,9 @@
         check_semantics: checkSemantics.toString(),
         max_crawl_time: maxCrawlTime,
         notifications_enabled: notificationsEnabled.toString(),
+        pagespeed_api_key: pagespeedApiKey,
       };
-      await invoke('save_settings', { settings });
+      await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
       onsave?.(settings);
@@ -146,10 +150,23 @@
 
       <Separator />
 
+      <div class="grid gap-1.5">
+        <Label for="pagespeed-key">{m['settings.pagespeed_api_key']()}</Label>
+        <Input
+          id="pagespeed-key"
+          type="password"
+          bind:value={pagespeedApiKey}
+          autocomplete="off"
+          placeholder={m['settings.pagespeed_api_key_placeholder']()}
+        />
+        <p class="text-xs text-muted-foreground">{m['settings.pagespeed_api_key_hint']()}</p>
+      </div>
+
+      <Separator />
+
       <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         {m['settings.default_config']()}
       </h3>
-
       <div class="grid gap-1.5">
         <Label for="max-depth">{m['config.max_depth']()}</Label>
         <Input id="max-depth" type="number" bind:value={maxDepth} min="1" max="50" />

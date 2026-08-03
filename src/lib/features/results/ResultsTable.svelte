@@ -1,7 +1,7 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
-  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink } from 'lucide-svelte';
+  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink, BookOpenText } from 'lucide-svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
@@ -62,6 +62,18 @@
     return count === 1
       ? m['results.search_match_one']({ count: count.toString() })
       : m['results.search_matches']({ count: count.toString() });
+  }
+
+  function readabilityLabel(score: number): string {
+    if (score >= 70) return m['dashboard.readability.easy']();
+    if (score >= 40) return m['dashboard.readability.medium']();
+    return m['dashboard.readability.hard']();
+  }
+
+  function readabilityVariant(score: number): 'default' | 'warning' | 'destructive' {
+    if (score >= 70) return 'default';
+    if (score >= 40) return 'warning';
+    return 'destructive';
   }
 </script>
 
@@ -154,6 +166,16 @@
             {page.status_code}
           </div>
           <div class="col-issues">
+            {#if page.readability_score != null}
+              <Badge
+                variant={readabilityVariant(page.readability_score)}
+                class="readability-badge gap-1"
+                title={`${m['dashboard.readability.label']()}: ${readabilityLabel(page.readability_score)} (${Math.round(page.readability_score)})`}
+              >
+                <BookOpenText class="size-3.5" />
+                {Math.round(page.readability_score)}
+              </Badge>
+            {/if}
             {#if issues.length > 0}
               <div class="issue-badges">
                 {#if issueCounts.errors > 0}
@@ -184,8 +206,7 @@
               </span>
             {/if}
           </div>
-        </div>
-        {#if isExpanded}
+        </div>        {#if isExpanded}
           {@const issues = parseIssues(page.semantic_issues_json)}
           <div class="table-row detail-row">
             <div class="issue-detail">

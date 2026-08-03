@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { getSemanticIssueCounts } from '$lib/api/results';
+  import type { IssueCount } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName } from '$lib/i18n-issues';
   import {
@@ -7,7 +8,6 @@
     Blocks, Monitor, Copy, Accessibility, LayoutGrid, TextCursorInput,
     TriangleAlert, ChevronRight,
   } from 'lucide-svelte';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import { cn } from '$lib/utils.js';
@@ -22,7 +22,7 @@
     activeFilter: string;
   } = $props();
 
-  let issueCounts = $state<any[]>([]);
+  let issueCounts = $state<IssueCount[]>([]);
   let loading = $state(false);
   let error = $state('');
 
@@ -65,7 +65,7 @@
     loading = true;
     error = '';
     try {
-      const data = await invoke<any[]>('get_semantic_issue_counts', { projectId });
+      const data = await getSemanticIssueCounts(projectId);
       issueCounts = data;
     } catch (e) {
       error = String(e);
@@ -129,17 +129,17 @@
   });
 </script>
 
-<Card class="dashboard-card">
-  <CardHeader class="flex-row items-center justify-between gap-2 space-y-0">
-    <CardTitle>{m["dashboard.title"]()}</CardTitle>
+<div class="semantic-dashboard">
+  <div class="dashboard-head">
+    <h2>{m["dashboard.title"]()}</h2>
     {#if activeFilter}
       <Button variant="outline" size="sm" onclick={clearFilter}>
         {m["dashboard.clear_filter"]({ type: formatIssueType(activeFilter) })} &times;
       </Button>
     {/if}
-  </CardHeader>
+  </div>
 
-  <CardContent class="flex flex-col gap-4">
+  <div class="dashboard-body">
     {#if loading}
       <div class="flex flex-col gap-2">
         <Skeleton class="h-12 w-full" />
@@ -224,12 +224,33 @@
         {/each}
       </div>
     {/if}
-  </CardContent>
-</Card>
+  </div>
+</div>
 
 <style>
-  :global(.dashboard-card) {
-    overflow: visible;
+  .semantic-dashboard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dashboard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-head h2 {
+    font-size: 1.15rem;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .dashboard-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .dashboard-error,

@@ -1,0 +1,34 @@
+pub mod analytics;
+pub mod app;
+pub mod crawl;
+pub mod export;
+pub mod pagespeed;
+pub mod projects;
+pub mod results;
+pub mod settings;
+pub mod snapshots;
+
+use std::sync::Arc;
+
+use tauri::State;
+use tokio::sync::RwLock;
+
+use crate::db::CrawlRepo;
+use crate::error::AppError;
+use crate::AppState;
+
+/// Runs a closure against a `CrawlRepo` while holding the app DB lock.
+///
+/// Every command that touches the database funnels through here, replacing the
+/// repeated lock-and-repo boilerplate. The results cache is always attached;
+/// it is only populated/consulted by `get_results`.
+pub(crate) async fn with_repo<T, F>(state: &State<'_, Arc<RwLock<AppState>>>, f: F) -> Result<T, AppError>
+where
+    F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError>,
+{
+    let state = state.inner().clone();
+    let state_read = state.read().await;
+    let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
+    let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
+    f(&repo)
+}

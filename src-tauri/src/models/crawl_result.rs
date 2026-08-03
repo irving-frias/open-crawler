@@ -22,6 +22,13 @@ pub struct CrawlResult {
     pub hreflang_json: Option<String>,
     pub semantic_issues_json: Option<String>,
     pub html_body: Option<String>,
+    pub readability_score: Option<f64>,
+    pub content_hash: Option<String>,
+    pub duplicate_group_id: Option<i64>,
+    pub keywords_json: Option<String>,
+    pub og_json: Option<String>,
+    pub pagespeed_score: Option<f64>,
+    pub pagespeed_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,4 +83,100 @@ pub struct SiteTreeNode {
     pub status_code: Option<u16>,
     pub depth: u32,
     pub has_children: bool,
+    pub issue_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusBucket {
+    pub status: u16,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStats {
+    pub total_pages: u32,
+    pub indexed_pages: u32,
+    pub broken_pages: u32,
+    pub avg_load_ms: f64,
+    pub avg_size_bytes: f64,
+    pub avg_readability: Option<f64>,
+    pub duplicate_count: u32,
+    pub missing_title_count: u32,
+    pub missing_description_count: u32,
+    pub missing_h1_count: u32,
+    pub status_distribution: Vec<StatusBucket>,
+    pub top_issues: Vec<IssueCount>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrawlSnapshot {
+    pub id: String,
+    pub project_id: String,
+    pub snapshot_time: String,
+    pub total_pages: u32,
+    pub indexed_pages: u32,
+    pub broken_pages: u32,
+    pub avg_load_ms: f64,
+    pub avg_size_bytes: f64,
+    pub avg_readability: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotStats {
+    pub total_pages: u32,
+    pub indexed_pages: u32,
+    pub broken_pages: u32,
+    pub avg_load_ms: f64,
+    pub avg_size_bytes: f64,
+    pub avg_readability: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UrlFieldDiff {
+    pub field: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangedUrl {
+    pub url: String,
+    pub diffs: Vec<UrlFieldDiff>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompareResult {
+    pub new_urls: Vec<String>,
+    pub removed_urls: Vec<String>,
+    pub changed_urls: Vec<ChangedUrl>,
+    pub unchanged_count: u32,
+    pub before: SnapshotStats,
+    pub after: SnapshotStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroupUrl {
+    pub url: String,
+    pub title: Option<String>,
+    pub status_code: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub id: i64,
+    pub size: u32,
+    pub urls: Vec<DuplicateGroupUrl>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageDetail {
+    pub page: CrawlResult,
+    pub links: Vec<PageLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeywordAggregate {
+    pub keyword: String,
+    pub count: u64,
+    pub pages: u32,
 }
