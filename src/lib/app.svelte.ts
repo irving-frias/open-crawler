@@ -260,6 +260,9 @@ export function createAppShell(): AppShell {
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let progressPollTimer: ReturnType<typeof setInterval> | null = null;
   let batchRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let resultsRequestSeq = 0;
+  let streamRefreshing = false;
+  let streamRefreshQueued = false;
   const unlistenFns: (() => void)[] = [];
   let disposed = false;
 
@@ -701,18 +704,36 @@ export function createAppShell(): AppShell {
     if (batchRefreshTimer) return;
     batchRefreshTimer = setTimeout(() => {
       batchRefreshTimer = null;
-      loadResults(state.currentPage);
+      runStreamRefresh();
     }, 1000);
   }
 
-  async function loadResults(page: number = 1) {
-    if (!state.selectedProjectId) return;
+  async function runStreamRefresh() {
+    if (streamRefreshing) {
+      streamRefreshQueued = true;
+      return;
+    }
+    streamRefreshing = true;
     try {
-      state.currentPage = page;
-      state.resultsLoading = true;
+      await loadResults(state.currentPage, { silent: true });
+    } finally {
+      streamRefreshing = false;
+      if (streamRefreshQueued) {
+        streamRefreshQueued = false;
+        scheduleResultsRefresh();
+      }
+    }
+  }
+
+  async function loadResults(page: number = 1, opts: { silent?: boolean } = {}) {
+    if (!state.selectedProjectId) return;
+    const seq = ++resultsRequestSeq;
+    state.currentPage = page;
+    if (!opts.silent) state.resultsLoading = true;
+    try {
       const data = await api.results.getResults({
         projectId: state.selectedProjectId,
-        page: state.currentPage,
+        page,
         pageSize: state.pageSize,
         semanticIssueType: state.semanticFilter || null,
         search: state.debouncedSearch || null,
@@ -724,11 +745,19 @@ export function createAppShell(): AppShell {
         noindexOnly: state.activeFilters.noindexOnly || null,
         is404: state.activeFilters.is404 || null,
       });
+      if (seq !== resultsRequestSeq) return;
+      if (
+        page === state.results.page &&
+        data.total === state.results.total &&
+        data.items.length === state.results.items.length
+      ) {
+        return;
+      }
       state.results = data;
     } catch (e) {
-      console.error('[Crawler] Failed to load results:', e);
+      if (seq === resultsRequestSeq) console.error('[Crawler] Failed to load results:', e);
     } finally {
-      state.resultsLoading = false;
+      if (seq === resultsRequestSeq && !opts.silent) state.resultsLoading = false;
     }
   }
 

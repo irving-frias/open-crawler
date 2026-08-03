@@ -85,7 +85,6 @@
     gap: 12px;
     padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border);
     z-index: 20;
   }
 
@@ -147,12 +146,13 @@
     gap: 8px;
     padding: 10px 16px;
     min-height: 44px;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     cursor: pointer;
-    transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+    transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast), box-shadow var(--transition-base);
     border-left: 4px solid transparent;
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
+    box-shadow: var(--neu-raised-sm);
     scroll-snap-align: start;
     flex-shrink: 0;
     font-size: 0.9rem;
@@ -160,10 +160,12 @@
 
   .project-chip:hover {
     background: var(--bg-hover);
+    box-shadow: var(--neu-raised-md);
     transform: translateY(-1px);
   }
 
   .project-chip:active {
+    box-shadow: var(--neu-pressed-sm);
     transform: translateY(0);
   }
 
@@ -175,7 +177,7 @@
   .project-chip.selected {
     background: var(--bg-hover);
     border-left: 4px solid var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-subtle);
+    box-shadow: var(--neu-pressed-sm);
   }
 
   .project-name {

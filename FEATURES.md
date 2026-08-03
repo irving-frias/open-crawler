@@ -51,10 +51,10 @@ Reglas:
 - `src/lib/use-optimistic.svelte.ts` — delete optimista (`useOptimistic<Project, OptimisticAction<Project>>`).
 
 ### Lazy-loading
-Los paneles pesados (p. ej. `PageDetailPanel`, `SettingsModal`, tabs) se montan solo cuando se necesita, normalmente con `{@const Comp = components.x}` + `<Comp .../>` (en Svelte 5 `<svelte:component>` está deprecado y rompe `pnpm check`).
+Los paneles pesados (p. ej. `PageDetailPanel`, `SettingsModal`, tabs) se montan solo cuando se necesita, normalmente con `{@const Comp = components.x}` + `<Comp .../>` (en Svelte 5 `<svelte:component>` está deprecado y rompe `bun run check`).
 
 ## Verificación
-CI (`.github/workflows/ci.yml`): `pnpm build` + `cargo check` + `clippy -D warnings`.
+CI (`.github/workflows/ci.yml`): `bun run build` + `cargo check` + `clippy -D warnings`.
 
 - Backend: `cd src-tauri && cargo check && cargo clippy --all-targets && cargo test --lib`.
-- Frontend: `pnpm check && pnpm build` (Node 22: `source ~/.nvm/nvm.sh && nvm use 22`).
+- Frontend: `bun run check && bun run build`.

@@ -14,7 +14,7 @@
 <AccordionPrimitive.Item
 	bind:ref
 	data-slot="accordion-item"
-	class={cn("rounded-lg border border-border", className)}
+	class={cn("rounded-xl bg-background neu-raised-sm", className)}
 	{...restProps}
 >
 	{@render children?.()}

@@ -75,10 +75,35 @@
     if (score >= 40) return 'warning';
     return 'destructive';
   }
+
+  interface RowModel {
+    page: any;
+    issues: any[];
+    issueCounts: { errors: number; warnings: number; infos: number };
+    readabilityVariant: 'default' | 'warning' | 'destructive' | undefined;
+    readabilityLabel: string | null;
+    titleHtml: string;
+  }
+
+  const rows = $derived<RowModel[]>(
+    items.map((page) => {
+      const issues = parseIssues(page.semantic_issues_json);
+      const issueCounts = getIssueCounts(issues);
+      const hasScore = page.readability_score != null;
+      return {
+        page,
+        issues,
+        issueCounts,
+        readabilityVariant: hasScore ? readabilityVariant(page.readability_score) : undefined,
+        readabilityLabel: hasScore ? readabilityLabel(page.readability_score) : null,
+        titleHtml: highlight(page.title || m['detail.no_title'](), localSearch),
+      };
+    })
+  );
 </script>
 
 <div class="table-wrapper">
-  <div class="search-bar flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
+  <div class="search-bar flex items-center gap-2 px-4 py-2">
     <div class="relative flex-1">
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
@@ -126,91 +151,88 @@
     </div>
 
     <div class="rows-body" bind:this={scrollContainer}>
-      {#each items as page (page.id)}
-        {@const issues = parseIssues(page.semantic_issues_json)}
-        {@const issueCounts = getIssueCounts(issues)}
-        {@const isExpanded = expandedUrl === page.url}
+      {#each rows as row (row.page.id)}
+        {@const isExpanded = expandedUrl === row.page.url}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="table-row main-row"
-          class:has-issues={issues.length > 0}
+          class:has-issues={row.issues.length > 0}
           class:expanded={isExpanded}
-          role={issues.length > 0 ? 'button' : undefined}
-          tabindex={issues.length > 0 ? 0 : undefined}
-          aria-expanded={issues.length > 0 ? isExpanded : undefined}
-          onclick={() => issues.length > 0 && toggleIssues(page.url)}
+          role={row.issues.length > 0 ? 'button' : undefined}
+          tabindex={row.issues.length > 0 ? 0 : undefined}
+          aria-expanded={row.issues.length > 0 ? isExpanded : undefined}
+          onclick={() => row.issues.length > 0 && toggleIssues(row.page.url)}
           onkeydown={(e) => {
-            if (issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
+            if (row.issues.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
               e.preventDefault();
-              toggleIssues(page.url);
+              toggleIssues(row.page.url);
             }
           }}
         >
           <div class="col-url">
             <a
               class="url-link"
-              href={page.url}
+              href={row.page.url}
               target="_blank"
               rel="noreferrer"
-              title={page.url}
+              title={row.page.url}
               onclick={(e) => e.stopPropagation()}
             >
-              <span class="url-text">{page.url}</span>
+              <span class="url-text">{row.page.url}</span>
               <ExternalLink class="url-external size-3.5" />
             </a>
-            <button class="btn-title" onclick={() => onDetail?.(page.id)} title={m['results.view_details']()}>
-              {@html highlight(page.title || m['detail.no_title'](), localSearch)}
+            <button class="btn-title" onclick={() => onDetail?.(row.page.id)} title={m['results.view_details']()}>
+              {@html row.titleHtml}
             </button>
           </div>
-          <div class="col-status status-{Math.floor(page.status_code / 100)}xx">
-            {page.status_code}
+          <div class="col-status status-{Math.floor(row.page.status_code / 100)}xx">
+            {row.page.status_code}
           </div>
           <div class="col-issues">
-            {#if page.readability_score != null}
+            {#if row.page.readability_score != null}
               <Badge
-                variant={readabilityVariant(page.readability_score)}
+                variant={row.readabilityVariant}
                 class="readability-badge gap-1"
-                title={`${m['dashboard.readability.label']()}: ${readabilityLabel(page.readability_score)} (${Math.round(page.readability_score)})`}
+                title={`${m['dashboard.readability.label']()}: ${row.readabilityLabel} (${Math.round(row.page.readability_score)})`}
               >
                 <BookOpenText class="size-3.5" />
-                {Math.round(page.readability_score)}
+                {Math.round(row.page.readability_score)}
               </Badge>
             {/if}
-            {#if issues.length > 0}
+            {#if row.issues.length > 0}
               <div class="issue-badges">
-                {#if issueCounts.errors > 0}
+                {#if row.issueCounts.errors > 0}
                   <Badge variant="outline" class="issue-badge-error gap-1">
                     <CircleX class="size-3.5" />
-                    {issueCounts.errors}
+                    {row.issueCounts.errors}
                   </Badge>
                 {/if}
-                {#if issueCounts.warnings > 0}
+                {#if row.issueCounts.warnings > 0}
                   <Badge variant="outline" class="issue-badge-warning gap-1">
                     <TriangleAlert class="size-3.5" />
-                    {issueCounts.warnings}
+                    {row.issueCounts.warnings}
                   </Badge>
                 {/if}
-                {#if issueCounts.infos > 0}
+                {#if row.issueCounts.infos > 0}
                   <Badge variant="outline" class="issue-badge-info gap-1">
                     <Info class="size-3.5" />
-                    {issueCounts.infos}
+                    {row.issueCounts.infos}
                   </Badge>
                 {/if}
               </div>
             {:else}
               <span class="no-issues">{m['results.ok']()}</span>
             {/if}
-            {#if issues.length > 0}
+            {#if row.issues.length > 0}
               <span class="row-chevron" class:rotated={isExpanded}>
                 <ChevronDown class="size-4" />
               </span>
             {/if}
           </div>
         </div>        {#if isExpanded}
-          {@const issues = parseIssues(page.semantic_issues_json)}
           <div class="table-row detail-row">
             <div class="issue-detail">
-              {#each issues as issue}
+              {#each row.issues as issue}
                 {@const params = parseIssueParams(issue.message, issue.issue_type)}
                 <div class="issue-item issue-{issue.severity}">
                   <span class="issue-icon">
@@ -244,8 +266,9 @@
     overflow: auto;
     max-height: min(600px, 60vh);
     border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
+    border: none;
     background: var(--bg-card);
+    box-shadow: var(--neu-pressed-sm);
     scrollbar-width: thin;
     scrollbar-color: var(--border-muted) transparent;
   }
@@ -268,8 +291,9 @@
   .result-count {
     flex-shrink: 0;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
+    border: none;
     background: var(--bg-card);
+    box-shadow: var(--neu-raised-sm);
     padding: 2px 10px;
     font-size: 0.78rem;
     color: var(--text-secondary);
@@ -328,6 +352,12 @@
     font-size: 0.9rem;
     box-sizing: border-box;
     transition: background var(--transition-base);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
+  }
+
+  .detail-row {
+    contain-intrinsic-size: auto 96px;
   }
 
   .main-row.has-issues {
@@ -595,7 +625,6 @@
     flex-direction: column;
     gap: 6px;
     padding: 12px 16px;
-    min-height: auto;
     position: relative;
   }
 

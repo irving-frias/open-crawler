@@ -1,7 +1,7 @@
 # Open Crawler - Development Progress
 
 ## Project Overview
-SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + pnpm**.
+SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + Bun**.
 
 **Current Phase:** Sprints 1-3 complete (UI quick wins, performance/filters, advanced crawl config) + caninclude replacement + **Sprint 4 (advanced SEO features F0-F8) complete**
 **Status:** Backend compiles, 0 clippy warnings, 53 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth), URL dedup, include/exclude glob patterns, custom headers + configurable timeout, theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view
@@ -14,7 +14,7 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 
 | # | Task | Status |
 |---|------|--------|
-| 1.1 | Scaffold project with `create-tauri-app` (Svelte + TypeScript + pnpm) | ✅ |
+| 1.1 | Scaffold project with `create-tauri-app` (Svelte + TypeScript + Bun) | ✅ |
 | 1.2 | Directory structure (`commands/`, `crawler/`, `models/`, `db/`) | ✅ |
 | 1.3 | Rust dependencies (`Cargo.toml`) | ✅ |
 | 1.4 | Frontend dependencies (`package.json`) | ✅ |
@@ -31,7 +31,7 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | 1.15 | SQLite migrations in `setup()` | ✅ |
 | 1.16 | UI Svelte: config form, progress bar, results table | ✅ |
 | 1.17 | Tauri events: `crawl-progress`, `crawl-complete`, `crawl-error` | ✅ |
-| 1.18-1.20 | `cargo check`, `cargo clippy`, `pnpm build` | ✅ |
+| 1.18-1.20 | `cargo check`, `cargo clippy`, `bun run build` | ✅ |
 
 ### Phase 1.5: Multi-Project Feature ✅ COMPLETED
 
@@ -338,7 +338,7 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 
 | # | Task | Status |
 |---|------|--------|
-| F9.1 | `cargo check` clean, `cargo test --lib` → 53 passed / 3 ignored, `cargo clippy -- -D warnings` clean, `pnpm build` + `pnpm check` 0 errors | ✅ |
+| F9.1 | `cargo check` clean, `cargo test --lib` → 53 passed / 3 ignored, `cargo clippy -- -D warnings` clean, `bun run build` + `bun run check` 0 errors | ✅ |
 | F9.2 | 13 commands registered in `lib.rs` invoke_handler | ✅ |
 
 ---
@@ -503,8 +503,8 @@ Persistent State (DB)
 cargo check:     ✅ Compiles successfully
 cargo clippy:    ✅ No warnings (clippy -- -D warnings)
 cargo test:      ✅ 53/53 tests pass (parser 13, dedup 8, nesting_table 4, frontier 6, robots 3, migrations 2, duplicates 1)
-pnpm build:      ✅ Frontend builds to /build
-pnpm check:      ✅ 0 errors / 0 warnings
+bun run build:  ✅ Frontend builds to /build
+bun run check:  ✅ 0 errors / 0 warnings
 ```
 
 ---
@@ -528,14 +528,14 @@ pnpm check:      ✅ 0 errors / 0 warnings
 - Nesting severity mapping: `Cant` → `invalid_nesting` (error), `Doubt` → `context_nesting` (info)
 - `Box<dyn ToSql>` cannot be cloned — dynamic filter params built as separate count/query `Vec`s
 - `HttpFetcher::new(user_agent: &str, timeout_ms: u64, custom_headers: Vec<(String, String)>)` — all call sites pass config values
-- Build requires Node 22 (`.nvmrc`): `source ~/.nvm/nvm.sh && nvm use 22 && pnpm build`
+- Build requires Bun 1.3+: `bun run build`
 - SQL migrations live in `src-tauri/src/db/migrations/*.sql`, run by the `db/migrations/mod.rs` runner (transactional + idempotent, tracked in `schema_migrations`)
 - PageSpeed uses the Google PSI v5 API (`runPagespeed`) — no API key required at low volume; set `pagespeed_api_key` in Settings to raise quota; results cached in `pagespeed_json`
 - Duplicate detection uses `simhash::simhash` + `hamming_distance <= 10` (tunable); runs automatically after each crawl via non-blocking `tokio::spawn`
 - Crawl snapshots are dumped transactionally to `crawl_snapshot_data` after each crawl for A/B comparison
 - Content hash is `format!("{:x}", simhash::simhash(text))`; readability is Flesch Reading Ease clamped to 0-100
-- Edits to `messages/en.json`/`es.json` require `pnpm build` to regenerate Paraglide (`src/lib/paraglide/`) before `pnpm check`
+- Edits to `messages/en.json`/`es.json` require `bun run build` to regenerate Paraglide (`src/lib/paraglide/`) before `bun run check`
 
 ---
 
-*Last updated: Sprint 4 (F0-F8 advanced SEO features) completed — 53 tests, clippy clean, pnpm build/check 0 errors*
+*Last updated: Sprint 4 (F0-F8 advanced SEO features) completed — 53 tests, clippy clean, bun run build/check 0 errors*

@@ -9,6 +9,7 @@
   import ResumeDialog from '$lib/features/crawl-controls/ResumeDialog.svelte';
   import ResultsView from '$lib/features/results/ResultsView.svelte';
   import ExportProgressBar from '$lib/features/export/ExportProgressBar.svelte';
+  import Splash from '$lib/features/splash/Splash.svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
 
@@ -16,6 +17,23 @@
 
   let PageDetailPanel = $state<typeof import('$lib/features/page-detail/PageDetailPanel.svelte').default | null>(null);
   let SettingsModal = $state<typeof import('$lib/features/settings/SettingsModal.svelte').default | null>(null);
+
+  const splashMountTime = Date.now();
+  let splashVisible = $state(true);
+  let splashGone = $state(false);
+
+  $effect(() => {
+    if (app.initialized && !splashGone) {
+      const remaining = Math.max(0, 800 - (Date.now() - splashMountTime));
+      const timer = setTimeout(() => {
+        splashVisible = false;
+        setTimeout(() => {
+          splashGone = true;
+        }, 450);
+      }, remaining);
+      return () => clearTimeout(timer);
+    }
+  });
 
   $effect(() => {
     if (app.detailPageId && !PageDetailPanel) {
@@ -31,6 +49,9 @@
 </script>
 
 <div class="app-layout">
+  {#if !splashGone}
+    <Splash visible={splashVisible} />
+  {/if}
   <AppHeader
     projects={app.projects}
     selectedProjectId={app.selectedProjectId}
@@ -272,15 +293,15 @@
   .site-favicon {
     width: 20px;
     height: 20px;
-    border-radius: 4px;
+    border-radius: 6px;
     object-fit: contain;
     background: var(--bg-card);
-    border: 1px solid var(--border-muted);
   }
 
   .error {
     background: var(--danger-subtle);
-    border: 1px solid var(--danger);
+    border: none;
+    box-shadow: var(--neu-raised-sm);
     color: var(--danger);
     padding: 12px 16px;
     border-radius: var(--radius-lg);
@@ -288,7 +309,8 @@
 
   .sitemap-info {
     background: var(--success-subtle);
-    border: 1px solid var(--success);
+    border: none;
+    box-shadow: var(--neu-raised-sm);
     color: var(--success);
     padding: 10px 16px;
     border-radius: var(--radius-lg);

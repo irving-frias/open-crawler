@@ -196,10 +196,10 @@
           <Button
             variant="ghost"
             class={cn(
-              'h-auto w-full justify-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+              'h-auto w-full justify-start gap-3 rounded-xl border px-4 py-3 text-left transition-all',
               activeFilter === item.issue_type
-                ? 'border-primary bg-card ring-1 ring-primary'
-                : 'border-transparent bg-muted/50 hover:bg-muted hover:text-foreground'
+                ? 'border-primary bg-card ring-1 ring-primary neu-pressed-sm'
+                : 'border-transparent bg-background hover:bg-muted hover:text-foreground neu-raised-sm'
             )}
             onclick={() => toggleFilter(item.issue_type)}
           >
@@ -329,8 +329,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-hover);
-    border-radius: 8px;
+    background: var(--bg-card);
+    box-shadow: var(--neu-raised-sm);
+    border-radius: 12px;
     flex-shrink: 0;
     color: var(--text-secondary);
   }

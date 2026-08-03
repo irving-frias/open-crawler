@@ -1,0 +1,57 @@
+/* ============================================
+   Open Crawler — Neumorphic (soft-UI) utilities
+   Defined as @utility so Tailwind variants
+   (data-active:, aria-expanded:, active:, hover:)
+   work with them.
+   ============================================ */
+
+@utility neu-raised-sm {
+  box-shadow: var(--neu-raised-sm);
+}
+
+@utility neu-raised-md {
+  box-shadow: var(--neu-raised-md);
+}
+
+@utility neu-raised-lg {
+  box-shadow: var(--neu-raised-lg);
+}
+
+@utility neu-pressed {
+  box-shadow: var(--neu-pressed);
+}
+
+@utility neu-pressed-sm {
+  box-shadow: var(--neu-pressed-sm);
+}
+
+@utility neu-float {
+  box-shadow: var(--neu-float);
+}
+
+@utility neu-focus {
+  box-shadow: var(--neu-focus);
+}
+
+@utility neu-surface {
+  background-color: var(--bg-deep);
+}
+
+/* Raised surfaces sink when pressed */
+@layer components {
+  [class*="neu-raised"] {
+    transition:
+      box-shadow 0.18s ease,
+      transform 0.12s ease;
+  }
+
+  [class*="neu-raised"]:active {
+    box-shadow: var(--neu-pressed-sm);
+  }
+}
+
+/* Sonner toasts — elevated neumorphic chips */
+[data-sonner-toast] {
+  box-shadow: var(--neu-float);
+  border: 1px solid transparent;
+}

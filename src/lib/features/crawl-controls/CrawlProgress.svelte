@@ -45,10 +45,10 @@
 <style>
   section {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--neu-raised-md);
   }
 
   .progress-section {

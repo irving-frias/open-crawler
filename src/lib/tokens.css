@@ -6,14 +6,14 @@
 /* ---- Dark theme (default fallback) ---- */
 :root,
 [data-theme="dark"] {
-  --bg-deep: #1a1b1e;
-  --bg-card: #25262b;
-  --bg-hover: #2c2e33;
-  --bg-input: #1a1b1e;
-  --bg-sidebar: #1e1f23;
+  --bg-deep: #1b1e24;
+  --bg-card: #1b1e24;
+  --bg-hover: #22262e;
+  --bg-input: #1b1e24;
+  --bg-sidebar: #1b1e24;
 
-  --border: #373a40;
-  --border-muted: #5c5f66;
+  --border: #2e333c;
+  --border-muted: #4c525c;
   --border-focus: #667eea;
 
   --text: #e1e3e6;
@@ -43,6 +43,17 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
 
+  /* ---- Neumorphic (soft-UI) ---- */
+  --neu-hi: #262a32;
+  --neu-lo: #0f1218;
+  --neu-raised-sm: 4px 4px 8px var(--neu-lo), -4px -4px 8px var(--neu-hi);
+  --neu-raised-md: 8px 8px 16px var(--neu-lo), -8px -8px 16px var(--neu-hi);
+  --neu-raised-lg: 12px 12px 24px var(--neu-lo), -12px -12px 24px var(--neu-hi);
+  --neu-pressed: inset 4px 4px 8px var(--neu-lo), inset -4px -4px 8px var(--neu-hi);
+  --neu-pressed-sm: inset 2px 2px 5px var(--neu-lo), inset -2px -2px 5px var(--neu-hi);
+  --neu-float: 12px 12px 28px var(--neu-lo), -12px -12px 28px var(--neu-hi), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --neu-focus: 0 0 0 3px var(--accent-subtle), 0 0 0 1px var(--accent);
+
   /* ---- Semantic backgrounds ---- */
   --bg-issue-error: #3d1f1f;
   --bg-issue-warning: #3d3520;
@@ -60,14 +71,14 @@
 
 /* ---- Light theme ---- */
 [data-theme="light"] {
-  --bg-deep: #f8f9fa;
-  --bg-card: #ffffff;
-  --bg-hover: #f1f3f5;
-  --bg-input: #ffffff;
-  --bg-sidebar: #f3f4f6;
+  --bg-deep: #dfe3e8;
+  --bg-card: #dfe3e8;
+  --bg-hover: #d5dae1;
+  --bg-input: #dfe3e8;
+  --bg-sidebar: #dfe3e8;
 
-  --border: #dee2e6;
-  --border-muted: #ced4da;
+  --border: #c6cdd7;
+  --border-muted: #aeb6c2;
   --border-focus: #4c6ef5;
 
   --text: #212529;
@@ -97,6 +108,17 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
 
+  /* ---- Neumorphic (soft-UI) ---- */
+  --neu-hi: #ffffff;
+  --neu-lo: #b6bdc7;
+  --neu-raised-sm: 4px 4px 8px var(--neu-lo), -4px -4px 8px var(--neu-hi);
+  --neu-raised-md: 8px 8px 16px var(--neu-lo), -8px -8px 16px var(--neu-hi);
+  --neu-raised-lg: 12px 12px 24px var(--neu-lo), -12px -12px 24px var(--neu-hi);
+  --neu-pressed: inset 4px 4px 8px var(--neu-lo), inset -4px -4px 8px var(--neu-hi);
+  --neu-pressed-sm: inset 2px 2px 5px var(--neu-lo), inset -2px -2px 5px var(--neu-hi);
+  --neu-float: 12px 12px 28px var(--neu-lo), -12px -12px 28px var(--neu-hi), 0 2px 4px rgba(0, 0, 0, 0.08);
+  --neu-focus: 0 0 0 3px var(--accent-subtle), 0 0 0 1px var(--accent);
+
   /* ---- Semantic backgrounds ---- */
   --bg-issue-error: #ffe3e3;
   --bg-issue-warning: #fff3bf;
@@ -115,14 +137,14 @@
 /* ---- System preference (auto) ---- */
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
-    --bg-deep: #f8f9fa;
-    --bg-card: #ffffff;
-    --bg-hover: #f1f3f5;
-    --bg-input: #ffffff;
-    --bg-sidebar: #f3f4f6;
+    --bg-deep: #dfe3e8;
+    --bg-card: #dfe3e8;
+    --bg-hover: #d5dae1;
+    --bg-input: #dfe3e8;
+    --bg-sidebar: #dfe3e8;
 
-    --border: #dee2e6;
-    --border-muted: #ced4da;
+    --border: #c6cdd7;
+    --border-muted: #aeb6c2;
     --border-focus: #4c6ef5;
 
     --text: #212529;
@@ -152,6 +174,17 @@
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
 
+    /* ---- Neumorphic (soft-UI) ---- */
+    --neu-hi: #ffffff;
+    --neu-lo: #b6bdc7;
+    --neu-raised-sm: 4px 4px 8px var(--neu-lo), -4px -4px 8px var(--neu-hi);
+    --neu-raised-md: 8px 8px 16px var(--neu-lo), -8px -8px 16px var(--neu-hi);
+    --neu-raised-lg: 12px 12px 24px var(--neu-lo), -12px -12px 24px var(--neu-hi);
+    --neu-pressed: inset 4px 4px 8px var(--neu-lo), inset -4px -4px 8px var(--neu-hi);
+    --neu-pressed-sm: inset 2px 2px 5px var(--neu-lo), inset -2px -2px 5px var(--neu-hi);
+    --neu-float: 12px 12px 28px var(--neu-lo), -12px -12px 28px var(--neu-hi), 0 2px 4px rgba(0, 0, 0, 0.08);
+    --neu-focus: 0 0 0 3px var(--accent-subtle), 0 0 0 1px var(--accent);
+
     --bg-issue-error: #ffe3e3;
     --bg-issue-warning: #fff3bf;
     --bg-issue-info: #d0ebff;
@@ -180,11 +213,11 @@
   --space-2xl: 48px;
 
   /* Radii */
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-pill: 100px;
 
   /* Shadows (shared focus) */
@@ -250,7 +283,7 @@
   --destructive-foreground: #ffffff;
   --input: var(--border);
   --ring: var(--accent);
-  --radius: 0.5rem;
+  --radius: 1rem;
   --chart-1: var(--accent);
   --chart-2: var(--purple);
   --chart-3: var(--success);

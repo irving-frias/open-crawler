@@ -43,7 +43,7 @@ Se ejecuta automáticamente en:
 Para buildear localmente:
 
 ```bash
-pnpm tauri build --target aarch64-linux-android
+bun run tauri build --target aarch64-linux-android
 ```
 
 El APK se genera en: `src-tauri/target/android/arm64-v8a/release/apk/`

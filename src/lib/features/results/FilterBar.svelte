@@ -326,7 +326,7 @@
     border-radius: 50%;
     background: var(--accent);
     border: 2px solid var(--bg-card);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--neu-raised-sm);
     cursor: pointer;
     transition: transform var(--transition-fast);
   }
@@ -341,7 +341,7 @@
     border-radius: 50%;
     background: var(--accent);
     border: 2px solid var(--bg-card);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--neu-raised-sm);
     cursor: pointer;
   }
 

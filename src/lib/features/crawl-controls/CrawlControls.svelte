@@ -227,10 +227,10 @@
 <style>
   section {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--neu-raised-md);
   }
 
   h2 {
@@ -271,10 +271,11 @@
   }
 
   .advanced {
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-lg);
     margin-bottom: 16px;
-    background: var(--bg-hover);
+    background: transparent;
+    box-shadow: var(--neu-pressed-sm);
   }
 
   .advanced summary {
@@ -333,8 +334,10 @@
   .resume-hint {
     margin-top: 12px;
     padding: 8px 12px;
-    background: var(--bg-hover);
-    border-radius: 6px;
+    background: var(--bg-card);
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: var(--neu-raised-sm);
     font-size: 0.85rem;
     color: var(--warning);
   }

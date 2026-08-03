@@ -205,10 +205,10 @@
 <style>
   section {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--neu-raised-md);
   }
 
   .results-toolbar {
@@ -231,8 +231,9 @@
     flex-direction: column;
     gap: 8px;
     border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
+    border: none;
     padding: 12px;
+    box-shadow: var(--neu-pressed-sm);
   }
 
   @media (max-width: 767px) {

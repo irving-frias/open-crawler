@@ -632,7 +632,6 @@
     gap: 12px;
     padding: calc(12px + env(safe-area-inset-top)) 20px 12px;
     background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     z-index: 10;
   }
@@ -808,9 +807,10 @@
 
   .og-image {
     max-width: 320px;
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: none;
+    box-shadow: var(--neu-raised-sm);
   }
 
   .og-image img {
@@ -828,8 +828,9 @@
   .issue-card {
     padding: 12px 14px;
     background: var(--bg-deep);
-    border-radius: 8px;
+    border-radius: 12px;
     border-left: 3px solid transparent;
+    box-shadow: var(--neu-pressed-sm);
   }
   .issue-card.issue-error { border-left-color: var(--danger); }
   .issue-card.issue-warning { border-left-color: var(--warning); }

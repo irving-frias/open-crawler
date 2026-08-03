@@ -45,10 +45,10 @@
     gap: 8px;
     width: min(420px, calc(100vw - 32px));
     padding: 12px 16px;
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    background: var(--bg-card);
+    border: none;
+    border-radius: 16px;
+    box-shadow: var(--neu-float);
   }
 
   .export-title {

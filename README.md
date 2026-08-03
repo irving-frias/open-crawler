@@ -37,13 +37,12 @@ Download the latest release for your platform from [Releases](https://github.com
 
 **Prerequisites:**
 - [Rust](https://rustup.rs/) (stable)
-- [Node.js](https://nodejs.org/) 22+
-- [pnpm](https://pnpm.io/) 8+
+- [Bun](https://bun.sh/) 1.3+
 
 ```bash
 git clone https://github.com/irving-frias/open-crawler.git
 cd open-crawler
-pnpm install
+bun install
 cargo tauri dev
 ```
 
@@ -120,17 +119,17 @@ open-crawler/
 |-------|-----------|
 | **Backend** | Rust, Tauri v2, rusqlite (SQLite), tokio, reqwest |
 | **Frontend** | Svelte 5, TypeScript, SvelteKit, Paraglide i18n |
-| **Build** | Vite, pnpm, adapter-static |
+| **Build** | Vite, Bun, adapter-static |
 | **CI/CD** | GitHub Actions (4-platform: macOS ARM/Intel, Linux, Windows) |
 
 ## Development
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Start dev server (frontend only)
-pnpm dev
+bun run dev
 
 # Start Tauri dev (full app)
 cargo tauri dev

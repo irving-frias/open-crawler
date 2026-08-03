@@ -207,8 +207,9 @@
     gap: 4px;
     padding: 16px;
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-lg);
+    box-shadow: var(--neu-raised-md);
   }
 
   .stat-label {
@@ -318,8 +319,9 @@
     text-align: center;
     color: var(--text-muted);
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-lg);
+    box-shadow: var(--neu-pressed-sm);
   }
 
   .dash-error {
