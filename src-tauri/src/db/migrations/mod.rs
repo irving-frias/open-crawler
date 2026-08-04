@@ -14,6 +14,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "004_create_crawl_snapshots",
         include_str!("004_create_crawl_snapshots.sql"),
     ),
+    (
+        "005_add_blocked_flag",
+        include_str!("005_add_blocked_flag.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {

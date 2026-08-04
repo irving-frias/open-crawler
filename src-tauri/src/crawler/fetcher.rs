@@ -15,11 +15,52 @@ pub struct FetchResponse {
     pub headers: HashMap<String, String>,
     pub load_time_ms: u64,
     pub size_bytes: usize,
+    /// True when the response is a security/challenge page (e.g. Cloudflare)
+    /// rather than an actual server error. Blocked pages are not counted as
+    /// broken pages.
+    pub blocked: bool,
 }
 
 #[async_trait]
 pub trait HtmlFetcher: Send + Sync {
     async fn fetch(&self, url: &Url) -> Result<FetchResponse, AppError>;
+}
+
+const CLOUDFLARE_CHALLENGE_MARKERS: &[&str] = &[
+    "just a moment",
+    "cf-chl",
+    "cf_chl",
+    "attention required",
+    "enable javascript and cookies to continue",
+    "verify you are human",
+    "checking your browser before accessing",
+    "performance & security by cloudflare",
+];
+
+/// Detects whether a response is a Cloudflare security/challenge hook instead
+/// of a genuine HTTP error page.
+pub fn is_cloudflare_challenge(
+    status: u16,
+    headers: &HashMap<String, String>,
+    html: &str,
+) -> bool {
+    if status < 400 {
+        return false;
+    }
+    if headers.get("cf-mitigated").is_some() {
+        return true;
+    }
+    let server = headers
+        .get("server")
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    if !server.contains("cloudflare") {
+        return false;
+    }
+    let body = html.to_lowercase();
+    CLOUDFLARE_CHALLENGE_MARKERS
+        .iter()
+        .any(|m| body.contains(m))
 }
 
 pub struct HttpFetcher {
@@ -76,6 +117,8 @@ impl HtmlFetcher for HttpFetcher {
 
         let load_time_ms = start.elapsed().as_millis() as u64;
 
+        let blocked = is_cloudflare_challenge(status, &headers, &html);
+
         Ok(FetchResponse {
             url: final_url,
             status,
@@ -83,6 +126,7 @@ impl HtmlFetcher for HttpFetcher {
             headers,
             load_time_ms,
             size_bytes,
+            blocked,
         })
     }
 }

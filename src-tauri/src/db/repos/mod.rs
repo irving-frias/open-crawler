@@ -104,6 +104,7 @@ mod tests {
             project_id: "p1".to_string(),
             url: url.to_string(),
             status_code: Some(status),
+            blocked: false,
             title: title.map(|s| s.to_string()),
             meta_description: None,
             h1: None,

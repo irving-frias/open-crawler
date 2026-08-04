@@ -7,6 +7,9 @@ pub struct CrawlResult {
     pub project_id: String,
     pub url: String,
     pub status_code: Option<u16>,
+    /// True when the page responded with a security/challenge page (e.g.
+    /// Cloudflare) rather than an actual error; excluded from broken counts.
+    pub blocked: bool,
     pub title: Option<String>,
     pub meta_description: Option<String>,
     pub h1: Option<String>,
@@ -97,6 +100,7 @@ pub struct DashboardStats {
     pub total_pages: u32,
     pub indexed_pages: u32,
     pub broken_pages: u32,
+    pub blocked_pages: u32,
     pub avg_load_ms: f64,
     pub avg_size_bytes: f64,
     pub avg_readability: Option<f64>,

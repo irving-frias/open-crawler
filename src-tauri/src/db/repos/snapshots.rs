@@ -81,7 +81,7 @@ impl<'a> CrawlRepo<'a> {
             |r| r.get(0),
         )?;
         let broken_pages: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND config_id = ?2 AND status_code >= 400",
+            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND config_id = ?2 AND status_code >= 400 AND blocked = 0",
             params![project_id, config_id],
             |r| r.get(0),
         )?;
@@ -103,7 +103,7 @@ impl<'a> CrawlRepo<'a> {
 
         let mut status_stmt = self.conn.prepare(
             "SELECT status_code, COUNT(*) FROM crawled_pages
-             WHERE project_id = ?1 AND config_id = ?2 AND status_code IS NOT NULL
+             WHERE project_id = ?1 AND config_id = ?2 AND status_code IS NOT NULL AND blocked = 0
              GROUP BY status_code",
         )?;
         let status_rows = status_stmt

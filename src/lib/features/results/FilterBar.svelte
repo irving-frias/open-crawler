@@ -60,7 +60,7 @@
         } catch {}
       }
     }
-    return Object.keys(sevCount).sort();
+    return Object.keys(sevCount).filter((s) => s === 'error').sort();
   });
 
   const activeFilterCount = $derived(

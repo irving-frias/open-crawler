@@ -146,7 +146,10 @@ impl<'a> CrawlRepo<'a> {
             "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND is_indexable = 1",
         )?;
         let broken_pages = count(
-            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND status_code >= 400",
+            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND status_code >= 400 AND blocked = 0",
+        )?;
+        let blocked_pages = count(
+            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND blocked = 1",
         )?;
         let duplicate_count = count(
             "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND duplicate_group_id IS NOT NULL",
@@ -181,7 +184,7 @@ impl<'a> CrawlRepo<'a> {
 
         let mut status_stmt = self.conn.prepare(
             "SELECT status_code, COUNT(*) FROM crawled_pages
-             WHERE project_id = ?1 AND status_code IS NOT NULL
+             WHERE project_id = ?1 AND status_code IS NOT NULL AND blocked = 0
              GROUP BY status_code ORDER BY COUNT(*) DESC LIMIT 8",
         )?;
         let status_distribution = status_stmt
@@ -199,6 +202,7 @@ impl<'a> CrawlRepo<'a> {
             total_pages,
             indexed_pages,
             broken_pages,
+            blocked_pages,
             avg_load_ms,
             avg_size_bytes,
             avg_readability,

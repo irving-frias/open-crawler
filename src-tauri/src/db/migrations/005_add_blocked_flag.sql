@@ -1,0 +1,1 @@
+ALTER TABLE crawled_pages ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0;

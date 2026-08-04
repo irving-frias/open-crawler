@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getPageDetail, getPagespeedScore } from '$lib/api';
-  import type { PageLink, PageSpeedData } from '$lib/api/types';
+  import type { PageLink, PageSpeedData, CrawlResult } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
   import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown } from 'lucide-svelte';
@@ -127,6 +127,8 @@
     try { return JSON.parse(json); } catch { return []; }
   }
 
+  const detailIssues = $derived(parseIssues(detail?.semantic_issues_json).filter((i: any) => i.severity === 'error'));
+
   let expandedRef = $state<Set<number>>(new Set());
 
   function toggleRef(index: number) {
@@ -186,6 +188,11 @@
     return 'default';
   }
 
+  function statusText(detail: CrawlResult): string {
+    if (detail.blocked) return m['detail.status.blocked']();
+    return detail.status_code != null ? String(detail.status_code) : '—';
+  }
+
   function severityBadgeVariant(severity: string): 'default' | 'warning' | 'destructive' {
     if (severity === 'error') return 'destructive';
     if (severity === 'warning') return 'warning';
@@ -218,7 +225,7 @@
       </div>
       <div class="header-right">
         {#if detail}
-          <Badge variant={statusBadgeVariant(detail.status_code)}>{detail.status_code}</Badge>
+          <Badge variant={statusBadgeVariant(detail.status_code)}>{statusText(detail)}</Badge>
           <span class="header-meta">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}</span>
           <span class="header-meta">{detail.load_time_ms ? `${detail.load_time_ms}ms` : ''}</span>
         {/if}
@@ -342,10 +349,10 @@
                   </AccordionItem>
                 {/if}
 
-                {#if parseIssues(detail.semantic_issues_json).length > 0}
+                {#if detailIssues.length > 0}
                   <AccordionItem value="semantic-issues" class="overview-full">
                     <AccordionHeader>
-                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: parseIssues(detail.semantic_issues_json).length.toString() })}</AccordionTrigger>
+                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: detailIssues.length.toString() })}</AccordionTrigger>
                     </AccordionHeader>
                     <AccordionContent>
                       {@render issuesContent()}
@@ -404,7 +411,7 @@
       <div class="field-row stats-row">
         <div class="field">
           <span class="field-label">{m["detail.status"]()}</span>
-          <Badge variant={statusBadgeVariant(detail.status_code)}>{detail.status_code}</Badge>
+          <Badge variant={statusBadgeVariant(detail.status_code)}>{statusText(detail)}</Badge>
         </div>
         <div class="field">
           <span class="field-label">{m["detail.depth"]()}</span>
@@ -568,7 +575,7 @@
   <Card size="sm">
     <CardContent class="pt-4">
       <div class="issue-list">
-        {#each parseIssues(detail.semantic_issues_json) as issue, i (i)}
+        {#each detailIssues as issue, i (i)}
           {@const params = parseIssueParams(issue.message, issue.issue_type)}
           {@const refInfo = elementReference(issue)}
           <div class="issue-card issue-{issue.severity}">

@@ -56,6 +56,7 @@
 
   let issueItems = $derived(
     (stats?.top_issues ?? [])
+      .filter((i: { issue_type: string; severity: string; count: number }) => i.severity === 'error')
       .slice(0, 10)
       .map((i: { issue_type: string; severity: string; count: number }) => ({
         label: translateIssueName(i.issue_type),
@@ -100,6 +101,10 @@
       <div class="stat-card stat-danger">
         <span class="stat-label">{m['dashboard.broken_pages']()}</span>
         <span class="stat-value">{stats.broken_pages.toLocaleString()}</span>
+      </div>
+      <div class="stat-card stat-warning">
+        <span class="stat-label">{m['dashboard.blocked_pages']()}</span>
+        <span class="stat-value">{stats.blocked_pages.toLocaleString()}</span>
       </div>
       <div class="stat-card stat-warning">
         <span class="stat-label">{m['dashboard.duplicates']()}</span>

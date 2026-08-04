@@ -264,6 +264,11 @@ impl super::fetcher::HtmlFetcher for JsFetcher {
             }
         }
 
+        // If the JS render replaced the challenge page with the real DOM, the
+        // page is no longer blocked.
+        response.blocked =
+            super::fetcher::is_cloudflare_challenge(response.status, &response.headers, &response.html);
+
         Ok(response)
     }
 }

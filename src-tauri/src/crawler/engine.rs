@@ -765,6 +765,7 @@ impl CrawlEngine {
             project_id: project_id.to_string(),
             url: response.url.to_string(),
             status_code: Some(response.status),
+            blocked: response.blocked,
             title: seo_data.title,
             meta_description: seo_data.meta_description,
             h1: seo_data.h1,

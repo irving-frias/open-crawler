@@ -33,6 +33,8 @@ export interface CrawlResult {
   project_id: string;
   url: string;
   status_code?: number | null;
+  /** True when the page responded with a security/challenge page (e.g. Cloudflare). */
+  blocked?: boolean;
   title?: string | null;
   meta_description?: string | null;
   h1?: string | null;
@@ -97,6 +99,7 @@ export interface DashboardStats {
   total_pages: number;
   indexed_pages: number;
   broken_pages: number;
+  blocked_pages: number;
   avg_load_ms: number;
   avg_size_bytes: number;
   avg_readability?: number | null;

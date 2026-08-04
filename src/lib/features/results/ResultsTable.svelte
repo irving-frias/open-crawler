@@ -87,7 +87,7 @@
 
   const rows = $derived<RowModel[]>(
     items.map((page) => {
-      const issues = parseIssues(page.semantic_issues_json);
+      const issues = parseIssues(page.semantic_issues_json).filter((i: any) => i.severity === 'error');
       const issueCounts = getIssueCounts(issues);
       const hasScore = page.readability_score != null;
       return {
@@ -186,7 +186,11 @@
             </button>
           </div>
           <div class="col-status status-{Math.floor(row.page.status_code / 100)}xx">
-            {row.page.status_code}
+            {#if row.page.blocked}
+              <span class="status-blocked">{m['results.status.blocked']()}</span>
+            {:else}
+              {row.page.status_code}
+            {/if}
           </div>
           <div class="col-issues">
             {#if row.page.readability_score != null}
@@ -476,6 +480,7 @@
   .status-4xx { background: var(--bg-status-4xx); color: var(--orange); }
   .status-5xx { background: var(--bg-status-5xx); color: var(--danger); }
   .status-0xx { background: var(--bg-hover); color: var(--text-muted); }
+  .status-blocked { background: var(--bg-status-4xx); color: var(--warning); }
 
   .col-issues {
     display: flex;

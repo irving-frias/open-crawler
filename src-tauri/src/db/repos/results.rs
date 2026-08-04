@@ -139,7 +139,7 @@ impl<'a> CrawlRepo<'a> {
         let where_sql = where_clauses.join(" AND ");
         let count_sql = format!("SELECT COUNT(*) FROM crawled_pages WHERE {}", where_sql);
         let query_sql = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
              FROM crawled_pages WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
@@ -261,12 +261,13 @@ impl<'a> CrawlRepo<'a> {
             og_json: row.get(23)?,
             pagespeed_score: row.get(24)?,
             pagespeed_json: row.get(25)?,
+            blocked: row.get::<_, i32>(26)? != 0,
         })
     }
 
     pub fn get_page_detail(&self, page_id: &str) -> Result<PageDetail, AppError> {
         let result = self.conn.query_row(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
              FROM crawled_pages WHERE id = ?1",
             params![page_id],
                             Self::row_to_result,
