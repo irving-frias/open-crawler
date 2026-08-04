@@ -15,7 +15,7 @@ pub async fn check_resumable_crawl(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Option<serde_json::Value>, AppError> {
-    with_repo(&state, |repo| {
+    with_repo(&state, move |repo| {
         match repo.get_interrupted_session(&project_id)? {
             Some(session) => {
                 let queue_count = repo.load_queue(&session.id)?.len() as u32;
@@ -38,7 +38,7 @@ pub async fn get_last_crawl_config(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Option<CrawlConfig>, AppError> {
-    with_repo(&state, |repo| repo.get_latest_session_config(&project_id)).await
+    with_repo(&state, move |repo| repo.get_latest_session_config(&project_id)).await
 }
 
 #[tauri::command]

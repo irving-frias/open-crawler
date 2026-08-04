@@ -22,13 +22,26 @@ use crate::AppState;
 /// Every command that touches the database funnels through here, replacing the
 /// repeated lock-and-repo boilerplate. The results cache is always attached;
 /// it is only populated/consulted by `get_results`.
+///
+/// The DB work runs on a blocking thread (`spawn_blocking`) so that large
+/// queries / batched writes never stall the async runtime that also carries the
+/// crawl engine and IPC events. Callers pass `move` closures capturing owned
+/// values; the closure must be `Send + 'static`.
 pub(crate) async fn with_repo<T, F>(state: &State<'_, Arc<RwLock<AppState>>>, f: F) -> Result<T, AppError>
 where
-    F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError>,
+    F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError> + Send + 'static,
+    T: Send + 'static,
 {
     let state = state.inner().clone();
-    let state_read = state.read().await;
-    let db = state_read.db.lock().map_err(|e| AppError::Crawl(e.to_string()))?;
-    let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
-    f(&repo)
+    tokio::task::spawn_blocking(move || {
+        let state_read = state.blocking_read();
+        let db = state_read
+            .db
+            .lock()
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+        let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
+        f(&repo)
+    })
+    .await
+    .map_err(|e| AppError::Crawl(format!("DB worker panicked: {e}")))?
 }

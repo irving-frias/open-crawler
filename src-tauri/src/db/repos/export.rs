@@ -26,8 +26,7 @@ impl<'a> CrawlRepo<'a> {
 
     pub fn count_issues(&self, project_id: &str) -> Result<u32, AppError> {
         let n: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM crawled_pages, json_each(crawled_pages.semantic_issues_json)
-             WHERE project_id = ?1 AND json_type(crawled_pages.semantic_issues_json) = 'array'",
+            "SELECT COUNT(*) FROM page_issues WHERE project_id = ?1",
             params![project_id],
             |row| row.get(0),
         )?;

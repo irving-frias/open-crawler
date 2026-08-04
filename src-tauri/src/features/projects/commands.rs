@@ -14,7 +14,7 @@ pub async fn create_project(
     state: State<'_, Arc<RwLock<AppState>>>,
     request: CreateProjectRequest,
 ) -> Result<Project, AppError> {
-    with_repo(&state, |repo| repo.create_project(&request.name)).await
+    with_repo(&state, move |repo| repo.create_project(&request.name)).await
 }
 
 #[tauri::command]
@@ -29,7 +29,7 @@ pub async fn get_project(
     state: State<'_, Arc<RwLock<AppState>>>,
     id: String,
 ) -> Result<Project, AppError> {
-    with_repo(&state, |repo| {
+    with_repo(&state, move |repo| {
         repo.get_project(&id)?
             .ok_or_else(|| AppError::Crawl(format!("Project not found: {}", id)))
     })
@@ -41,7 +41,7 @@ pub async fn rename_project(
     state: State<'_, Arc<RwLock<AppState>>>,
     request: RenameProjectRequest,
 ) -> Result<(), AppError> {
-    with_repo(&state, |repo| repo.rename_project(&request.id, &request.name)).await
+    with_repo(&state, move |repo| repo.rename_project(&request.id, &request.name)).await
 }
 
 #[tauri::command]
@@ -61,7 +61,7 @@ pub async fn delete_project(
         }
     }
 
-    with_repo(&state, |repo| repo.delete_project(&id)).await
+    with_repo(&state, move |repo| repo.delete_project(&id)).await
 }
 
 #[tauri::command]
@@ -69,5 +69,5 @@ pub async fn get_project_stats(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<serde_json::Value, AppError> {
-    with_repo(&state, |repo| repo.get_project_stats(&project_id)).await
+    with_repo(&state, move |repo| repo.get_project_stats(&project_id)).await
 }

@@ -55,7 +55,7 @@ impl<'a> CrawlRepo<'a> {
 
         if let Some(_issue_type) = semantic_issue_type {
             where_clauses.push(format!(
-                "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.issue_type' = ?{})",
+                "EXISTS (SELECT 1 FROM page_issues pi WHERE pi.page_id = crawled_pages.id AND pi.project_id = crawled_pages.project_id AND pi.issue_type = ?{})",
                 param_index
             ));
             param_index += 1;
@@ -96,7 +96,7 @@ impl<'a> CrawlRepo<'a> {
                     })
                     .collect();
                 where_clauses.push(format!(
-                    "EXISTS (SELECT 1 FROM json_each(crawled_pages.semantic_issues_json) WHERE json_each.value->>'$.severity' IN ({}))",
+                    "EXISTS (SELECT 1 FROM page_issues pi WHERE pi.page_id = crawled_pages.id AND pi.project_id = crawled_pages.project_id AND pi.severity IN ({}))",
                     placeholders.join(",")
                 ));
             }
@@ -138,8 +138,12 @@ impl<'a> CrawlRepo<'a> {
 
         let where_sql = where_clauses.join(" AND ");
         let count_sql = format!("SELECT COUNT(*) FROM crawled_pages WHERE {}", where_sql);
+        // Note: html_body is intentionally excluded from the list projection. It
+        // is only served by get_page_detail/get_page_html, so list queries stay
+        // small (less IPC payload, no per-row gzip+base64 decompression) and the
+        // results cache does not hold megabytes of raw HTML.
         let query_sql = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
              FROM crawled_pages WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
@@ -220,7 +224,7 @@ impl<'a> CrawlRepo<'a> {
         let results = stmt
             .query_map(
                 rusqlite::params_from_iter(query_params.iter().map(|p| p.as_ref())),
-                Self::row_to_result,
+                Self::row_to_result_light,
             )?
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -230,6 +234,41 @@ impl<'a> CrawlRepo<'a> {
         }
 
         Ok((results, total))
+    }
+
+    /// Row mapper for the list query (get_results). Same projection as
+    /// `row_to_result` but without `html_body` — the column is not selected.
+    fn row_to_result_light(row: &rusqlite::Row) -> Result<CrawlResult, rusqlite::Error> {
+        Ok(CrawlResult {
+            id: row.get(0)?,
+            config_id: row.get(1)?,
+            project_id: row.get(2)?,
+            url: row.get(3)?,
+            status_code: row.get::<_, Option<i32>>(4)?.map(|s| s as u16),
+            title: row.get(5)?,
+            meta_description: row.get(6)?,
+            h1: row.get(7)?,
+            canonical: row.get(8)?,
+            size_bytes: row.get::<_, Option<i64>>(9)?.map(|s| s as usize),
+            load_time_ms: row.get::<_, Option<i64>>(10)?.map(|l| l as u64),
+            is_indexable: row.get::<_, Option<i32>>(11)?.map(|i| i != 0),
+            depth: row.get::<_, i32>(12)? as u32,
+            parent_url: row.get(13)?,
+            crawl_timestamp: row.get(14)?,
+            links: Vec::new(),
+            html_lang: row.get(15)?,
+            hreflang_json: row.get(16)?,
+            semantic_issues_json: row.get(17)?,
+            html_body: None,
+            readability_score: row.get(18)?,
+            content_hash: row.get(19)?,
+            duplicate_group_id: row.get(20)?,
+            keywords_json: row.get(21)?,
+            og_json: row.get(22)?,
+            pagespeed_score: row.get(23)?,
+            pagespeed_json: row.get(24)?,
+            blocked: row.get::<_, i32>(25)? != 0,
+        })
     }
 
     fn row_to_result(row: &rusqlite::Row) -> Result<CrawlResult, rusqlite::Error> {

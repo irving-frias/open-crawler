@@ -30,7 +30,7 @@ impl<'a> CrawlRepo<'a> {
                                     WHERE cp2.project_id = ?3 AND cp2.url = pl2.to_url
                                   )
                             ),
-                            COALESCE(json_array_length(cp.semantic_issues_json), 0)
+                            (SELECT COUNT(*) FROM page_issues pi WHERE pi.page_id = cp.id)
                      FROM page_links pl
                      JOIN crawled_pages cp ON cp.url = pl.to_url AND cp.project_id = ?3
                      WHERE pl.project_id = ?3 AND pl.from_url = ?4 AND pl.to_url <> ?4
@@ -57,7 +57,7 @@ impl<'a> CrawlRepo<'a> {
                                     WHERE cp2.project_id = ?2 AND cp2.url = pl2.to_url
                                   )
                             ),
-                            COALESCE(json_array_length(semantic_issues_json), 0)
+                            (SELECT COUNT(*) FROM page_issues pi WHERE pi.page_id = crawled_pages.id)
                      FROM crawled_pages
                      WHERE project_id = ?1 AND depth = 0
                      GROUP BY url
@@ -108,12 +108,11 @@ impl<'a> CrawlRepo<'a> {
     pub fn get_semantic_issue_counts(&self, project_id: &str) -> Result<Vec<IssueCount>, AppError> {
         let mut stmt = self.conn.prepare(
             "SELECT
-                json_each.value->>'$.issue_type' as issue_type,
-                json_each.value->>'$.severity' as severity,
+                issue_type,
+                severity,
                 COUNT(*) as cnt
-             FROM crawled_pages, json_each(crawled_pages.semantic_issues_json)
-             WHERE crawled_pages.project_id = ?1
-               AND crawled_pages.semantic_issues_json IS NOT NULL
+             FROM page_issues
+             WHERE project_id = ?1
              GROUP BY issue_type, severity
              ORDER BY cnt DESC",
         )?;

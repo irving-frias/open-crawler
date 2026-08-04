@@ -324,6 +324,93 @@ mod tests {
         assert_eq!(urls, vec!["https://x.com/dup", "https://x.com/other"]);
     }
 
+    fn page_with_issues(id: &str, url: &str, json: Option<&str>) -> CrawlResult {
+        let mut p = page(id, url, Some("Title"), 200, true);
+        p.semantic_issues_json = json.map(|s| s.to_string());
+        p
+    }
+
+    #[test]
+    fn test_page_issues_normalized_and_filterable() {
+        let repo = test_repo();
+        let issues = r#"[
+            {"issue_type":"missing_title","severity":"error","element":"head","message":"Missing title"},
+            {"issue_type":"img_no_alt","severity":"warning","element":"img","message":"Image without alt"}
+        ]"#;
+        repo.save_results_batch(&[page_with_issues("a", "https://x.com/a", Some(issues))])
+            .unwrap();
+
+        let count: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM page_issues WHERE page_id = 'a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2, "each issue occurrence becomes a page_issues row");
+
+        let (items, _) = repo
+            .get_results("p1", 1, 100, None, None, None, Some(&["warning".to_string()]), None, None, false, false, false, false)
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].url, "https://x.com/a");
+
+        let (items, _) = repo
+            .get_results("p1", 1, 100, Some("img_no_alt"), None, None, None, None, None, false, false, false, false)
+            .unwrap();
+        assert_eq!(items.len(), 1);
+
+        // A page without issues must not match the issue-type filter.
+        repo.save_results_batch(&[page("b", "https://x.com/b", Some("B"), 200, true)])
+            .unwrap();
+        let (items, _) = repo
+            .get_results("p1", 1, 100, Some("img_no_alt"), None, None, None, None, None, false, false, false, false)
+            .unwrap();
+        assert_eq!(items.len(), 1);
+
+        // Severity aggregation exposes warning + info, not just errors.
+        let counts = repo.get_semantic_issue_counts("p1").unwrap();
+        let pairs: Vec<(String, String, u32)> = counts
+            .iter()
+            .map(|c| (c.issue_type.clone(), c.severity.clone(), c.count))
+            .collect();
+        assert!(pairs.contains(&("missing_title".to_string(), "error".to_string(), 1)));
+        assert!(pairs.contains(&("img_no_alt".to_string(), "warning".to_string(), 1)));
+    }
+
+    #[test]
+    fn test_recrawl_replaces_page_issues() {
+        let repo = test_repo();
+        let issues = r#"[{"issue_type":"missing_title","severity":"error","element":"head","message":"Missing title"}]"#;
+        repo.save_results_batch(&[page_with_issues("oldid", "https://x.com/a", Some(issues))])
+            .unwrap();
+
+        // Re-crawl of the same URL with a new id: old issue rows must be gone.
+        repo.save_results_batch(&[page_with_issues("newid", "https://x.com/a", None)])
+            .unwrap();
+
+        let count: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM page_issues WHERE page_id = 'oldid'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "stale page_issues for the replaced row must be removed");
+
+        let count: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM page_issues WHERE page_id = 'newid'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
     #[test]
     fn test_recrawl_replaces_row_per_url() {
         let repo = test_repo();

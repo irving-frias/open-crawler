@@ -28,7 +28,7 @@ pub async fn get_results(
     noindex_only: Option<bool>,
     is_404: Option<bool>,
 ) -> Result<PaginatedResults, AppError> {
-    let (items, total) = with_repo(&state, |repo| {
+    let (items, total) = with_repo(&state, move |repo| {
         repo.get_results(
             &project_id,
             page,
@@ -62,7 +62,7 @@ pub async fn get_site_tree(
     url: Option<String>,
     limit: Option<u32>,
 ) -> Result<Vec<SiteTreeNode>, AppError> {
-    with_repo(&state, |repo| {
+    with_repo(&state, move |repo| {
         repo.get_site_tree(&project_id, url.as_deref(), limit.unwrap_or(100))
     })
     .await
@@ -73,7 +73,7 @@ pub async fn get_page_detail(
     state: State<'_, Arc<RwLock<AppState>>>,
     page_id: String,
 ) -> Result<PageDetail, AppError> {
-    with_repo(&state, |repo| repo.get_page_detail(&page_id)).await
+    with_repo(&state, move |repo| repo.get_page_detail(&page_id)).await
 }
 
 #[tauri::command]
@@ -81,7 +81,7 @@ pub async fn get_semantic_issue_counts(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Vec<IssueCount>, AppError> {
-    with_repo(&state, |repo| repo.get_semantic_issue_counts(&project_id)).await
+    with_repo(&state, move |repo| repo.get_semantic_issue_counts(&project_id)).await
 }
 
 #[tauri::command]
@@ -89,7 +89,7 @@ pub async fn get_page_html(
     state: State<'_, Arc<RwLock<AppState>>>,
     page_id: String,
 ) -> Result<Option<String>, AppError> {
-    with_repo(&state, |repo| repo.get_page_html(&page_id)).await
+    with_repo(&state, move |repo| repo.get_page_html(&page_id)).await
 }
 
 #[tauri::command]
@@ -107,7 +107,8 @@ pub async fn recrawl_page(
     page_id: String,
 ) -> Result<CrawlResult, AppError> {
     // Get the original page data
-    let original = with_repo(&state, |repo| repo.get_page_detail(&page_id)).await?.page;
+    let pid = page_id.clone();
+    let original = with_repo(&state, move |repo| repo.get_page_detail(&pid)).await?.page;
 
     let url = url::Url::parse(&original.url)?;
     let project_id = original.project_id.clone();
@@ -208,8 +209,9 @@ pub async fn recrawl_page(
     };
 
     // Save to DB
-    with_repo(&state, |repo| {
-        repo.save_result(&result)?;
+    let result_for_save = result.clone();
+    with_repo(&state, move |repo| {
+        repo.save_result(&result_for_save)?;
         if let Some(ref png) = screenshot_png {
             repo.save_screenshot(&page_id, png)?;
         }
@@ -227,7 +229,8 @@ pub async fn capture_page_screenshot(
     page_id: String,
 ) -> Result<Option<String>, AppError> {
     // Check if screenshot already exists
-    let existing = with_repo(&state, |repo| repo.get_screenshot(&page_id)).await?;
+    let pid = page_id.clone();
+    let existing = with_repo(&state, move |repo| repo.get_screenshot(&pid)).await?;
     if let Some(png) = existing {
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
@@ -235,8 +238,9 @@ pub async fn capture_page_screenshot(
     }
 
     // Get page URL
-    let url = with_repo(&state, |repo| {
-        let detail = repo.get_page_detail(&page_id)?;
+    let pid = page_id.clone();
+    let url = with_repo(&state, move |repo| {
+        let detail = repo.get_page_detail(&pid)?;
         Ok(detail.page.url)
     })
     .await?;
@@ -253,7 +257,8 @@ pub async fn capture_page_screenshot(
     };
 
     // Save to DB
-    with_repo(&state, |repo| repo.save_screenshot(&page_id, &png_data)).await?;
+    let png_for_save = png_data.clone();
+    with_repo(&state, move |repo| repo.save_screenshot(&page_id, &png_for_save)).await?;
 
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_data);

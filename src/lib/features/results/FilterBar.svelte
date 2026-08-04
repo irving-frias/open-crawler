@@ -6,6 +6,7 @@
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { cn } from '$lib/utils.js';
   import { translateIssueName } from '$lib/i18n-issues';
+  import { parseIssues } from '$lib/features/results/issue-cache';
 
   let {
     items,
@@ -54,30 +55,21 @@
   const availableSeverities = $derived.by(() => {
     let sevCount: Record<string, number> = {};
     for (const page of items) {
-      if (page.semantic_issues_json) {
-        try {
-          const issues = JSON.parse(page.semantic_issues_json);
-          for (const issue of issues) {
-            if (issue.severity) {
-              sevCount[issue.severity] = (sevCount[issue.severity] || 0) + 1;
-            }
-          }
-        } catch {}
+      for (const issue of parseIssues(page.semantic_issues_json)) {
+        if (issue.severity) {
+          sevCount[issue.severity] = (sevCount[issue.severity] || 0) + 1;
+        }
       }
     }
-    return Object.keys(sevCount).filter((s) => s === 'error').sort();
+    return Object.keys(sevCount).sort();
   });
 
   const availableIssueTypes = $derived.by(() => {
     const types = new Set<string>();
     for (const page of items) {
-      if (!page.semantic_issues_json) continue;
-      try {
-        const issues = JSON.parse(page.semantic_issues_json);
-        for (const issue of issues) {
-          if (issue.issue_type) types.add(issue.issue_type);
-        }
-      } catch {}
+      for (const issue of parseIssues(page.semantic_issues_json)) {
+        if (issue.issue_type) types.add(issue.issue_type);
+      }
     }
     return [...types].sort();
   });

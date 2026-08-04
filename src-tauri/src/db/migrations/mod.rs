@@ -18,6 +18,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "005_add_blocked_flag",
         include_str!("005_add_blocked_flag.sql"),
     ),
+    ("006_add_page_issues", include_str!("006_add_page_issues.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -90,6 +91,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(snapshots, "crawl_snapshots");
+
+        let page_issues: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='page_issues'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(page_issues, "page_issues");
     }
 
     #[test]

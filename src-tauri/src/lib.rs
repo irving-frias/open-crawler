@@ -96,6 +96,29 @@ pub fn run() {
                 tracing::error!("Failed to set busy_timeout: {}", e);
                 return Err(Box::new(e) as Box<dyn std::error::Error>);
             }
+            // WAL + synchronous=NORMAL is the recommended fast/durable combo: the
+            // checkpoint guarantees crash-consistency and NORMAL only risks losing
+            // the latest transactions on OS power loss (never DB corruption).
+            // This is the single biggest write-throughput lever for the DbWriter.
+            if let Err(e) = conn.pragma_update(None, "synchronous", "NORMAL") {
+                tracing::error!("Failed to set synchronous=NORMAL: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
+            // 64MB page cache (negative value = kilobytes) and mmap for fast reads.
+            if let Err(e) = conn.pragma_update(None, "cache_size", -65536) {
+                tracing::error!("Failed to set cache_size: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
+            if let Err(e) = conn.pragma_update(None, "mmap_size", 268435456) {
+                tracing::error!("Failed to set mmap_size: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
+            // Keep sort/intermediate results out of the disk for the json_each
+            // grouping and ORDER BY queries.
+            if let Err(e) = conn.pragma_update(None, "temp_store", "MEMORY") {
+                tracing::error!("Failed to set temp_store: {}", e);
+                return Err(Box::new(e) as Box<dyn std::error::Error>);
+            }
 
             // Run migrations
             if let Err(e) = crate::db::schema::run_migrations(&conn) {

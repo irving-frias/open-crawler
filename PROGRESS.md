@@ -502,7 +502,7 @@ Persistent State (DB)
 ```bash
 cargo check:     ✅ Compiles successfully
 cargo clippy:    ✅ No warnings (clippy -- -D warnings)
-cargo test:      ✅ 53/53 tests pass (parser 13, dedup 8, nesting_table 4, frontier 6, robots 3, migrations 2, duplicates 1)
+cargo test:      ✅ 62/62 tests pass (parser 13, dedup 8, nesting_table 4, frontier 6, robots 3, migrations 2, duplicates 1, page_issues 2, filters 7)
 bun run build:  ✅ Frontend builds to /build
 bun run check:  ✅ 0 errors / 0 warnings
 ```
@@ -538,4 +538,4 @@ bun run check:  ✅ 0 errors / 0 warnings
 
 ---
 
-*Last updated: Sprint 4 (F0-F8 advanced SEO features) completed — 53 tests, clippy clean, bun run build/check 0 errors*
+*Last updated: Sprint 5 (performance: normalized page_issues table, spawn_blocking DB worker, WAL, crawl engine in-flight atomic) completed — 62 tests, clippy clean, bun run build/check 0 errors*

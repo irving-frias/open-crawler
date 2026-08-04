@@ -13,7 +13,7 @@ pub async fn list_crawl_snapshots(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Vec<CrawlSnapshot>, AppError> {
-    with_repo(&state, |repo| repo.list_crawl_snapshots(&project_id)).await
+    with_repo(&state, move |repo| repo.list_crawl_snapshots(&project_id)).await
 }
 
 #[tauri::command]
@@ -22,7 +22,7 @@ pub async fn compare_crawls(
     snapshot_a: String,
     snapshot_b: String,
 ) -> Result<CompareResult, AppError> {
-    with_repo(&state, |repo| {
+    with_repo(&state, move |repo| {
         repo.compare_crawl_snapshots(&snapshot_a, &snapshot_b)
     })
     .await

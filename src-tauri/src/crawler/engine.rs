@@ -1,4 +1,5 @@
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -284,15 +285,14 @@ impl CrawlEngine {
             self.frontier.as_ref().map(|f| f.len()).unwrap_or(0)
         });
 
-        // Channel for new URLs from fetch tasks
-        let (url_tx, mut url_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
-
         // In-flight counter
-        let in_flight = Arc::new(tokio::sync::RwLock::new(0u32));
+        let in_flight = Arc::new(AtomicU32::new(0));
 
-        // Spawn URL receiver
+        // Shared discovery state: the frontier (also read/popped by the main
+        // loop) and the visited set. Fetch tasks dedup + enqueue new URLs
+        // directly against these (see fetch_and_parse) instead of funneling
+        // every discovered URL through a single receiver task.
         let frontier_for_recv = Arc::new(tokio::sync::RwLock::new(Frontier::new(config.max_depth, 100_000)));
-        let frontier_recv = frontier_for_recv.clone();
         let visited_for_recv = Arc::new(tokio::sync::RwLock::new(LruCache::new(NonZeroUsize::new(LRU_CAPACITY).unwrap())));
         // Seed the discovery visited set with already-queued/visited URLs so that
         // links pointing back to seeds or sitemap URLs are not crawled twice.
@@ -302,17 +302,6 @@ impl CrawlEngine {
                 visited.put(url.clone(), ());
             }
         }
-        let visited_recv_clone = visited_for_recv.clone();
-        let recv_handle = tokio::spawn(async move {
-            while let Some((new_url, depth)) = url_rx.recv().await {
-                let key = Deduplicator::normalize(&new_url);
-                let mut visited = visited_recv_clone.write().await;
-                if !visited.contains(&key) {
-                    visited.put(key, ());
-                    frontier_recv.write().await.push(new_url, depth);
-                }
-            }
-        });
 
         // Move frontier into shared state
         if let Some(frontier) = self.frontier.take() {
@@ -324,6 +313,11 @@ impl CrawlEngine {
 
         // Periodic queue flush counter
         let mut urls_since_flush: u32 = 0;
+
+        // Throttle crawl-progress IPC emissions (frontend only needs ~10 Hz;
+        // emitting once per page floods the event loop on fast crawls).
+        let mut last_progress_emit = Instant::now();
+        const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(100);
 
         // Main crawl loop
         loop {
@@ -370,7 +364,7 @@ impl CrawlEngine {
                     }
 
                     let q_len = { frontier_for_recv.read().await.len() };
-                    let in_flight_count = { *in_flight.read().await };
+                    let in_flight_count = in_flight.load(Ordering::Relaxed);
 
                     info!(
                         "[{}/~] Fetching: {} (queued: {}, in-flight: {}, elapsed: {:.0}s)",
@@ -381,10 +375,12 @@ impl CrawlEngine {
                         start_time.elapsed().as_secs_f64(),
                     );
 
-                    // Update crawl state progress
+                    // Update crawl state progress. Only the inner `crawls` map is
+                    // mutated (it is its own Arc<RwLock>), so a read lock on AppState
+                    // is enough and avoids contending with the DbWriter's writes.
                     {
-                        let state_write = state.write().await;
-                        let mut crawls = state_write.crawls.write().await;
+                        let state_read = state.read().await;
+                        let mut crawls = state_read.crawls.write().await;
                         if let Some(crawl_state) = crawls.get_mut(&project_id) {
                             crawl_state.progress = CrawlProgress {
                                 project_id: project_id.clone(),
@@ -397,25 +393,27 @@ impl CrawlEngine {
                         }
                     }
 
-                    let progress = CrawlProgress {
-                        project_id: project_id.clone(),
-                        urls_crawled: pages_crawled,
-                        urls_queued: q_len as u32 + in_flight_count,
-                        current_url: url_str.clone(),
-                        errors,
-                        elapsed_secs: start_time.elapsed().as_secs(),
-                    };
-                    if let Err(e) = app.emit("crawl-progress", &progress) {
-                        warn!("Failed to emit progress: {}", e);
+                    // Emit progress to the UI at most every ~100ms.
+                    if last_progress_emit.elapsed() >= PROGRESS_EMIT_INTERVAL {
+                        last_progress_emit = Instant::now();
+                        let progress = CrawlProgress {
+                            project_id: project_id.clone(),
+                            urls_crawled: pages_crawled,
+                            urls_queued: q_len as u32 + in_flight_count,
+                            current_url: url_str.clone(),
+                            errors,
+                            elapsed_secs: start_time.elapsed().as_secs(),
+                        };
+                        if let Err(e) = app.emit("crawl-progress", &progress) {
+                            warn!("Failed to emit progress: {}", e);
+                        }
                     }
 
                     // Acquire semaphore permit
                     let permit = semaphore.clone().acquire_owned().await.unwrap();
 
                     // Increment in-flight
-                    {
-                        *in_flight.write().await += 1;
-                    }
+                    in_flight.fetch_add(1, Ordering::SeqCst);
 
                     // Clone for the task
                     let fetcher_clone = fetcher.clone();
@@ -423,9 +421,9 @@ impl CrawlEngine {
                     let project_id_clone = project_id.clone();
                     let url_clone = url_str.clone();
                     let visited_clone = visited_for_recv.clone();
+                    let frontier_clone = frontier_for_recv.clone();
                     let parser = self.parser.clone();
                     let delay_ms = config.delay_ms;
-                    let url_tx_clone = url_tx.clone();
                     let in_flight_clone = in_flight.clone();
                     let allowed_origins_clone = self.allowed_origins.clone();
                     let same_origin_only = config.same_origin_only;
@@ -443,7 +441,7 @@ impl CrawlEngine {
                             &config_id_clone,
                             &project_id_clone,
                             &visited_clone,
-                            url_tx_clone,
+                            &frontier_clone,
                             &allowed_origins_clone,
                             same_origin_only,
                             &include_patterns,
@@ -476,9 +474,7 @@ impl CrawlEngine {
                         }
 
                         // Decrement in-flight
-                        {
-                            *in_flight_clone.write().await -= 1;
-                        }
+                        in_flight_clone.fetch_sub(1, Ordering::SeqCst);
 
                         drop(permit);
                     });
@@ -516,7 +512,7 @@ impl CrawlEngine {
                 }
                 None => {
                     // Queue is empty - check if we should wait for more URLs
-                    let in_flight_count = { *in_flight.read().await };
+                    let in_flight_count = in_flight.load(Ordering::SeqCst);
 
                     if in_flight_count == 0 {
                         info!("No more URLs to process and no in-flight tasks");
@@ -548,16 +544,11 @@ impl CrawlEngine {
         // Wait for in-flight tasks
         info!("Waiting for in-flight tasks to complete...");
         loop {
-            let in_flight_count = { *in_flight.read().await };
-            if in_flight_count == 0 {
+            if in_flight.load(Ordering::SeqCst) == 0 {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-
-        // Close URL channel
-        drop(url_tx);
-        let _ = recv_handle.await;
 
         // Signal DbWriter to finish
         let _ = db_tx.send(CrawlResultMsg::Done).await;
@@ -674,7 +665,7 @@ impl CrawlEngine {
         config_id: &str,
         project_id: &str,
         visited: &Arc<tokio::sync::RwLock<LruCache<String, ()>>>,
-        url_tx: tokio::sync::mpsc::UnboundedSender<(String, u32)>,
+        frontier: &Arc<tokio::sync::RwLock<Frontier>>,
         allowed_origins: &[String],
         same_origin_only: bool,
         include_patterns: &[String],
@@ -788,51 +779,68 @@ impl CrawlEngine {
             let _ = db_tx.send(CrawlResultMsg::Links(links)).await;
         }
 
-        // Send new URLs to receiver (with same-origin filter)
+        // Dedup + enqueue discovered URLs inline (single write-lock pair).
+        // This replaces the old shared mpsc channel + dedicated receiver task,
+        // which serialized every discovered URL through one task.
         let mut new_urls = 0u32;
-        let visited_read = visited.read().await;
-        for outgoing_url in &outgoing_urls {
-            if visited_read.contains(&Deduplicator::normalize(outgoing_url)) {
-                continue;
-            }
-            if !outgoing_url.starts_with("http://") && !outgoing_url.starts_with("https://") {
-                continue;
-            }
-            if let Ok(parsed) = Url::parse(outgoing_url) {
-                if !parsed.query().unwrap_or("").is_empty() {
+        {
+            let mut visited_write = visited.write().await;
+            let mut to_enqueue: Vec<(String, u32)> = Vec::new();
+            for outgoing_url in &outgoing_urls {
+                if !outgoing_url.starts_with("http://") && !outgoing_url.starts_with("https://") {
                     continue;
                 }
-            }
-            // Skip non-page files (assets, documents, media)
-            if is_static_asset(outgoing_url) {
-                continue;
-            }
-            // Same-origin filter
-            if same_origin_only {
                 if let Ok(parsed) = Url::parse(outgoing_url) {
-                    let origin =
-                        format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
-                    if !allowed_origins.contains(&origin) {
+                    if !parsed.query().unwrap_or("").is_empty() {
                         continue;
                     }
-                } else {
+                }
+                // Skip non-page files (assets, documents, media)
+                if is_static_asset(outgoing_url) {
                     continue;
                 }
-            }
-            // Include/Exclude patterns
-            if !include_patterns.is_empty() || !exclude_patterns.is_empty() {
-                let matches_include = if include_patterns.is_empty() {
-                    true
-                } else {
-                    include_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)))
-                };
-                let matches_exclude = exclude_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)));
-                if !matches_include || matches_exclude {
+                // Same-origin filter
+                if same_origin_only {
+                    if let Ok(parsed) = Url::parse(outgoing_url) {
+                        let origin =
+                            format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
+                        if !allowed_origins.contains(&origin) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                // Include/Exclude patterns
+                if !include_patterns.is_empty() || !exclude_patterns.is_empty() {
+                    let matches_include = if include_patterns.is_empty() {
+                        true
+                    } else {
+                        include_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)))
+                    };
+                    let matches_exclude = exclude_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)));
+                    if !matches_include || matches_exclude {
+                        continue;
+                    }
+                }
+
+                // Normalize once; check + insert under the visited write lock so
+                // concurrent tasks can't double-enqueue the same URL.
+                let normalized = Deduplicator::normalize(outgoing_url);
+                if visited_write.contains(&normalized) {
                     continue;
                 }
+                visited_write.put(normalized, ());
+                to_enqueue.push((outgoing_url.clone(), depth + 1));
             }
-            let _ = url_tx.send((outgoing_url.clone(), depth + 1));
-            new_urls += 1;
+
+            // Enqueue into the frontier (respects max_urls / max_depth quota).
+            let mut frontier_write = frontier.write().await;
+            for (candidate, candidate_depth) in to_enqueue {
+                if frontier_write.push(candidate, candidate_depth) {
+                    new_urls += 1;
+                }
+            }
         }
 
         Ok((1, new_urls))
@@ -955,7 +963,7 @@ mod tests {
         let parser = SeoParser::new();
         let visited =
             Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
-        let (url_tx, mut url_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
         // Engine builds allowed origins without the port (see CrawlEngine::start).
         let allowed = vec!["http://127.0.0.1".to_string()];
@@ -967,7 +975,7 @@ mod tests {
             "test-config",
             "test-project",
             &visited,
-            url_tx,
+            &frontier,
             &allowed,
             true,
             &[],
@@ -981,10 +989,7 @@ mod tests {
         assert_eq!(pages, 1);
         assert_eq!(new_urls, 2, "should discover the 2 internal links");
 
-        let mut discovered = Vec::new();
-        while let Ok((u, d)) = url_rx.try_recv() {
-            discovered.push((u, d));
-        }
+        let discovered: Vec<(String, u32)> = frontier.read().await.drain_all();
         assert_eq!(discovered.len(), 2);
         assert!(
             discovered.iter().any(|(u, _)| u.ends_with("/a")),
@@ -1021,9 +1026,9 @@ mod tests {
             .write()
             .await
             .put(Deduplicator::normalize(&format!("{}/a", origin)), ());
-        let (url_tx, mut url_rx) = tokio::sync::mpsc::unbounded_channel::<(String, u32)>();
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
         let allowed = vec!["http://127.0.0.1".to_string()];
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
 
         let (pages, new_urls) = CrawlEngine::fetch_and_parse(
             &fetcher,
@@ -1032,7 +1037,7 @@ mod tests {
             "test-config",
             "test-project",
             &visited,
-            url_tx,
+            &frontier,
             &allowed,
             true,
             &[],
@@ -1049,10 +1054,7 @@ mod tests {
             "should skip the already-visited /a and only discover /b"
         );
 
-        let mut discovered = Vec::new();
-        while let Ok((u, d)) = url_rx.try_recv() {
-            discovered.push((u, d));
-        }
+        let discovered: Vec<(String, u32)> = frontier.read().await.drain_all();
         assert_eq!(discovered.len(), 1);
         assert!(
             discovered[0].0.ends_with("/b"),

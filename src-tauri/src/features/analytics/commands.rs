@@ -13,7 +13,7 @@ pub async fn get_dashboard_stats(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<DashboardStats, AppError> {
-    with_repo(&state, |repo| repo.get_dashboard_stats(&project_id)).await
+    with_repo(&state, move |repo| repo.get_dashboard_stats(&project_id)).await
 }
 
 #[tauri::command]
@@ -21,7 +21,7 @@ pub async fn get_duplicate_groups(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Vec<DuplicateGroup>, AppError> {
-    with_repo(&state, |repo| repo.get_duplicate_groups(&project_id)).await
+    with_repo(&state, move |repo| repo.get_duplicate_groups(&project_id)).await
 }
 
 #[tauri::command]
@@ -30,5 +30,5 @@ pub async fn get_project_keywords(
     project_id: String,
     limit: Option<u32>,
 ) -> Result<Vec<KeywordAggregate>, AppError> {
-    with_repo(&state, |repo| repo.get_keywords(&project_id, limit.unwrap_or(100))).await
+    with_repo(&state, move |repo| repo.get_keywords(&project_id, limit.unwrap_or(100))).await
 }

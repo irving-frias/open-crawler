@@ -167,12 +167,17 @@
         />
       {/if}
     {/if}
-  {:else if activeTab === 'overview'}
+  {/if}
+
+  <!-- Lazy tab panels are kept mounted once loaded (keep-alive) and only
+       hidden, so switching tabs preserves each tab's scroll/filter state. -->
+  <div class="tab-panel" hidden={activeTab !== 'overview'}>
     {#if components.overview}
       {@const Overview = components.overview}
       <Overview projectId={selectedProjectId} />
     {/if}
-  {:else if activeTab === 'dashboard'}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'dashboard'}>
     {#if components.dashboard}
       {@const IssuesDashboard = components.dashboard}
       <IssuesDashboard
@@ -181,27 +186,31 @@
         activeFilter={filters.issueType}
       />
     {/if}
-  {:else if activeTab === 'site_tree'}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'site_tree'}>
     {#if components.site_tree}
       {@const Tree = components.site_tree}
       <Tree projectId={selectedProjectId} />
     {/if}
-  {:else if activeTab === 'comparator'}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'comparator'}>
     {#if components.comparator}
       {@const Comparator = components.comparator}
       <Comparator projectId={selectedProjectId} />
     {/if}
-  {:else if activeTab === 'duplicates'}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'duplicates'}>
     {#if components.duplicates}
       {@const Duplicates = components.duplicates}
       <Duplicates projectId={selectedProjectId} />
     {/if}
-  {:else if activeTab === 'keywords'}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'keywords'}>
     {#if components.keywords}
       {@const Keywords = components.keywords}
       <Keywords projectId={selectedProjectId} />
     {/if}
-  {/if}
+  </div>
 </section>
 
 <style>
@@ -236,6 +245,17 @@
     border: none;
     padding: 12px;
     box-shadow: var(--neu-pressed-sm);
+  }
+
+  .tab-panel {
+    border-radius: var(--radius-lg);
+    border: none;
+    padding: 12px;
+    box-shadow: var(--neu-pressed-sm);
+  }
+
+  .tab-panel[hidden] {
+    display: none !important;
   }
 
   @media (max-width: 767px) {

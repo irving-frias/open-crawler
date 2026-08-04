@@ -297,6 +297,12 @@ export function createAppShell(): AppShell {
       });
     };
 
+    // Catch up with pending refreshes when the window becomes visible again.
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    unlistenFns.push(() =>
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    );
+
     register(listen<any>('crawl-started', (event) => {
       console.log('[Crawler] crawl-started:', event.payload);
       if (state.notificationsEnabled) {
@@ -691,11 +697,21 @@ export function createAppShell(): AppShell {
 
   function scheduleResultsRefresh() {
     if (state.activeTab !== 'results') return;
+    // Skip polling while the window is hidden: the backend only emits
+    // crawl-batch while a crawl is active, so nothing is missed by batching
+    // the refresh into a single catch-up call when the tab becomes visible.
+    if (document.visibilityState === 'hidden') return;
     if (batchRefreshTimer) return;
     batchRefreshTimer = setTimeout(() => {
       batchRefreshTimer = null;
       runStreamRefresh();
     }, 1000);
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      scheduleResultsRefresh();
+    }
   }
 
   async function runStreamRefresh() {

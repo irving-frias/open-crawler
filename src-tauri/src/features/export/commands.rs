@@ -46,10 +46,11 @@ pub async fn export_full(
     file_path: String,
     format: String,
 ) -> Result<(), AppError> {
-    let (total_pages, total_links, total_issues) = with_repo(&state, |repo| {
-        let total_pages = repo.count_pages(&project_id)?;
-        let total_links = repo.count_links(&project_id)?;
-        let total_issues = repo.count_issues(&project_id)?;
+    let pid = project_id.clone();
+    let (total_pages, total_links, total_issues) = with_repo(&state, move |repo| {
+        let total_pages = repo.count_pages(&pid)?;
+        let total_links = repo.count_links(&pid)?;
+        let total_issues = repo.count_issues(&pid)?;
         Ok((total_pages, total_links, total_issues))
     })
     .await?;
@@ -90,12 +91,15 @@ pub async fn export_full(
         .unwrap_or_else(|| write_path.clone());
 
     if format == "xlsx" {
-        with_repo(&state, |repo| {
+        let app_export = app.clone();
+        let pid_export = project_id.clone();
+        let dest_export = dest_path.clone();
+        with_repo(&state, move |repo| {
             export_xlsx(
                 repo,
-                &app,
-                &project_id,
-                &dest_path,
+                &app_export,
+                &pid_export,
+                &dest_export,
                 total_pages,
                 total_links,
                 total_issues,
@@ -103,8 +107,11 @@ pub async fn export_full(
         })
         .await?;
     } else {
-        with_repo(&state, |repo| {
-            export_csv_single(repo, &app, &project_id, &dest_path, total_pages)
+        let app_export = app.clone();
+        let pid_export = project_id.clone();
+        let dest_export = dest_path.clone();
+        with_repo(&state, move |repo| {
+            export_csv_single(repo, &app_export, &pid_export, &dest_export, total_pages)
         })
         .await?;
     }

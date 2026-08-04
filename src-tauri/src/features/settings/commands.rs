@@ -20,7 +20,7 @@ pub async fn save_settings(
     state: State<'_, Arc<RwLock<AppState>>>,
     settings: HashMap<String, String>,
 ) -> Result<(), AppError> {
-    with_repo(&state, |repo| {
+    with_repo(&state, move |repo| {
         for (key, value) in &settings {
             repo.set_setting(key, value)?;
         }

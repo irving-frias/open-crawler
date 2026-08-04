@@ -1,11 +1,65 @@
-use rusqlite::params;
+use rusqlite::{params, Transaction};
+
 use tracing::info;
 
+use crate::crawler::parser::SemanticIssue;
 use crate::error::AppError;
 use crate::models::{CrawlConfig, CrawlResult, PageLink};
 use crate::db::CrawlSessionInfo;
 
 use super::{compress_html_body, CrawlRepo};
+
+/// Deletes the normalized `page_issues` rows belonging to the given page ids.
+/// Re-crawls replace page rows per URL, and the replaced rows' ids differ from
+/// the new ones, so stale issue rows must be removed explicitly.
+fn delete_page_issues(tx: &Transaction<'_>, page_ids: &[String]) -> Result<(), AppError> {
+    if page_ids.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = tx.prepare("DELETE FROM page_issues WHERE page_id = ?1")?;
+    for id in page_ids {
+        stmt.execute(params![id])?;
+    }
+    Ok(())
+}
+
+/// Writes one `page_issues` row per issue occurrence parsed from the page's
+/// `semantic_issues_json`, preserving the array position for stable ordering.
+fn save_page_issues(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    page_id: &str,
+    semantic_issues_json: &Option<String>,
+) -> Result<(), AppError> {
+    let Some(json) = semantic_issues_json else {
+        return Ok(());
+    };
+    let issues: Vec<SemanticIssue> = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    if issues.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = tx.prepare(
+        "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    )?;
+    for (i, issue) in issues.iter().enumerate() {
+        stmt.execute(params![
+            project_id,
+            page_id,
+            issue.issue_type,
+            issue.severity,
+            issue.message,
+            issue.element,
+            issue.css_selector,
+            issue.xpath,
+            i as i64,
+        ])?;
+    }
+    Ok(())
+}
 
 impl<'a> CrawlRepo<'a> {
     pub fn save_config(&self, config: &CrawlConfig) -> Result<(), AppError> {
@@ -38,8 +92,24 @@ impl<'a> CrawlRepo<'a> {
 
         // Re-crawls replace the previous row for the same URL instead of
         // accumulating duplicates (unique index idx_pages_project_url).
+        let old_ids: Vec<String> = {
+            let mut stmt = tx.prepare(
+                "SELECT id FROM crawled_pages WHERE project_id = ?1 AND url = ?2",
+            )?;
+            let rows = stmt.query_map(params![project_id, result.url], |row| row.get(0))?;
+            let ids: Result<Vec<String>, _> = rows.collect();
+            ids?
+        };
+        delete_page_issues(&tx, &old_ids)?;
+        delete_page_issues(&tx, std::slice::from_ref(&result.id))?;
         tx.execute(
             "DELETE FROM crawled_pages WHERE project_id = ?1 AND url = ?2",
+            params![project_id, result.url],
+        )?;
+        // Re-crawls re-insert the page's own outbound links; drop the stale ones
+        // so the export / site tree don't accumulate duplicates across re-crawls.
+        tx.execute(
+            "DELETE FROM page_links WHERE project_id = ?1 AND from_url = ?2",
             params![project_id, result.url],
         )?;
         tx.execute(
@@ -93,6 +163,8 @@ impl<'a> CrawlRepo<'a> {
             )?;
         }
 
+        save_page_issues(&tx, project_id, &result.id, &result.semantic_issues_json)?;
+
         tx.commit()?;
         self.invalidate_cache_for_project(project_id);
 
@@ -115,8 +187,32 @@ impl<'a> CrawlRepo<'a> {
             unique.insert((result.project_id.clone(), result.url.clone()), result);
         }
 
+        // Capture the ids of the rows being replaced so their normalized
+        // page_issues rows can be removed alongside them.
+        let mut old_ids: Vec<String> = Vec::new();
+        {
+            let mut q = tx.prepare(
+                "SELECT id FROM crawled_pages WHERE project_id = ?1 AND url = ?2",
+            )?;
+            for (project_id, url) in unique.keys() {
+                let ids: Vec<String> = q
+                    .query_map(params![project_id, url], |row| row.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                old_ids.extend(ids);
+            }
+        }
+        delete_page_issues(&tx, &old_ids)?;
+
         {
             let mut del = tx.prepare("DELETE FROM crawled_pages WHERE project_id = ?1 AND url = ?2")?;
+            for (project_id, url) in unique.keys() {
+                del.execute(params![project_id, url])?;
+            }
+        }
+
+        // Drop stale outbound links for replaced URLs; each result re-inserts its own.
+        {
+            let mut del = tx.prepare("DELETE FROM page_links WHERE project_id = ?1 AND from_url = ?2")?;
             for (project_id, url) in unique.keys() {
                 del.execute(params![project_id, url])?;
             }
@@ -159,6 +255,32 @@ impl<'a> CrawlRepo<'a> {
                     result.pagespeed_json,
                     result.blocked as i32,
                 ])?;
+            }
+        }
+
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+            for result in unique.values() {
+                let issues: Vec<SemanticIssue> = match result.semantic_issues_json.as_deref() {
+                    Some(json) => serde_json::from_str(json).unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                for (i, issue) in issues.iter().enumerate() {
+                    stmt.execute(params![
+                        result.project_id,
+                        result.id,
+                        issue.issue_type,
+                        issue.severity,
+                        issue.message,
+                        issue.element,
+                        issue.css_selector,
+                        issue.xpath,
+                        i as i64,
+                    ])?;
+                }
             }
         }
 

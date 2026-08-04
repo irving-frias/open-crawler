@@ -5,6 +5,7 @@
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
+  import { parseIssues, getIssueCounts } from '$lib/features/results/issue-cache';
 
   let {
     items,
@@ -21,10 +22,22 @@
   } = $props();
 
   let localSearch = $state('');
+  // Highlighting runs on every row; debounce it so rapid keystrokes don't
+  // re-render every title with <mark> tags.
+  let highlightSearch = $state('');
+  let highlightTimer: ReturnType<typeof setTimeout> | null = null;
   let scrollContainer = $state<HTMLElement | null>(null);
 
   $effect(() => {
     localSearch = searchQuery;
+  });
+
+  $effect(() => {
+    const q = localSearch;
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      highlightSearch = q;
+    }, 250);
   });
 
   function handleInput(e: Event) {
@@ -37,21 +50,6 @@
     if (!query || !text) return text ?? '';
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-  }
-
-  function parseIssues(issuesJson: string | null): any[] {
-    if (!issuesJson) return [];
-    try { return JSON.parse(issuesJson); } catch { return []; }
-  }
-
-  function getIssueCounts(issues: any[]): { errors: number; warnings: number; infos: number } {
-    let errors = 0, warnings = 0, infos = 0;
-    for (const issue of issues) {
-      if (issue.severity === 'error') errors++;
-      else if (issue.severity === 'warning') warnings++;
-      else infos++;
-    }
-    return { errors, warnings, infos };
   }
 
   function toggleIssues(url: string) {
@@ -87,7 +85,9 @@
 
   const rows = $derived<RowModel[]>(
     items.map((page) => {
-      const issues = parseIssues(page.semantic_issues_json).filter((i: any) => i.severity === 'error');
+      // All severities (not just errors): warning/info badges and the expandable
+      // detail row previously never rendered because issues were error-filtered.
+      const issues = parseIssues(page.semantic_issues_json);
       const issueCounts = getIssueCounts(issues);
       const hasScore = page.readability_score != null;
       return {
@@ -96,7 +96,7 @@
         issueCounts,
         readabilityVariant: hasScore ? readabilityVariant(page.readability_score) : undefined,
         readabilityLabel: hasScore ? readabilityLabel(page.readability_score) : null,
-        titleHtml: highlight(page.title || m['detail.no_title'](), localSearch),
+        titleHtml: highlight(page.title || m['detail.no_title'](), highlightSearch),
       };
     })
   );
