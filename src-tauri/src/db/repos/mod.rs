@@ -207,8 +207,52 @@ mod tests {
         ])
         .unwrap();
 
+        // Filters are unions (OR): a page matches ANY active filter.
         let urls = filter(&repo, true, false, true, true);
-        assert_eq!(urls, vec!["https://x.com/a"]);
+        assert_eq!(urls.len(), 3);
+        assert!(urls.contains(&"https://x.com/a".to_string()));
+        assert!(urls.contains(&"https://x.com/b".to_string()));
+        assert!(urls.contains(&"https://x.com/c".to_string()));
+    }
+
+    #[test]
+    fn test_filter_or_across_categories() {
+        let repo = test_repo();
+        repo.save_results_batch(&[
+            page("a", "https://x.com/a", Some("A"), 200, true),
+            page("b", "https://x.com/b", None, 404, true),
+            page("c", "https://x.com/c", Some("C"), 301, true),
+        ])
+        .unwrap();
+
+        // status IN (200, 301) OR missing title -> all three pages match.
+        let (items, total) = repo
+            .get_results("p1", 1, 100, None, None, Some(&[200, 301]), None, None, None, true, false, false, false)
+            .unwrap();
+        assert_eq!(total, 3);
+        let urls: Vec<String> = items.into_iter().map(|r| r.url).collect();
+        assert!(urls.contains(&"https://x.com/a".to_string()));
+        assert!(urls.contains(&"https://x.com/b".to_string()));
+        assert!(urls.contains(&"https://x.com/c".to_string()));
+    }
+
+    #[test]
+    fn test_filter_or_still_scoped_to_project() {
+        let repo = test_repo();
+        repo.conn
+            .execute_batch(
+                "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p2', 'P2', datetime('now'), datetime('now'));",
+            )
+            .unwrap();
+        let mut p_a = page("a", "https://x.com/a", Some("A"), 200, true);
+        p_a.project_id = "p2".to_string();
+        repo.save_results_batch(&[p_a]).unwrap();
+
+        // A page outside the project must not leak in via the OR union.
+        let (_, total) = repo
+            .get_results("p1", 1, 100, None, None, Some(&[200]), None, None, None, false, false, false, false)
+            .unwrap();
+        assert_eq!(total, 0);
     }
 
     #[test]

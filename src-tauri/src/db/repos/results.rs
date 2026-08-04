@@ -50,25 +50,27 @@ impl<'a> CrawlRepo<'a> {
 
         let offset = (page - 1) * page_size;
 
-        let mut where_clauses = vec!["project_id = ?1".to_string()];
+        let mut and_clauses = vec!["project_id = ?1".to_string()];
+        let mut filter_clauses: Vec<String> = Vec::new();
         let mut param_index = 2u32;
 
-        if let Some(_issue_type) = semantic_issue_type {
-            where_clauses.push(format!(
-                "EXISTS (SELECT 1 FROM page_issues pi WHERE pi.page_id = crawled_pages.id AND pi.project_id = crawled_pages.project_id AND pi.issue_type = ?{})",
-                param_index
-            ));
-            param_index += 1;
-        }
-
+        // Text search narrows whatever facet union is active, so it stays ANDed.
         if let Some(s) = search {
             if !s.is_empty() {
-                where_clauses.push(format!(
+                and_clauses.push(format!(
                     "(url LIKE ?{} OR title LIKE ?{} OR h1 LIKE ?{})",
                     param_index, param_index, param_index
                 ));
                 param_index += 1;
             }
+        }
+
+        if let Some(_issue_type) = semantic_issue_type {
+            filter_clauses.push(format!(
+                "EXISTS (SELECT 1 FROM page_issues pi WHERE pi.page_id = crawled_pages.id AND pi.project_id = crawled_pages.project_id AND pi.issue_type = ?{})",
+                param_index
+            ));
+            param_index += 1;
         }
 
         if let Some(statuses) = status_filter {
@@ -81,7 +83,7 @@ impl<'a> CrawlRepo<'a> {
                         format!("?{}", idx)
                     })
                     .collect();
-                where_clauses.push(format!("status_code IN ({})", placeholders.join(",")));
+                filter_clauses.push(format!("status_code IN ({})", placeholders.join(",")));
             }
         }
 
@@ -95,7 +97,7 @@ impl<'a> CrawlRepo<'a> {
                         format!("?{}", idx)
                     })
                     .collect();
-                where_clauses.push(format!(
+                filter_clauses.push(format!(
                     "EXISTS (SELECT 1 FROM page_issues pi WHERE pi.page_id = crawled_pages.id AND pi.project_id = crawled_pages.project_id AND pi.severity IN ({}))",
                     placeholders.join(",")
                 ));
@@ -104,7 +106,7 @@ impl<'a> CrawlRepo<'a> {
 
         if let Some(domain) = domain_filter {
             if !domain.is_empty() {
-                where_clauses.push(format!(
+                filter_clauses.push(format!(
                     "(url LIKE ?{} OR url LIKE ?{})",
                     param_index,
                     param_index + 1
@@ -114,29 +116,35 @@ impl<'a> CrawlRepo<'a> {
         }
 
         if let Some(_depth) = depth_filter {
-            where_clauses.push(format!("depth <= ?{}", param_index));
+            filter_clauses.push(format!("depth <= ?{}", param_index));
             param_index += 1;
         }
 
         if missing_title {
-            where_clauses.push("(title IS NULL OR trim(title) = '')".to_string());
+            filter_clauses.push("(title IS NULL OR trim(title) = '')".to_string());
         }
 
         if duplicate_title {
-            where_clauses.push(
+            filter_clauses.push(
                 "title IS NOT NULL AND trim(title) <> '' AND (SELECT COUNT(*) FROM crawled_pages c2 WHERE c2.project_id = crawled_pages.project_id AND c2.title = crawled_pages.title) > 1".to_string(),
             );
         }
 
         if noindex_only {
-            where_clauses.push("is_indexable = 0".to_string());
+            filter_clauses.push("is_indexable = 0".to_string());
         }
 
         if is_404 {
-            where_clauses.push("status_code = 404".to_string());
+            filter_clauses.push("status_code = 404".to_string());
         }
 
-        let where_sql = where_clauses.join(" AND ");
+        // Selected filters are unions (OR): a page matches if it satisfies ANY
+        // active filter. Only the project scoping and the text search are ANDed.
+        if !filter_clauses.is_empty() {
+            and_clauses.push(format!("({})", filter_clauses.join(" OR ")));
+        }
+
+        let where_sql = and_clauses.join(" AND ");
         let count_sql = format!("SELECT COUNT(*) FROM crawled_pages WHERE {}", where_sql);
         // Note: html_body is intentionally excluded from the list projection. It
         // is only served by get_page_detail/get_page_html, so list queries stay
@@ -153,13 +161,13 @@ impl<'a> CrawlRepo<'a> {
         // Build params for count query
         let mut count_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         count_params.push(Box::new(project_id.to_string()));
-        if let Some(issue_type) = semantic_issue_type {
-            count_params.push(Box::new(issue_type.to_string()));
-        }
         if let Some(s) = search {
             if !s.is_empty() {
                 count_params.push(Box::new(format!("%{}%", s)));
             }
+        }
+        if let Some(issue_type) = semantic_issue_type {
+            count_params.push(Box::new(issue_type.to_string()));
         }
         if let Some(statuses) = status_filter {
             for s in statuses {
@@ -190,13 +198,13 @@ impl<'a> CrawlRepo<'a> {
         // Build params for query (same base + limit/offset)
         let mut query_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         query_params.push(Box::new(project_id.to_string()));
-        if let Some(issue_type) = semantic_issue_type {
-            query_params.push(Box::new(issue_type.to_string()));
-        }
         if let Some(s) = search {
             if !s.is_empty() {
                 query_params.push(Box::new(format!("%{}%", s)));
             }
+        }
+        if let Some(issue_type) = semantic_issue_type {
+            query_params.push(Box::new(issue_type.to_string()));
         }
         if let Some(statuses) = status_filter {
             for s in statuses {

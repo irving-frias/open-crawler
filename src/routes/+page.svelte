@@ -22,6 +22,22 @@
   let splashVisible = $state(true);
   let splashGone = $state(false);
 
+  const resultsActive = $derived(
+    app.results.items.length > 0 ||
+      app.streamedCount > 0 ||
+      app.resultsLoading ||
+      app.activeFilters.statusCodes.length > 0 ||
+      app.activeFilters.severities.length > 0 ||
+      app.activeFilters.depth !== undefined ||
+      app.activeFilters.missingTitle ||
+      app.activeFilters.duplicateTitle ||
+      app.activeFilters.noindexOnly ||
+      app.activeFilters.is404 ||
+      app.activeFilters.issueType !== '' ||
+      app.searchQuery !== '' ||
+      app.debouncedSearch !== ''
+  );
+
   $effect(() => {
     if (app.initialized && !splashGone) {
       const remaining = Math.max(0, 800 - (Date.now() - splashMountTime));
@@ -171,7 +187,7 @@
         <div class="sitemap-info">{app.sitemapInfo}</div>
       {/if}
 
-      {#if app.results.items.length > 0 || app.streamedCount > 0 || app.resultsLoading}
+      {#if resultsActive}
         <ResultsView
           bind:activeTab={app.activeTab}
           results={app.results}

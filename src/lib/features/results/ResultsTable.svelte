@@ -136,6 +136,12 @@
     {/if}
   </div>
 
+  <div class="header-row">
+    <div class="col-url">{m['results.col.url']()}</div>
+    <div class="col-status">{m['results.col.status']()}</div>
+    <div class="col-issues">{m['results.col.issues']()}</div>
+  </div>
+
   {#if items.length === 0}
     <div class="empty-state">
       {#if localSearch}
@@ -147,12 +153,6 @@
       {/if}
     </div>
   {:else}
-    <div class="header-row">
-      <div class="col-url">{m['results.col.url']()}</div>
-      <div class="col-status">{m['results.col.status']()}</div>
-      <div class="col-issues">{m['results.col.issues']()}</div>
-    </div>
-
     <div class="rows-body" bind:this={scrollContainer}>
       {#each rows as row (row.page.id)}
         {@const isExpanded = expandedUrl === row.page.url}
