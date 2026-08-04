@@ -125,9 +125,19 @@ pub async fn recrawl_page(
 
     info!("Re-crawling single page: {}", original.url);
 
+    // Reuse the project's cookies and Basic Auth so authenticated pages stay reachable.
+    let project_id_cfg = project_id.clone();
+    let config = with_repo(&state, move |repo| {
+        repo.get_latest_session_config(&project_id_cfg)
+    })
+    .await?;
+    let cookies = config.as_ref().map(|c| c.cookies.clone()).unwrap_or_default();
+    let site_auth = config.and_then(|c| c.site_auth);
+
     // Fetch the page
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher = crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new(), None)?;
+    let fetcher =
+        crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new(), cookies, site_auth, None)?;
     let response = fetcher.fetch(&url).await?;
 
     // Parse SEO data

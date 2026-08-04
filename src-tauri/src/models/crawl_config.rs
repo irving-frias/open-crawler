@@ -13,6 +13,15 @@ pub struct ProxyConfig {
     pub password: Option<String>,
 }
 
+/// HTTP Basic Auth credentials for the site being crawled (not the proxy).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SiteAuth {
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlConfig {
     pub id: Option<String>,
@@ -42,6 +51,13 @@ pub struct CrawlConfig {
     pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub custom_headers: Vec<(String, String)>,
+    /// Raw cookie strings (e.g. `session=abc`) sent on every request, joined
+    /// into a single `Cookie` header. Useful when credentials are required to
+    /// access the site being crawled.
+    #[serde(default)]
+    pub cookies: Vec<String>,
+    #[serde(default)]
+    pub site_auth: Option<SiteAuth>,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
     #[serde(default)]
@@ -94,6 +110,8 @@ impl Default for CrawlConfig {
             include_patterns: Vec::new(),
             exclude_patterns: Vec::new(),
             custom_headers: Vec::new(),
+            cookies: Vec::new(),
+            site_auth: None,
             request_timeout_ms: default_request_timeout_ms(),
             proxy: None,
         }

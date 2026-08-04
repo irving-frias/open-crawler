@@ -15,6 +15,35 @@ pub use parser::SemanticIssue;
 use crate::error::AppError;
 use crate::models::ProxyConfig;
 
+/// Joins raw cookie strings into a single `Cookie` header value, or `None` if
+/// there is nothing to send.
+pub(crate) fn cookie_header_value(cookies: &[String]) -> Option<String> {
+    let joined = cookies
+        .iter()
+        .map(|c| c.trim())
+        .filter(|c| !c.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    }
+}
+
+/// Applies HTTP Basic Auth to a request builder when credentials are set.
+pub(crate) fn apply_basic_auth(
+    request: reqwest::RequestBuilder,
+    auth: &Option<crate::models::SiteAuth>,
+) -> reqwest::RequestBuilder {
+    match auth {
+        Some(a) if !a.username.is_empty() => {
+            request.basic_auth(&a.username, Some(&a.password))
+        }
+        _ => request,
+    }
+}
+
 pub(crate) fn client_with_proxy(
     proxy: Option<&ProxyConfig>,
 ) -> Result<reqwest::ClientBuilder, AppError> {

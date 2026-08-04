@@ -167,6 +167,9 @@
         bind:proxyUrl={app.proxyUrl}
         bind:proxyUser={app.proxyUser}
         bind:proxyPass={app.proxyPass}
+        bind:cookies={app.cookies}
+        bind:siteUser={app.siteUser}
+        bind:sitePass={app.sitePass}
         bind:respectRobots={app.respectRobots}
         bind:checkSitemap={app.checkSitemap}
         bind:checkSemantics={app.checkSemantics}

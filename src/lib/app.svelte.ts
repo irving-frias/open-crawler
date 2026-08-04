@@ -50,6 +50,9 @@ export interface CrawlFormConfig {
   proxyUrl: string;
   proxyUser: string;
   proxyPass: string;
+  cookies: string;
+  siteUser: string;
+  sitePass: string;
 }
 
 export interface AppFields {
@@ -66,6 +69,9 @@ export interface AppFields {
   proxyUrl: string;
   proxyUser: string;
   proxyPass: string;
+  cookies: string;
+  siteUser: string;
+  sitePass: string;
   seedUrlsByProject: Record<string, string>;
   configByProject: Record<string, CrawlFormConfig>;
   status: CrawlStatus;
@@ -153,6 +159,9 @@ export function createAppShell(): AppShell {
     proxyUrl: '',
     proxyUser: '',
     proxyPass: '',
+    cookies: '',
+    siteUser: '',
+    sitePass: '',
     seedUrlsByProject: {} as Record<string, string>,
     configByProject: {} as Record<string, CrawlFormConfig>,
     status: 'idle' as CrawlStatus,
@@ -433,6 +442,9 @@ export function createAppShell(): AppShell {
       proxyUrl: state.proxyUrl,
       proxyUser: state.proxyUser,
       proxyPass: state.proxyPass,
+      cookies: state.cookies,
+      siteUser: state.siteUser,
+      sitePass: state.sitePass,
     };
   }
 
@@ -445,6 +457,9 @@ export function createAppShell(): AppShell {
     state.proxyUrl = cfg.proxyUrl ?? '';
     state.proxyUser = cfg.proxyUser ?? '';
     state.proxyPass = cfg.proxyPass ?? '';
+    state.cookies = cfg.cookies ?? '';
+    state.siteUser = cfg.siteUser ?? '';
+    state.sitePass = cfg.sitePass ?? '';
   }
 
   // Restores the last crawl's settings from the backend when there is no local
@@ -465,6 +480,9 @@ export function createAppShell(): AppShell {
           proxyUrl: cfg.proxy?.url ?? '',
           proxyUser: cfg.proxy?.username ?? '',
           proxyPass: cfg.proxy?.password ?? '',
+          cookies: cfg.cookies?.join('\n') ?? '',
+          siteUser: cfg.site_auth?.username ?? '',
+          sitePass: cfg.site_auth?.password ?? '',
         };
         state.configByProject[id] = restored;
         if (state.selectedProjectId === id) {
@@ -666,6 +684,14 @@ export function createAppShell(): AppShell {
         check_sitemap: state.checkSitemap,
         check_semantics: state.checkSemantics,
         max_crawl_time_secs: state.maxCrawlTime,
+        cookies: state.cookies
+          .split('\n')
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0),
+        site_auth:
+          state.siteUser.trim() || state.sitePass
+            ? { username: state.siteUser, password: state.sitePass }
+            : null,
         proxy: state.proxyUrl.trim()
           ? {
               url: state.proxyUrl.trim(),

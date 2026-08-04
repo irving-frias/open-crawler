@@ -140,6 +140,8 @@ impl CrawlEngine {
             config.user_agent(),
             config.request_timeout_ms,
             config.custom_headers.clone(),
+            config.cookies.clone(),
+            config.site_auth.clone(),
             config.proxy.as_ref(),
         )?;
         self.fetcher = Some(Arc::new(Box::new(http_fetcher)));
@@ -207,7 +209,12 @@ impl CrawlEngine {
 
         // Sitemap discovery
         if config.check_sitemap {
-            let sitemap_parser = SitemapParser::new(config.user_agent(), config.proxy.as_ref())?;
+            let sitemap_parser = SitemapParser::new(
+                config.user_agent(),
+                config.cookies.clone(),
+                config.site_auth.clone(),
+                config.proxy.as_ref(),
+            )?;
             let origins_clone = self.allowed_origins.clone();
             for origin in &origins_clone {
                 info!("Discovering sitemaps for: {}", origin);
@@ -279,7 +286,13 @@ impl CrawlEngine {
         });
 
         // Create RobotsChecker
-        let mut robots_checker = RobotsChecker::new(config.user_agent(), config.proxy.as_ref())?;
+        let mut robots_checker =
+            RobotsChecker::new(
+                config.user_agent(),
+                config.cookies.clone(),
+                config.site_auth.clone(),
+                config.proxy.as_ref(),
+            )?;
 
         info!("Frontier has {} URLs to process", {
             self.frontier.as_ref().map(|f| f.len()).unwrap_or(0)
@@ -945,7 +958,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn sitemap_discovery_empty_without_sitemap() {
         let origin = spawn_no_sitemap_site().await;
-        let parser = SitemapParser::new("OpenCrawler/test", None).unwrap();
+        let parser = SitemapParser::new("OpenCrawler/test", vec![], None, None).unwrap();
         let result = parser.discover(&origin).await;
         assert!(
             result.urls.is_empty(),
@@ -959,7 +972,7 @@ mod tests {
         let origin = spawn_no_sitemap_site().await;
         let seed = format!("{}/", origin);
 
-        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], None).unwrap();
+        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
         let visited =
             Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
@@ -1012,7 +1025,7 @@ mod tests {
         let origin = spawn_no_sitemap_site().await;
         let seed = format!("{}/", origin);
 
-        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], None).unwrap();
+        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
         // Simulate the discovery visited set pre-seeded with the seed URL and a
         // sitemap URL (/a), exactly as CrawlEngine::start now does.

@@ -4,9 +4,9 @@ use quick_xml::Reader;
 use std::io::Read;
 use tracing::{info, warn};
 
-use crate::crawler::client_with_proxy;
+use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
 use crate::error::AppError;
-use crate::models::ProxyConfig;
+use crate::models::{ProxyConfig, SiteAuth};
 
 #[derive(Debug, Clone)]
 pub struct SitemapUrl {
@@ -24,16 +24,27 @@ pub struct SitemapResult {
 
 pub struct SitemapParser {
     client: reqwest::Client,
+    cookies: Vec<String>,
+    site_auth: Option<SiteAuth>,
 }
 
 impl SitemapParser {
-    pub fn new(user_agent: &str, proxy: Option<&ProxyConfig>) -> Result<Self, AppError> {
+    pub fn new(
+        user_agent: &str,
+        cookies: Vec<String>,
+        site_auth: Option<SiteAuth>,
+        proxy: Option<&ProxyConfig>,
+    ) -> Result<Self, AppError> {
         let client = client_with_proxy(proxy)?
             .user_agent(user_agent)
             .timeout(std::time::Duration::from_secs(15))
             .redirect(reqwest::redirect::Policy::limited(5))
             .build()?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            cookies,
+            site_auth,
+        })
     }
 
     pub async fn discover(&self, origin: &str) -> SitemapResult {
@@ -234,7 +245,12 @@ impl SitemapParser {
     }
 
     async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>, AppError> {
-        let response = self.client.get(url).send().await?.error_for_status()?;
+        let mut request = self.client.get(url);
+        if let Some(cookie) = cookie_header_value(&self.cookies) {
+            request = request.header(reqwest::header::COOKIE, cookie);
+        }
+        request = apply_basic_auth(request, &self.site_auth);
+        let response = request.send().await?.error_for_status()?;
 
         let is_gzip = response
             .headers()

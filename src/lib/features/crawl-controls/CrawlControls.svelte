@@ -19,6 +19,9 @@
     proxyUrl = $bindable(),
     proxyUser = $bindable(),
     proxyPass = $bindable(),
+    cookies = $bindable(),
+    siteUser = $bindable(),
+    sitePass = $bindable(),
     respectRobots = $bindable(),
     checkSitemap = $bindable(),
     checkSemantics = $bindable(),
@@ -37,6 +40,9 @@
     proxyUrl: string;
     proxyUser: string;
     proxyPass: string;
+    cookies: string;
+    siteUser: string;
+    sitePass: string;
     respectRobots: boolean;
     checkSitemap: boolean;
     checkSemantics: boolean;
@@ -141,6 +147,45 @@
           </div>
         </div>
       {/if}
+      <div class="form-row">
+        <div class="form-group">
+          <Label for="siteUser">{m['config.site_user']()}</Label>
+          <Input
+            id="siteUser"
+            type="text"
+            bind:value={siteUser}
+            placeholder={m['config.site_user_placeholder']()}
+            autocomplete="off"
+            disabled={status === 'running'}
+          />
+        </div>
+        <div class="form-group">
+          <Label for="sitePass">{m['config.site_pass']()}</Label>
+          <Input
+            id="sitePass"
+            type="password"
+            bind:value={sitePass}
+            placeholder={m['config.site_pass_placeholder']()}
+            autocomplete="off"
+            disabled={status === 'running'}
+          />
+        </div>
+      </div>
+      <p class="field-hint">{m['config.site_auth_hint']()}</p>
+      <div class="form-group">
+        <Label for="cookies">{m['config.cookies']()}</Label>
+        <textarea
+          id="cookies"
+          class="cookies-input"
+          rows="3"
+          bind:value={cookies}
+          placeholder={m['config.cookies_placeholder']()}
+          autocomplete="off"
+          spellcheck="false"
+          disabled={status === 'running'}
+        ></textarea>
+        <p class="field-hint">{m['config.cookies_hint']()}</p>
+      </div>
     </div>
   </details>
 
@@ -310,6 +355,36 @@
     margin-top: 4px;
     font-size: 0.8rem;
     color: var(--text-muted);
+  }
+
+  .cookies-input {
+    width: 100%;
+    min-width: 0;
+    border-radius: var(--radius-lg);
+    border: none;
+    background: var(--bg-background);
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text);
+    resize: vertical;
+    outline: none;
+    box-shadow: var(--neu-pressed);
+    transition: box-shadow 0.15s ease;
+  }
+
+  .cookies-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .cookies-input:focus {
+    box-shadow: var(--neu-focus);
+  }
+
+  .cookies-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .field-error {

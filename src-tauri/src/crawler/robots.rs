@@ -5,9 +5,9 @@ use reqwest::Client;
 use tracing::{info, warn};
 use url::Url;
 
-use crate::crawler::client_with_proxy;
+use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
 use crate::error::AppError;
-use crate::models::ProxyConfig;
+use crate::models::{ProxyConfig, SiteAuth};
 
 const ROBOTS_CACHE_TTL_SECS: u64 = 3600;
 const DEFAULT_CRAWL_DELAY_MS: u64 = 1000;
@@ -24,10 +24,17 @@ pub struct RobotsChecker {
     cache: HashMap<String, RobotsData>,
     user_agent: String,
     client: Client,
+    cookies: Vec<String>,
+    site_auth: Option<SiteAuth>,
 }
 
 impl RobotsChecker {
-    pub fn new(user_agent: &str, proxy: Option<&ProxyConfig>) -> Result<Self, AppError> {
+    pub fn new(
+        user_agent: &str,
+        cookies: Vec<String>,
+        site_auth: Option<SiteAuth>,
+        proxy: Option<&ProxyConfig>,
+    ) -> Result<Self, AppError> {
         let client = client_with_proxy(proxy)?
             .user_agent(user_agent)
             .timeout(Duration::from_secs(10))
@@ -37,6 +44,8 @@ impl RobotsChecker {
             cache: HashMap::new(),
             user_agent: user_agent.to_string(),
             client,
+            cookies,
+            site_auth,
         })
     }
 
@@ -84,7 +93,13 @@ impl RobotsChecker {
     async fn fetch_robots(&self, domain: &str) -> RobotsData {
         let url = format!("https://{}/robots.txt", domain);
 
-        let response = match self.client.get(&url).send().await {
+        let mut request = self.client.get(&url);
+        if let Some(cookie) = cookie_header_value(&self.cookies) {
+            request = request.header(reqwest::header::COOKIE, cookie);
+        }
+        request = apply_basic_auth(request, &self.site_auth);
+
+        let response = match request.send().await {
             Ok(r) => r,
             Err(e) => {
                 warn!("Failed to fetch robots.txt for {}: {}", domain, e);
@@ -221,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_parse_robots_basic() {
-        let checker = RobotsChecker::new("TestBot/1.0", None).unwrap();
+        let checker = RobotsChecker::new("TestBot/1.0", vec![], None, None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -245,7 +260,7 @@ Sitemap: https://example.com/sitemap2.xml
 
     #[test]
     fn test_parse_robots_specific_agent() {
-        let checker = RobotsChecker::new("MyBot/1.0", None).unwrap();
+        let checker = RobotsChecker::new("MyBot/1.0", vec![], None, None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -264,7 +279,7 @@ Crawl-delay: 10
 
     #[test]
     fn test_parse_robots_empty() {
-        let checker = RobotsChecker::new("TestBot/1.0", None).unwrap();
+        let checker = RobotsChecker::new("TestBot/1.0", vec![], None, None).unwrap();
         let data = checker.parse_robots("", "example.com");
         assert!(data.disallow_paths.is_empty());
         assert_eq!(data.crawl_delay_ms, DEFAULT_CRAWL_DELAY_MS);

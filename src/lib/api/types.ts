@@ -196,6 +196,11 @@ export interface ProxyConfig {
   password?: string | null;
 }
 
+export interface SiteAuth {
+  username?: string;
+  password?: string;
+}
+
 export interface CrawlConfig {
   id?: string | null;
   project_id?: string | null;
@@ -212,6 +217,8 @@ export interface CrawlConfig {
   include_patterns?: string[];
   exclude_patterns?: string[];
   custom_headers?: [string, string][];
+  cookies?: string[];
+  site_auth?: SiteAuth | null;
   request_timeout_ms?: number;
   proxy?: ProxyConfig | null;
 }

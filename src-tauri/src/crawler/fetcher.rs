@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::time::Duration;
 use url::Url;
 
-use crate::crawler::client_with_proxy;
+use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
 use crate::error::AppError;
-use crate::models::ProxyConfig;
+use crate::models::{ProxyConfig, SiteAuth};
 
 #[derive(Debug, Clone)]
 pub struct FetchResponse {
@@ -66,6 +66,8 @@ pub fn is_cloudflare_challenge(
 pub struct HttpFetcher {
     client: reqwest::Client,
     custom_headers: Vec<(String, String)>,
+    cookies: Vec<String>,
+    site_auth: Option<SiteAuth>,
 }
 
 impl HttpFetcher {
@@ -73,6 +75,8 @@ impl HttpFetcher {
         user_agent: &str,
         timeout_ms: u64,
         custom_headers: Vec<(String, String)>,
+        cookies: Vec<String>,
+        site_auth: Option<SiteAuth>,
         proxy: Option<&ProxyConfig>,
     ) -> Result<Self, AppError> {
         let client = client_with_proxy(proxy)?
@@ -86,6 +90,8 @@ impl HttpFetcher {
         Ok(Self {
             client,
             custom_headers,
+            cookies,
+            site_auth,
         })
     }
 }
@@ -99,6 +105,10 @@ impl HtmlFetcher for HttpFetcher {
         for (key, value) in &self.custom_headers {
             request = request.header(key.as_str(), value.as_str());
         }
+        if let Some(cookie) = cookie_header_value(&self.cookies) {
+            request = request.header(reqwest::header::COOKIE, cookie);
+        }
+        request = apply_basic_auth(request, &self.site_auth);
         let response = request.send().await?;
 
         let status = response.status().as_u16();
