@@ -252,6 +252,8 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             -- Default settings
             INSERT OR IGNORE INTO settings (key, value) VALUES
                 ('language', 'en'),
+                ('theme', 'system'),
+                ('ui_style', 'classic'),
                 ('page_size', '50'),
                 ('max_depth', '10'),
                 ('respect_robots', 'true'),

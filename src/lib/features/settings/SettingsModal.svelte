@@ -3,7 +3,7 @@
   import type { SettingsMap } from '$lib/api/types';
   import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
   import { m } from '$lib/paraglide/messages.js';
-  import { applyTheme as applyAppTheme } from '$lib/theme.js';
+  import { applyTheme as applyAppTheme, applyUiStyle } from '$lib/theme.js';
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import * as Select from '$lib/components/ui/select/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -22,6 +22,7 @@
 
   let language = $state(getLocale());
   let theme = $state('system');
+  let uiStyle = $state('classic');
   let pageSize = $state('50');
   let maxDepth = $state('10');
   let respectRobots = $state(true);
@@ -41,6 +42,7 @@
       const settings = await getSettings();
       if (settings.language) language = settings.language as Locale;
       if (settings.theme) theme = settings.theme;
+      if (settings.ui_style) uiStyle = settings.ui_style;
       if (settings.page_size) pageSize = settings.page_size;
       if (settings.max_depth) maxDepth = settings.max_depth;
       if (settings.respect_robots) respectRobots = settings.respect_robots === 'true';
@@ -60,6 +62,7 @@
       const settings: SettingsMap = {
         language,
         theme,
+        ui_style: uiStyle,
         page_size: pageSize,
         max_depth: maxDepth,
         respect_robots: respectRobots.toString(),
@@ -72,6 +75,7 @@
       await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
+      applyUiStyle(uiStyle);
       onsave?.(settings);
       open = false;
     } catch (e) {
@@ -82,6 +86,17 @@
   }
 
   const languageLabel = $derived(language === 'en' ? m['language.en']() : m['language.es']());
+  const uiStyleLabel = $derived(
+    uiStyle === 'neumorph'
+      ? m['ui_style.neumorph']()
+      : uiStyle === 'clay'
+        ? m['ui_style.clay']()
+        : uiStyle === 'glass'
+          ? m['ui_style.glass']()
+          : uiStyle === 'brutal'
+            ? m['ui_style.brutal']()
+            : m['ui_style.classic']()
+  );
 </script>
 
 <Dialog.Root bind:open>
@@ -118,6 +133,22 @@
             <Select.Item value="system" label={m['theme.system']()} />
             <Select.Item value="light" label={m['theme.light']()} />
             <Select.Item value="dark" label={m['theme.dark']()} />
+          </Select.Content>
+        </Select.Root>
+      </div>
+
+      <div class="grid gap-1.5">
+        <Label for="ui-style">{m['ui_style.label']()}</Label>
+        <Select.Root type="single" bind:value={uiStyle}>
+          <Select.Trigger id="ui-style" class="w-full">
+            <span data-slot="select-value">{uiStyleLabel}</span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="classic" label={m['ui_style.classic']()} />
+            <Select.Item value="neumorph" label={m['ui_style.neumorph']()} />
+            <Select.Item value="clay" label={m['ui_style.clay']()} />
+            <Select.Item value="glass" label={m['ui_style.glass']()} />
+            <Select.Item value="brutal" label={m['ui_style.brutal']()} />
           </Select.Content>
         </Select.Root>
       </div>

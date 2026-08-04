@@ -7,14 +7,17 @@
 
 @utility neu-raised-sm {
   box-shadow: var(--neu-raised-sm);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 @utility neu-raised-md {
   box-shadow: var(--neu-raised-md);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 @utility neu-raised-lg {
   box-shadow: var(--neu-raised-lg);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 @utility neu-pressed {
@@ -27,6 +30,7 @@
 
 @utility neu-float {
   box-shadow: var(--neu-float);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 @utility neu-focus {
@@ -35,6 +39,7 @@
 
 @utility neu-surface {
   background-color: var(--bg-deep);
+  backdrop-filter: var(--surface-blur, none);
 }
 
 /* Raised surfaces sink when pressed */

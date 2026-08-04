@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event';
 import { toast } from 'svelte-sonner';
 import * as api from '$lib/api';
 import type { Project } from '$lib/api/types';
+import { applyTheme, applyUiStyle } from '$lib/theme.js';
 import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
 import { m } from '$lib/paraglide/messages.js';
 import { notify } from '$lib/utils';
@@ -409,6 +410,12 @@ export function createAppShell(): AppShell {
       }
       if (settings.notifications_enabled !== undefined) {
         state.notificationsEnabled = settings.notifications_enabled === 'true';
+      }
+      if (settings.theme) {
+        applyTheme(settings.theme);
+      }
+      if (settings.ui_style) {
+        applyUiStyle(settings.ui_style);
       }
     } catch (e) {
       // Settings may not exist yet, use defaults
