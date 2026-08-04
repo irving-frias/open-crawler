@@ -5,14 +5,17 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { cn } from '$lib/utils.js';
+  import { translateIssueName } from '$lib/i18n-issues';
 
   let {
     items,
     totalResults,
+    filters,
     onFilter,
   }: {
     items: any[];
     totalResults: number;
+    filters: FilterState;
     onFilter: (filters: FilterState) => void;
   } = $props();
 
@@ -24,15 +27,17 @@
     duplicateTitle: boolean;
     noindexOnly: boolean;
     is404: boolean;
+    issueType: string;
   };
 
-  let selectedStatuses = $state<number[]>([]);
-  let selectedSeverities = $state<string[]>([]);
-  let maxDepth = $state<number | undefined>(undefined);
-  let missingTitle = $state(false);
-  let duplicateTitle = $state(false);
-  let noindexOnly = $state(false);
-  let is404 = $state(false);
+  const selectedStatuses = $derived(filters.statusCodes);
+  const selectedSeverities = $derived(filters.severities);
+  const maxDepth = $derived(filters.depth);
+  const missingTitle = $derived(filters.missingTitle);
+  const duplicateTitle = $derived(filters.duplicateTitle);
+  const noindexOnly = $derived(filters.noindexOnly);
+  const is404 = $derived(filters.is404);
+  const issueType = $derived(filters.issueType);
 
   const AVAILABLE_STATUSES = $derived.by(() => {
     let statusCount: Record<number, number> = {};
@@ -63,6 +68,20 @@
     return Object.keys(sevCount).filter((s) => s === 'error').sort();
   });
 
+  const availableIssueTypes = $derived.by(() => {
+    const types = new Set<string>();
+    for (const page of items) {
+      if (!page.semantic_issues_json) continue;
+      try {
+        const issues = JSON.parse(page.semantic_issues_json);
+        for (const issue of issues) {
+          if (issue.issue_type) types.add(issue.issue_type);
+        }
+      } catch {}
+    }
+    return [...types].sort();
+  });
+
   const activeFilterCount = $derived(
     selectedStatuses.length +
     selectedSeverities.length +
@@ -70,55 +89,41 @@
     (missingTitle ? 1 : 0) +
     (duplicateTitle ? 1 : 0) +
     (noindexOnly ? 1 : 0) +
-    (is404 ? 1 : 0)
+    (is404 ? 1 : 0) +
+    (issueType ? 1 : 0)
   );
 
   const sliderPct = $derived(((maxDepth ?? 10) / 10) * 100);
 
   function toggleStatus(code: number) {
-    if (selectedStatuses.includes(code)) {
-      selectedStatuses = selectedStatuses.filter(s => s !== code);
-    } else {
-      selectedStatuses = [...selectedStatuses, code];
-    }
-    emitFilter();
+    const next = selectedStatuses.includes(code)
+      ? selectedStatuses.filter((s) => s !== code)
+      : [...selectedStatuses, code];
+    onFilter({ ...filters, statusCodes: next });
   }
 
   function toggleSeverity(severity: string) {
-    if (selectedSeverities.includes(severity)) {
-      selectedSeverities = selectedSeverities.filter(s => s !== severity);
-    } else {
-      selectedSeverities = [...selectedSeverities, severity];
-    }
-    emitFilter();
+    const next = selectedSeverities.includes(severity)
+      ? selectedSeverities.filter((s) => s !== severity)
+      : [...selectedSeverities, severity];
+    onFilter({ ...filters, severities: next });
   }
 
   function handleDepthChange(e: Event) {
     const val = parseInt((e.target as HTMLInputElement).value);
-    maxDepth = isNaN(val) ? undefined : val;
-    emitFilter();
+    onFilter({ ...filters, depth: isNaN(val) ? undefined : val });
   }
 
   function clearAll() {
-    selectedStatuses = [];
-    selectedSeverities = [];
-    maxDepth = undefined;
-    missingTitle = false;
-    duplicateTitle = false;
-    noindexOnly = false;
-    is404 = false;
-    emitFilter();
-  }
-
-  function emitFilter() {
     onFilter({
-      statusCodes: selectedStatuses,
-      severities: selectedSeverities,
-      depth: maxDepth,
-      missingTitle,
-      duplicateTitle,
-      noindexOnly,
-      is404,
+      statusCodes: [],
+      severities: [],
+      depth: undefined,
+      missingTitle: false,
+      duplicateTitle: false,
+      noindexOnly: false,
+      is404: false,
+      issueType: '',
     });
   }
 
@@ -127,42 +132,47 @@
       key: 'missingTitle',
       label: m["filter.missing_title"](),
       state: missingTitle,
-      toggle: () => {
-        missingTitle = !missingTitle;
-        emitFilter();
-      },
+      toggle: () => onFilter({ ...filters, missingTitle: !missingTitle }),
     },
     {
       key: 'duplicateTitle',
       label: m["filter.duplicate_title"](),
       state: duplicateTitle,
-      toggle: () => {
-        duplicateTitle = !duplicateTitle;
-        emitFilter();
-      },
+      toggle: () => onFilter({ ...filters, duplicateTitle: !duplicateTitle }),
     },
     {
       key: 'noindexOnly',
       label: m["filter.noindex"](),
       state: noindexOnly,
-      toggle: () => {
-        noindexOnly = !noindexOnly;
-        emitFilter();
-      },
+      toggle: () => onFilter({ ...filters, noindexOnly: !noindexOnly }),
     },
     {
       key: 'is404',
       label: m["filter.is_404"](),
       state: is404,
-      toggle: () => {
-        is404 = !is404;
-        emitFilter();
-      },
+      toggle: () => onFilter({ ...filters, is404: !is404 }),
     },
   ]);
 </script>
 
 <div class="filter-bar">
+  <div class="quick-chips">
+    {#each seoChips as chip}
+      <Button
+        variant="ghost"
+        size="sm"
+        class={cn(
+          'gap-1.5 rounded-full px-3',
+          chip.state
+            ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/80'
+            : 'border-transparent bg-muted/70 text-muted-foreground hover:bg-muted hover:text-muted-foreground'
+        )}
+        onclick={chip.toggle}
+      >
+        {chip.label}
+      </Button>
+    {/each}
+  </div>
   <Popover.Root>
     <Popover.Trigger>
       {#snippet child({ props })}
@@ -177,7 +187,7 @@
       {/snippet}
     </Popover.Trigger>
 
-    <Popover.Content class="w-80 max-w-[calc(100vw-2rem)]" align="start">
+    <Popover.Content class="w-96 max-w-[calc(100vw-2rem)]" align="start">
       <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-2">
           <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.status"]()}</div>
@@ -235,6 +245,30 @@
         </div>
 
         <div class="flex flex-col gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.issue_type"]()}</div>
+          <div class="flex flex-wrap gap-1.5">
+            {#each availableIssueTypes as type}
+              <Button
+                variant="ghost"
+                size="sm"
+                class={cn(
+                  'rounded-full px-3',
+                  issueType === type
+                    ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/80'
+                    : 'border-transparent bg-muted/70 text-muted-foreground hover:bg-muted hover:text-muted-foreground'
+                )}
+                onclick={() => onFilter({ ...filters, issueType: issueType === type ? '' : type })}
+              >
+                {translateIssueName(type)}
+              </Button>
+            {/each}
+            {#if availableIssueTypes.length === 0}
+              <span class="text-xs text-muted-foreground">{m["filter.no_options"]()}</span>
+            {/if}
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
           <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.depth"]()}</div>
           <div class="depth-slider">
             <input
@@ -246,27 +280,6 @@
               style="background: linear-gradient(to right, var(--accent) {sliderPct}%, var(--border) {sliderPct}%)"
             />
             <span class="depth-value">{maxDepth !== undefined ? maxDepth : '—'}</span>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.seo"]()}</div>
-          <div class="flex flex-wrap gap-1.5">
-            {#each seoChips as chip}
-              <Button
-                variant="ghost"
-                size="sm"
-                class={cn(
-                  'gap-1.5 rounded-full px-3',
-                  chip.state
-                    ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/80'
-                    : 'border-transparent bg-muted/70 text-muted-foreground hover:bg-muted hover:text-muted-foreground'
-                )}
-                onclick={chip.toggle}
-              >
-                {chip.label}
-              </Button>
-            {/each}
           </div>
         </div>
 
@@ -282,7 +295,18 @@
 
 <style>
   .filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     margin-bottom: 8px;
+  }
+
+  .quick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
   }
 
   :global(.chip-sev-active.sev-error) {

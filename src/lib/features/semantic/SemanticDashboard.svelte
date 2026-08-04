@@ -15,7 +15,7 @@
   let {
     projectId,
     onFilterIssueType,
-    activeFilter = $bindable(''),
+    activeFilter = '',
   }: {
     projectId: string;
     onFilterIssueType: (issueType: string | null) => void;
@@ -75,17 +75,12 @@
   }
 
   function toggleFilter(issueType: string) {
-    if (activeFilter === issueType) {
-      activeFilter = '';
-      onFilterIssueType(null);
-    } else {
-      activeFilter = issueType;
-      onFilterIssueType(issueType);
-    }
+    // Clicking an issue card navigates to the results list filtered by this
+    // issue type (handled in the app).
+    onFilterIssueType(issueType === activeFilter ? null : issueType);
   }
 
   function clearFilter() {
-    activeFilter = '';
     onFilterIssueType(null);
   }
 
@@ -224,6 +219,7 @@
                 {/if}
                 <span class="count-total">{item.total}</span>
               </span>
+              <span class="card-hint">{m["dashboard.view_in_results"]()}</span>
             </span>
             <ChevronRight class="card-arrow size-4" />
           </Button>
@@ -388,6 +384,12 @@
     font-size: 0.75rem;
     color: var(--text-muted);
     margin-left: 4px;
+  }
+
+  .card-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 4px;
   }
 
   :global(.card-arrow) {

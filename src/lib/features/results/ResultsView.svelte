@@ -10,6 +10,7 @@
   import FilterBar, { type FilterState } from '$lib/features/results/FilterBar.svelte';
   import ResultsTable from '$lib/features/results/ResultsTable.svelte';
   import Pagination from '$lib/features/results/Pagination.svelte';
+  import { translateIssueName } from '$lib/i18n-issues';
   import { TAB_DEFS, loadTabComponent, type LazyTabId } from '$lib/tabs';
   import type { ResultsState, TabValue } from '$lib/app.svelte';
 
@@ -20,7 +21,7 @@
     currentPage,
     pageSize,
     pageSizeSelect = $bindable(),
-    semanticFilter = $bindable(),
+    filters,
     debouncedSearch,
     expandedIssueUrl = $bindable(),
     selectedProjectId,
@@ -38,7 +39,7 @@
     currentPage: number;
     pageSize: number;
     pageSizeSelect: string;
-    semanticFilter: string;
+    filters: FilterState;
     debouncedSearch: string;
     expandedIssueUrl: string;
     selectedProjectId: string;
@@ -115,9 +116,9 @@
           </Select.Content>
         </Select.Root>
       </div>
-      {#if semanticFilter}
+      {#if filters.issueType}
         <Badge variant="secondary" class="gap-1.5 px-3 py-1">
-          {m['results.filtered_by']({ type: semanticFilter.replace(/_/g, ' ') })}
+          {m['results.filtered_by']({ type: translateIssueName(filters.issueType) })}
           <Button
             variant="ghost"
             size="xs"
@@ -135,6 +136,7 @@
     <FilterBar
       items={results.items}
       totalResults={results.total}
+      filters={filters}
       onFilter={onFilterChange}
     />
 
@@ -176,7 +178,7 @@
       <IssuesDashboard
         projectId={selectedProjectId}
         onFilterIssueType={onFilterIssueType}
-        bind:activeFilter={semanticFilter}
+        activeFilter={filters.issueType}
       />
     {/if}
   {:else if activeTab === 'site_tree'}

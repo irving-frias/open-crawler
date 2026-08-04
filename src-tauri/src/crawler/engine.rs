@@ -134,28 +134,14 @@ impl CrawlEngine {
         }
         info!("Allowed origins: {:?}", self.allowed_origins);
 
-        // Create fetcher with implicit user agent. When JS rendering is
-        // enabled, fetch via HTTP for status/headers and re-render through
-        // the headless browser pool.
-        let fetcher: Arc<Box<dyn HtmlFetcher>> = if config.render_js {
-            let js_fetcher = crate::crawler::browser::JsFetcher::new(
-                config.user_agent(),
-                config.request_timeout_ms,
-                config.custom_headers.clone(),
-                config.proxy.as_ref(),
-            )
-            .await?;
-            Arc::new(Box::new(js_fetcher))
-        } else {
-            let http_fetcher = HttpFetcher::new(
-                config.user_agent(),
-                config.request_timeout_ms,
-                config.custom_headers.clone(),
-                config.proxy.as_ref(),
-            )?;
-            Arc::new(Box::new(http_fetcher))
-        };
-        self.fetcher = Some(fetcher);
+        // Create fetcher with implicit user agent.
+        let http_fetcher = HttpFetcher::new(
+            config.user_agent(),
+            config.request_timeout_ms,
+            config.custom_headers.clone(),
+            config.proxy.as_ref(),
+        )?;
+        self.fetcher = Some(Arc::new(Box::new(http_fetcher)));
 
         // Initialize frontier
         self.frontier = Some(Frontier::new(config.max_depth, 100_000));

@@ -152,7 +152,6 @@
         bind:proxyUser={app.proxyUser}
         bind:proxyPass={app.proxyPass}
         bind:respectRobots={app.respectRobots}
-        bind:renderJs={app.renderJs}
         bind:checkSitemap={app.checkSitemap}
         bind:checkSemantics={app.checkSemantics}
         onStart={app.handleStartCrawl}
@@ -180,7 +179,7 @@
           currentPage={app.currentPage}
           pageSize={app.pageSize}
           bind:pageSizeSelect={app.pageSizeSelect}
-          bind:semanticFilter={app.semanticFilter}
+          filters={app.activeFilters}
           debouncedSearch={app.debouncedSearch}
           bind:expandedIssueUrl={app.expandedIssueUrl}
           selectedProjectId={app.selectedProjectId}

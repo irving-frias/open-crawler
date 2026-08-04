@@ -20,7 +20,6 @@
     proxyUser = $bindable(),
     proxyPass = $bindable(),
     respectRobots = $bindable(),
-    renderJs = $bindable(),
     checkSitemap = $bindable(),
     checkSemantics = $bindable(),
     onStart,
@@ -39,7 +38,6 @@
     proxyUser: string;
     proxyPass: string;
     respectRobots: boolean;
-    renderJs: boolean;
     checkSitemap: boolean;
     checkSemantics: boolean;
     onStart: () => void;
@@ -150,10 +148,6 @@
     <label class="checkbox-label">
       <Checkbox bind:checked={respectRobots} disabled={status === 'running'} />
       <span>{m['config.respect_robots']()}</span>
-    </label>
-    <label class="checkbox-label">
-      <Checkbox bind:checked={renderJs} disabled={status === 'running'} />
-      <span>{m['config.render_js']()}</span>
     </label>
     <label class="checkbox-label">
       <Checkbox bind:checked={checkSitemap} disabled={status === 'running'} />

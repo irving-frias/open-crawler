@@ -192,7 +192,6 @@ export interface CrawlConfig {
   seed_urls: string[];
   max_depth?: number;
   respect_robots?: boolean;
-  render_js?: boolean;
   concurrency?: number;
   delay_ms?: number;
   max_body_size?: number;

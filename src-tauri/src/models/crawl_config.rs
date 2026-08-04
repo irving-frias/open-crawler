@@ -22,8 +22,6 @@ pub struct CrawlConfig {
     pub max_depth: u32,
     #[serde(default = "default_true")]
     pub respect_robots: bool,
-    #[serde(default)]
-    pub render_js: bool,
     #[serde(default = "default_concurrency")]
     pub concurrency: u32,
     #[serde(default = "default_delay_ms")]
@@ -86,7 +84,6 @@ impl Default for CrawlConfig {
             seed_urls: Vec::new(),
             max_depth: default_max_depth(),
             respect_robots: default_true(),
-            render_js: false,
             concurrency: default_concurrency(),
             delay_ms: default_delay_ms(),
             max_body_size: default_max_body_size(),

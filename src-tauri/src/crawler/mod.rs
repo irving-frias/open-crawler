@@ -1,5 +1,4 @@
 pub mod assets;
-pub mod browser;
 pub mod db_writer;
 pub mod dedup;
 pub mod engine;

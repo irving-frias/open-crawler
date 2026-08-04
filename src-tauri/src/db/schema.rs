@@ -47,7 +47,6 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
                 max_depth INTEGER NOT NULL DEFAULT 10,
                 user_agent TEXT NOT NULL DEFAULT 'OpenCrawler/1.0',
                 respect_robots INTEGER NOT NULL DEFAULT 1,
-                render_js INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
 

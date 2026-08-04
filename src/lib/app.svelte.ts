@@ -44,7 +44,6 @@ export interface CrawlFormConfig {
   maxDepth: number;
   maxCrawlTime: number;
   respectRobots: boolean;
-  renderJs: boolean;
   checkSitemap: boolean;
   checkSemantics: boolean;
   proxyUrl: string;
@@ -60,7 +59,6 @@ export interface AppFields {
   seedUrl: string;
   maxDepth: number;
   respectRobots: boolean;
-  renderJs: boolean;
   checkSitemap: boolean;
   checkSemantics: boolean;
   maxCrawlTime: number;
@@ -85,7 +83,6 @@ export interface AppFields {
   exportProgress: ExportProgress;
   expandedIssueUrl: string;
   activeTab: TabValue;
-  semanticFilter: string;
   detailPageId: string;
   searchQuery: string;
   debouncedSearch: string;
@@ -149,7 +146,6 @@ export function createAppShell(): AppShell {
     seedUrl: '',
     maxDepth: 10,
     respectRobots: true,
-    renderJs: false,
     checkSitemap: true,
     checkSemantics: true,
     maxCrawlTime: 3600,
@@ -171,6 +167,7 @@ export function createAppShell(): AppShell {
       duplicateTitle: false,
       noindexOnly: false,
       is404: false,
+      issueType: '',
     } as FilterState,
     currentPage: 1,
     pageSize: 50,
@@ -182,7 +179,6 @@ export function createAppShell(): AppShell {
     exportProgress: { running: false, percent: 0, stage: '' } as ExportProgress,
     expandedIssueUrl: '',
     activeTab: 'results' as TabValue,
-    semanticFilter: '',
     detailPageId: '',
     searchQuery: '',
     debouncedSearch: '',
@@ -229,7 +225,6 @@ export function createAppShell(): AppShell {
   if (typeof persisted.maxDepth === 'number') state.maxDepth = persisted.maxDepth;
   if (typeof persisted.maxCrawlTime === 'number') state.maxCrawlTime = persisted.maxCrawlTime;
   if (typeof persisted.respectRobots === 'boolean') state.respectRobots = persisted.respectRobots;
-  if (typeof persisted.renderJs === 'boolean') state.renderJs = persisted.renderJs;
   if (typeof persisted.checkSitemap === 'boolean') state.checkSitemap = persisted.checkSitemap;
   if (typeof persisted.checkSemantics === 'boolean') state.checkSemantics = persisted.checkSemantics;
   if (persisted.activeTab) state.activeTab = persisted.activeTab as TabValue;
@@ -244,7 +239,6 @@ export function createAppShell(): AppShell {
       maxDepth: state.maxDepth,
       maxCrawlTime: state.maxCrawlTime,
       respectRobots: state.respectRobots,
-      renderJs: state.renderJs,
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
       activeTab: state.activeTab,
@@ -421,7 +415,6 @@ export function createAppShell(): AppShell {
       maxDepth: state.maxDepth,
       maxCrawlTime: state.maxCrawlTime,
       respectRobots: state.respectRobots,
-      renderJs: state.renderJs,
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
       proxyUrl: state.proxyUrl,
@@ -434,7 +427,6 @@ export function createAppShell(): AppShell {
     state.maxDepth = cfg.maxDepth ?? 10;
     state.maxCrawlTime = cfg.maxCrawlTime ?? 3600;
     state.respectRobots = cfg.respectRobots ?? true;
-    state.renderJs = cfg.renderJs ?? false;
     state.checkSitemap = cfg.checkSitemap ?? true;
     state.checkSemantics = cfg.checkSemantics ?? true;
     state.proxyUrl = cfg.proxyUrl ?? '';
@@ -455,7 +447,6 @@ export function createAppShell(): AppShell {
           maxDepth: cfg.max_depth ?? 10,
           maxCrawlTime: cfg.max_crawl_time_secs ?? 3600,
           respectRobots: cfg.respect_robots ?? true,
-          renderJs: cfg.render_js ?? false,
           checkSitemap: cfg.check_sitemap ?? true,
           checkSemantics: cfg.check_semantics ?? true,
           proxyUrl: cfg.proxy?.url ?? '',
@@ -494,7 +485,7 @@ export function createAppShell(): AppShell {
     state.showResumeDialog = false;
     state.streamedCount = 0;
     state.expandedIssueUrl = '';
-    state.semanticFilter = '';
+    state.activeFilters.issueType = '';
     state.activeTab = 'results';
     state.detailPageId = '';
     restoreProjectConfig(id);
@@ -659,7 +650,6 @@ export function createAppShell(): AppShell {
         seed_urls: [state.seedUrl],
         max_depth: state.maxDepth,
         respect_robots: state.respectRobots,
-        render_js: state.renderJs,
         check_sitemap: state.checkSitemap,
         check_semantics: state.checkSemantics,
         max_crawl_time_secs: state.maxCrawlTime,
@@ -735,7 +725,7 @@ export function createAppShell(): AppShell {
         projectId: state.selectedProjectId,
         page,
         pageSize: state.pageSize,
-        semanticIssueType: state.semanticFilter || null,
+        semanticIssueType: state.activeFilters.issueType || null,
         search: state.debouncedSearch || null,
         statusFilter: state.activeFilters.statusCodes.length > 0 ? state.activeFilters.statusCodes : null,
         severityFilter: state.activeFilters.severities.length > 0 ? state.activeFilters.severities : null,
@@ -778,7 +768,26 @@ export function createAppShell(): AppShell {
   }
 
   function handleFilterIssueType(issueType: string | null) {
-    state.semanticFilter = issueType || '';
+    const type = issueType || '';
+    if (type) {
+      // Clicking an issue from the dashboard resets the remaining filters so
+      // the results list matches the dashboard counts, and navigates there.
+      state.activeFilters = {
+        statusCodes: [],
+        severities: [],
+        depth: undefined,
+        missingTitle: false,
+        duplicateTitle: false,
+        noindexOnly: false,
+        is404: false,
+        issueType: type,
+      };
+      state.activeTab = 'results';
+      state.searchQuery = '';
+      state.debouncedSearch = '';
+    } else {
+      state.activeFilters.issueType = '';
+    }
     state.currentPage = 1;
     loadResults(1);
   }
