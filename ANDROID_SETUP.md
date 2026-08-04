@@ -6,9 +6,19 @@ El keystore se generó en: `android/opencrawler.keystore`
 
 **IMPORTANTE**: Este keystore es para desarrollo/testing. Para producción, generá uno nuevo con tus datos reales.
 
+Para (re)generar el keystore y obtener los valores de los secrets:
+
 ```bash
-keytool -genkey -v -keystore android/opencrawler.keystore -alias opencrawler -keyalg RSA -keysize 2048 -validity 10000
+tools/create-android-keystore.sh
 ```
+
+O manualmente (requiere Java, o Docker si no tenés `keytool`):
+
+```bash
+keytool -genkeypair -v -keystore android/opencrawler.keystore -alias opencrawler -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Open Crawler, OU=Development, O=Open Crawler, L=City, ST=State, C=US"
+```
+
+El keystore se genera en formato PKCS12 (soportado por AGP); el nombre del archivo es solo una convención.
 
 ## Secrets de GitHub
 
