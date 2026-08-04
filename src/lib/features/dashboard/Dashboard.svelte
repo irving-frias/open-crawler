@@ -17,6 +17,7 @@
   let stats = $state<DashboardStatsT | null>(null);
   let loading = $state(false);
   let error = $state('');
+  let statsSeq = 0;
 
   const STATUS_COLORS: Record<string, string> = {
     '2xx': 'var(--success)',
@@ -31,14 +32,17 @@
   });
 
   async function loadStats() {
+    const seq = ++statsSeq;
     loading = true;
     error = '';
     try {
-      stats = await getDashboardStats(projectId);
+      const data = await getDashboardStats(projectId);
+      if (seq !== statsSeq) return;
+      stats = data;
     } catch (e) {
-      error = String(e);
+      if (seq === statsSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === statsSeq) loading = false;
     }
   }
 

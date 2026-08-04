@@ -18,17 +18,21 @@
   let keywords = $state<KeywordAggregate[]>([]);
   let loading = $state(false);
   let error = $state('');
+  let keywordsSeq = 0;
 
   async function loadKeywords() {
     if (!projectId) return;
+    const seq = ++keywordsSeq;
     loading = true;
     error = '';
     try {
-      keywords = await getProjectKeywords(projectId, 200);
+      const data = await getProjectKeywords(projectId, 200);
+      if (seq !== keywordsSeq) return;
+      keywords = data;
     } catch (e) {
-      error = String(e);
+      if (seq === keywordsSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === keywordsSeq) loading = false;
     }
   }
 

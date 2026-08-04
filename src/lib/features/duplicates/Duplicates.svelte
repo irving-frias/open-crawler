@@ -18,17 +18,21 @@
   let groups = $state<DuplicateGroup[]>([]);
   let loading = $state(false);
   let error = $state('');
+  let groupsSeq = 0;
 
   async function loadGroups() {
     if (!projectId) return;
+    const seq = ++groupsSeq;
     loading = true;
     error = '';
     try {
-      groups = await getDuplicateGroups(projectId);
+      const data = await getDuplicateGroups(projectId);
+      if (seq !== groupsSeq) return;
+      groups = data;
     } catch (e) {
-      error = String(e);
+      if (seq === groupsSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === groupsSeq) loading = false;
     }
   }
 

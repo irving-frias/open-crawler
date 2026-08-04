@@ -38,6 +38,7 @@
   let pagespeed = $state<PageSpeedData | null>(null);
   let pagespeedLoading = $state(false);
   let pagespeedError = $state('');
+  let detailSeq = 0;
 
   $effect(() => {
     if (pageId) loadDetail();
@@ -45,6 +46,7 @@
   });
 
   async function loadDetail() {
+    const seq = ++detailSeq;
     loading = true;
     error = '';
     activeTab = 'overview';
@@ -52,13 +54,14 @@
     pagespeedError = '';
     try {
       const result = await getPageDetail(pageId);
+      if (seq !== detailSeq) return;
       detail = result.page;
       links = result.links;
       pagespeed = parsePagespeed(detail?.pagespeed_json);
     } catch (e) {
-      error = String(e);
+      if (seq === detailSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === detailSeq) loading = false;
     }
   }
 

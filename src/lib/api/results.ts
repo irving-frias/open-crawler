@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeNode } from './types';
+import type {
+  CrawlResult,
+  IssueCount,
+  PageDetail,
+  PaginatedResults,
+  SiteTreeFullNode,
+  SiteTreeNode,
+} from './types';
 
 export interface GetResultsArgs {
   projectId: string;
@@ -49,4 +56,8 @@ export function getSemanticIssueCounts(projectId: string): Promise<IssueCount[]>
 
 export function getSiteTree(projectId: string, url?: string | null, limit?: number | null): Promise<SiteTreeNode[]> {
   return invoke<SiteTreeNode[]>('get_site_tree', { projectId, url: url ?? null, limit: limit ?? null });
+}
+
+export function getSiteTreeFull(projectId: string): Promise<SiteTreeFullNode[]> {
+  return invoke<SiteTreeFullNode[]>('get_site_tree_full', { projectId });
 }

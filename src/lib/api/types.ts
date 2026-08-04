@@ -90,6 +90,16 @@ export interface SiteTreeNode {
   issue_count: number;
 }
 
+export interface SiteTreeFullNode {
+  url: string;
+  title: string | null;
+  status_code: number | null;
+  depth: number;
+  issue_count: number;
+  has_children: boolean;
+  children: SiteTreeFullNode[];
+}
+
 export interface StatusBucket {
   status: number;
   count: number;

@@ -9,6 +9,7 @@
 // Svelte 5 discourages module-level reactive state, but this is a pure
 // memoization function with its own cache, not shared reactive state.
 const MAX_CACHE_SIZE = 5000;
+const EVICT_BATCH = 250;
 const cache = new Map<string, any[]>();
 
 export function parseIssues(issuesJson: string | null | undefined): any[] {
@@ -22,7 +23,12 @@ export function parseIssues(issuesJson: string | null | undefined): any[] {
   } catch {
     parsed = [];
   }
-  if (cache.size >= MAX_CACHE_SIZE) cache.clear();
+  if (cache.size >= MAX_CACHE_SIZE) {
+    for (const oldest of cache.keys()) {
+      cache.delete(oldest);
+      if (cache.size < MAX_CACHE_SIZE - EVICT_BATCH) break;
+    }
+  }
   cache.set(issuesJson, parsed);
   return parsed;
 }

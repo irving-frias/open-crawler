@@ -157,6 +157,7 @@ pub fn run() {
             // results
             crate::commands::get_results,
             crate::commands::get_site_tree,
+            crate::commands::get_site_tree_full,
             crate::commands::get_page_detail,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,

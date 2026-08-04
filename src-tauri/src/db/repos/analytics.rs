@@ -2,8 +2,8 @@ use rusqlite::params;
 
 use crate::error::AppError;
 use crate::models::{
-    DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, SiteTreeNode,
-    StatusBucket,
+    DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate,
+    SiteTreeFullNode, SiteTreeNode, StatusBucket,
 };
 
 use super::CrawlRepo;
@@ -103,6 +103,137 @@ impl<'a> CrawlRepo<'a> {
             has_children: row.get(4)?,
             issue_count: row.get::<_, i64>(5)? as u32,
         })
+    }
+
+    /// Returns the entire site tree for a project in a single round-trip:
+    /// one query for the pages, one for the internal links, and the forest is
+    /// assembled in memory (no per-node query like `get_site_tree`).
+    pub fn get_site_tree_full(&self, project_id: &str) -> Result<Vec<SiteTreeFullNode>, AppError> {
+        // Aggregate per URL (re-crawls can produce repeated rows for the same
+        // URL, which the legacy tree dedupes by URL).
+        let mut page_stmt = self.conn.prepare(
+            "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
+             FROM crawled_pages cp
+             LEFT JOIN (
+                 SELECT page_id, COUNT(*) AS cnt
+                 FROM page_issues
+                 WHERE project_id = ?1
+                 GROUP BY page_id
+             ) pi ON pi.page_id = cp.id
+             WHERE cp.project_id = ?1
+             GROUP BY cp.url",
+        )?;
+        type PageRow = (String, Option<String>, Option<i32>, i32, i64);
+        let pages: Vec<PageRow> = page_stmt
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i32>>(2)?,
+                    row.get::<_, i32>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut by_url: std::collections::HashMap<String, SiteTreeFullNode> =
+            std::collections::HashMap::new();
+        for (url, title, status_code, depth, issue_count) in pages {
+            let node_url = url.clone();
+            by_url.insert(
+                url,
+                SiteTreeFullNode {
+                    url: node_url,
+                    title,
+                    status_code: status_code.map(|s| s as u16),
+                    depth: depth as u32,
+                    issue_count: issue_count as u32,
+                    has_children: false,
+                    children: Vec::new(),
+                },
+            );
+        }
+
+        // Internal edges only: both endpoints are crawled pages of this project.
+        let mut link_stmt = self.conn.prepare(
+            "SELECT DISTINCT from_url, to_url
+             FROM page_links
+             WHERE project_id = ?1
+               AND from_url <> to_url
+               AND from_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
+               AND to_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)",
+        )?;
+        let links: Vec<(String, String)> = link_stmt
+            .query_map(params![project_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut children_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for (from, to) in links {
+            children_map.entry(from).or_default().push(to);
+        }
+
+        // DFS from the depth-0 roots. A page is placed under its first-seen
+        // parent so the result is a proper forest (no duplicated subtrees).
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut roots: Vec<SiteTreeFullNode> = Vec::new();
+
+        fn build(
+            url: &str,
+            by_url: &std::collections::HashMap<String, SiteTreeFullNode>,
+            children_map: &std::collections::HashMap<String, Vec<String>>,
+            visited: &mut std::collections::HashSet<String>,
+        ) -> Option<SiteTreeFullNode> {
+            let mut node = by_url.get(url)?.clone();
+            let mut kids: Vec<SiteTreeFullNode> = Vec::new();
+            if let Some(children) = children_map.get(url) {
+                for child in children {
+                    if !visited.contains(child) {
+                        visited.insert(child.clone());
+                        if let Some(sub) = build(child, by_url, children_map, visited) {
+                            kids.push(sub);
+                        }
+                    }
+                }
+            }
+            kids.sort_by(|a, b| a.depth.cmp(&b.depth).then(a.url.cmp(&b.url)));
+            node.has_children = !kids.is_empty();
+            node.children = kids;
+            Some(node)
+        }
+
+        let mut urls: Vec<String> = by_url.keys().cloned().collect();
+        urls.sort_by(|a, b| {
+            let (da, db) = (by_url[a].depth, by_url[b].depth);
+            da.cmp(&db).then(a.cmp(b))
+        });
+        for url in urls {
+            if by_url[&url].depth == 0 && !visited.contains(&url) {
+                visited.insert(url.clone());
+                if let Some(root) = build(&url, &by_url, &children_map, &mut visited) {
+                    roots.push(root);
+                }
+            }
+        }
+
+        // Safety net: any page never reached from a depth-0 root (e.g. orphaned
+        // after a partial crawl) is appended as an additional root.
+        let mut orphan_urls: Vec<String> = by_url
+            .keys()
+            .filter(|u| !visited.contains(*u))
+            .cloned()
+            .collect();
+        orphan_urls.sort();
+        for url in orphan_urls {
+            visited.insert(url.clone());
+            if let Some(root) = build(&url, &by_url, &children_map, &mut visited) {
+                roots.push(root);
+            }
+        }
+
+        Ok(roots)
     }
 
     pub fn get_semantic_issue_counts(&self, project_id: &str) -> Result<Vec<IssueCount>, AppError> {

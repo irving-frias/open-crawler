@@ -7,7 +7,7 @@ use tracing::info;
 use crate::crawler::fetcher::HtmlFetcher;
 use crate::error::AppError;
 use crate::features::with_repo;
-use crate::models::{CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeNode};
+use crate::models::{CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode, SiteTreeNode};
 use crate::AppState;
 
 #[allow(clippy::too_many_arguments)]
@@ -66,6 +66,14 @@ pub async fn get_site_tree(
         repo.get_site_tree(&project_id, url.as_deref(), limit.unwrap_or(100))
     })
     .await
+}
+
+#[tauri::command]
+pub async fn get_site_tree_full(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+) -> Result<Vec<SiteTreeFullNode>, AppError> {
+    with_repo(&state, move |repo| repo.get_site_tree_full(&project_id)).await
 }
 
 #[tauri::command]

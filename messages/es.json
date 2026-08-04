@@ -70,6 +70,7 @@
   "comparator.field.load_time_ms": "Tiempo de carga",
   "comparator.field.is_indexable": "Indexable",
   "comparator.field.readability_score": "Legibilidad",
+  "comparator.show_more": "Mostrar más",
   "dashboard.no_data": "Aún no hay datos. Ejecuta un rastreo para ver el resumen.",
   "dashboard.total_pages": "Páginas",
   "dashboard.indexed_pages": "Indexables",

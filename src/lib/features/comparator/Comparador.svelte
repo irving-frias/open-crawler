@@ -24,6 +24,11 @@
   let snapshotB = $state('');
 
   let comparison = $state<CompareResult | null>(null);
+  let snapshotsSeq = 0;
+  const LIST_PAGE_SIZE = 100;
+  let newUrlsLimit = $state(LIST_PAGE_SIZE);
+  let removedUrlsLimit = $state(LIST_PAGE_SIZE);
+  let changedUrlsLimit = $state(LIST_PAGE_SIZE);
 
   $effect(() => {
     if (projectId) {
@@ -35,10 +40,12 @@
   });
 
   async function loadSnapshots() {
+    const seq = ++snapshotsSeq;
     loading = true;
     error = '';
     try {
       const data = await listCrawlSnapshots(projectId);
+      if (seq !== snapshotsSeq) return;
       snapshots = data;
       if (data.length >= 2) {
         snapshotA = data[data.length - 1].id;
@@ -52,9 +59,9 @@
       }
       comparison = null;
     } catch (e) {
-      error = String(e);
+      if (seq === snapshotsSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === snapshotsSeq) loading = false;
     }
   }
 
@@ -109,6 +116,18 @@
   function diffValue(v: string | null | undefined): string {
     return v == null ? '—' : v;
   }
+
+  $effect(() => {
+    if (comparison) {
+      newUrlsLimit = LIST_PAGE_SIZE;
+      removedUrlsLimit = LIST_PAGE_SIZE;
+      changedUrlsLimit = LIST_PAGE_SIZE;
+    }
+  });
+
+  const visibleNewUrls = $derived(comparison?.new_urls.slice(0, newUrlsLimit) ?? []);
+  const visibleRemovedUrls = $derived(comparison?.removed_urls.slice(0, removedUrlsLimit) ?? []);
+  const visibleChangedUrls = $derived(comparison?.changed_urls.slice(0, changedUrlsLimit) ?? []);
 </script>
 
 <div class="comparator">
@@ -232,10 +251,15 @@
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each comparison.new_urls as url}
+                {#each visibleNewUrls as url}
                   <li class="comp-url-new">{url}</li>
                 {/each}
               </ul>
+              {#if comparison.new_urls.length > newUrlsLimit}
+                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (newUrlsLimit += LIST_PAGE_SIZE)}>
+                  {m['comparator.show_more']()}
+                </Button>
+              {/if}
             </CardContent>
           </Card>
         {/if}
@@ -247,10 +271,15 @@
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each comparison.removed_urls as url}
+                {#each visibleRemovedUrls as url}
                   <li class="comp-url-removed">{url}</li>
                 {/each}
               </ul>
+              {#if comparison.removed_urls.length > removedUrlsLimit}
+                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (removedUrlsLimit += LIST_PAGE_SIZE)}>
+                  {m['comparator.show_more']()}
+                </Button>
+              {/if}
             </CardContent>
           </Card>
         {/if}
@@ -262,7 +291,7 @@
             </CardHeader>
             <CardContent>
               <ul class="comp-change-list">
-                {#each comparison.changed_urls as change (change.url)}
+                {#each visibleChangedUrls as change (change.url)}
                   <li>
                     <div class="comp-change-url">{change.url}</div>
                     <ul class="comp-diff-list">
@@ -278,6 +307,11 @@
                   </li>
                 {/each}
               </ul>
+              {#if comparison.changed_urls.length > changedUrlsLimit}
+                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (changedUrlsLimit += LIST_PAGE_SIZE)}>
+                  {m['comparator.show_more']()}
+                </Button>
+              {/if}
             </CardContent>
           </Card>
         {/if}

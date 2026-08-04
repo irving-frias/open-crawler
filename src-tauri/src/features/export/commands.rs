@@ -270,6 +270,17 @@ fn export_csv_single(
             let issues_str = item
                 .semantic_issues_json
                 .clone()
+                .map(|js| {
+                    serde_json::from_str::<Vec<serde_json::Value>>(&js)
+                        .map(|issues| {
+                            let errors: Vec<&serde_json::Value> = issues
+                                .iter()
+                                .filter(|iss| iss.get("severity").and_then(|s| s.as_str()) == Some("error"))
+                                .collect();
+                            serde_json::to_string(&errors).unwrap_or_else(|_| "[]".to_string())
+                        })
+                        .unwrap_or_else(|_| "[]".to_string())
+                })
                 .unwrap_or_else(|| "[]".to_string());
             wtr.write_record([
                 &item.url,
@@ -492,6 +503,9 @@ fn export_xlsx(
                 if let Some(ref js) = p.semantic_issues_json {
                     if let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) {
                         for iss in &issues {
+                            if iss.get("severity").and_then(|s| s.as_str()) != Some("error") {
+                                continue;
+                            }
                             if sheet_rows > MAX_ROWS_PER_SHEET {
                                 finalize_sheet(ws, MAX_ROWS_PER_SHEET, 7)?;
                                 ws.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;

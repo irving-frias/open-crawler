@@ -90,6 +90,17 @@ pub struct SiteTreeNode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteTreeFullNode {
+    pub url: String,
+    pub title: Option<String>,
+    pub status_code: Option<u16>,
+    pub depth: u32,
+    pub issue_count: u32,
+    pub has_children: bool,
+    pub children: Vec<SiteTreeFullNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusBucket {
     pub status: u16,
     pub count: u32,

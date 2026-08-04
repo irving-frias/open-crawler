@@ -46,10 +46,13 @@
     onSearch?.(val);
   }
 
-  function highlight(text: string | null, query: string): string {
-    if (!query || !text) return text ?? '';
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  const highlightRegex = $derived(
+    highlightSearch ? new RegExp(`(${highlightSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi') : null
+  );
+
+  function applyHighlight(text: string | null): string {
+    if (!highlightRegex || !text) return text ?? '';
+    return text.replace(highlightRegex, '<mark>$1</mark>');
   }
 
   function toggleIssues(url: string) {
@@ -96,7 +99,7 @@
         issueCounts,
         readabilityVariant: hasScore ? readabilityVariant(page.readability_score) : undefined,
         readabilityLabel: hasScore ? readabilityLabel(page.readability_score) : null,
-        titleHtml: highlight(page.title || m['detail.no_title'](), highlightSearch),
+        titleHtml: applyHighlight(page.title || m['detail.no_title']()),
       };
     })
   );

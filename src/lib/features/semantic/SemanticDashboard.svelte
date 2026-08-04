@@ -25,6 +25,7 @@
   let issueCounts = $state<IssueCount[]>([]);
   let loading = $state(false);
   let error = $state('');
+  let countsSeq = 0;
 
   type Icon = typeof ImageOff;
 
@@ -62,15 +63,17 @@
   });
 
   async function loadCounts() {
+    const seq = ++countsSeq;
     loading = true;
     error = '';
     try {
       const data = await getSemanticIssueCounts(projectId);
+      if (seq !== countsSeq) return;
       issueCounts = data.filter((i) => i.severity === 'error');
     } catch (e) {
-      error = String(e);
+      if (seq === countsSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === countsSeq) loading = false;
     }
   }
 

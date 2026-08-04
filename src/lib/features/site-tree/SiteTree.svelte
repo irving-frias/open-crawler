@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getSiteTree } from '$lib/api/results';
-  import type { SiteTreeNode as TreeNode } from '$lib/api/types';
+  import { getSiteTreeFull } from '$lib/api/results';
+  import type { SiteTreeFullNode as TreeNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { ChevronRight, ChevronDown, FileText, Loader2, TriangleAlert, RefreshCw } from 'lucide-svelte';
+  import { ChevronRight, ChevronDown, FileText, TriangleAlert, RefreshCw } from 'lucide-svelte';
   import { Card, CardContent } from '$lib/components/ui/card/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -12,19 +12,9 @@
 
   let { projectId }: { projectId: string } = $props();
 
-  type TreeNode = {
-    url: string;
-    title: string | null;
-    status_code: number | null;
-    depth: number;
-    has_children: boolean;
-    issue_count: number;
-  };
-
   type NodeState = {
     node: TreeNode;
     children: NodeState[] | null;
-    loading: boolean;
     expanded: boolean;
   };
 
@@ -34,34 +24,34 @@
   let loading = $state(false);
   let error = $state('');
   let issueFilter = $state<IssueFilter>('all');
+  let treeSeq = 0;
 
-  async function loadRoots() {
+  function toState(nodes: TreeNode[]): NodeState[] {
+    return nodes.map((n) => ({
+      node: n,
+      children: n.children?.length ? toState(n.children) : null,
+      expanded: false,
+    }));
+  }
+
+  async function loadTree() {
     if (!projectId) return;
+    const seq = ++treeSeq;
     loading = true;
     error = '';
     try {
-      const data = await getSiteTree(projectId, null, 200);
-      roots = data.map(n => ({ node: n, children: null, loading: false, expanded: false }));
+      const data = await getSiteTreeFull(projectId);
+      if (seq !== treeSeq) return;
+      roots = toState(data);
     } catch (e) {
-      error = String(e);
+      if (seq === treeSeq) error = String(e);
     } finally {
-      loading = false;
+      if (seq === treeSeq) loading = false;
     }
   }
 
-  async function toggleNode(ns: NodeState) {
+  function toggleNode(ns: NodeState) {
     ns.expanded = !ns.expanded;
-    if (ns.expanded && ns.children === null && ns.node.has_children) {
-      ns.loading = true;
-      try {
-        const data = await getSiteTree(projectId, ns.node.url, 200);
-        ns.children = data.map(n => ({ node: n, children: null, loading: false, expanded: false }));
-      } catch (e) {
-        error = String(e);
-      } finally {
-        ns.loading = false;
-      }
-    }
   }
 
   const visibleNodes = $derived.by(() => {
@@ -86,6 +76,32 @@
     return out;
   });
 
+  const ROW_HEIGHT = 28;
+
+  let listEl = $state<HTMLDivElement | null>(null);
+  let scrollTop = $state(0);
+  let viewportHeight = $state(0);
+
+  const totalHeight = $derived(visibleNodes.length * ROW_HEIGHT);
+  const startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 10));
+  const endIndex = $derived(Math.min(visibleNodes.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 10));
+  const windowRows = $derived(visibleNodes.slice(startIndex, endIndex));
+
+  function onScroll(e: Event) {
+    scrollTop = (e.target as HTMLElement).scrollTop;
+  }
+
+  $effect(() => {
+    const el = listEl;
+    if (!el) return;
+    viewportHeight = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      viewportHeight = el.clientHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
   function statusVariant(code: number): 'default' | 'warning' | 'destructive' {
     if (code >= 400) return 'destructive';
     if (code >= 300) return 'warning';
@@ -93,7 +109,7 @@
   }
 
   $effect(() => {
-    loadRoots();
+    loadTree();
   });
 </script>
 
@@ -124,7 +140,7 @@
         variant="ghost"
         size="icon"
         class="size-7"
-        onclick={() => loadRoots()}
+        onclick={() => loadTree()}
         aria-label={m["config.refresh"]()}
         title={m["config.refresh"]()}
         disabled={loading}
@@ -148,55 +164,59 @@
   {:else if visibleNodes.length === 0}
     <div class="p-3 text-sm text-muted-foreground">{m["tree.empty"]()}</div>
   {:else}
-    <ul class="tree-list">
-      {#each visibleNodes as row (row.ns.node.url)}
-        <li
-          class="tree-row"
-          style="--tree-depth: {row.level}"
-          class:expanded={row.ns.expanded}
-          class:leaf={!row.ns.node.has_children}
-        >
-          {#if row.ns.node.has_children}
-            <Button
-              variant="ghost"
-              size="icon"
-              class="tree-toggle size-5"
-              onclick={() => toggleNode(row.ns)}
-              aria-expanded={row.ns.expanded}
-              aria-label={row.ns.expanded ? m["tree.collapse"]() : m["tree.expand"]()}
-            >
-              {#if row.ns.loading}
-                <Loader2 class="size-3.5 animate-spin" />
-              {:else if row.ns.expanded}
-                <ChevronDown class="size-3.5" />
-              {:else}
-                <ChevronRight class="size-3.5" />
-              {/if}
-            </Button>
-          {:else}
-            <span class="tree-dot"></span>
-          {/if}
+    <div
+      class="tree-list"
+      bind:this={listEl}
+      onscroll={onScroll}
+    >
+      <div class="tree-spacer" style="height: {totalHeight}px">
+        {#each windowRows as row, i (row.ns.node.url)}
+          <div
+            class="tree-row"
+            style="--tree-depth: {row.level}; transform: translateY({(startIndex + i) * ROW_HEIGHT}px)"
+            class:expanded={row.ns.expanded}
+            class:leaf={!row.ns.node.has_children}
+          >
+            {#if row.ns.node.has_children}
+              <Button
+                variant="ghost"
+                size="icon"
+                class="tree-toggle size-5"
+                onclick={() => toggleNode(row.ns)}
+                aria-expanded={row.ns.expanded}
+                aria-label={row.ns.expanded ? m["tree.collapse"]() : m["tree.expand"]()}
+              >
+                {#if row.ns.expanded}
+                  <ChevronDown class="size-3.5" />
+                {:else}
+                  <ChevronRight class="size-3.5" />
+                {/if}
+              </Button>
+            {:else}
+              <span class="tree-dot"></span>
+            {/if}
 
-          {#if row.ns.node.status_code != null}
-            <Badge variant={statusVariant(row.ns.node.status_code)} class="tree-status">
-              {row.ns.node.status_code}
-            </Badge>
-          {/if}
+            {#if row.ns.node.status_code != null}
+              <Badge variant={statusVariant(row.ns.node.status_code)} class="tree-status">
+                {row.ns.node.status_code}
+              </Badge>
+            {/if}
 
-          <span class="tree-title">{row.ns.node.title || row.ns.node.url}</span>
-          <span class="tree-url" title={row.ns.node.url}>{row.ns.node.url}</span>
+            <span class="tree-title">{row.ns.node.title || row.ns.node.url}</span>
+            <span class="tree-url" title={row.ns.node.url}>{row.ns.node.url}</span>
 
-          {#if row.ns.node.issue_count > 0}
-            <Badge variant="destructive" class="gap-1 shrink-0" title={`${row.ns.node.issue_count} issues`}>
-              <TriangleAlert class="size-3" />
-              {row.ns.node.issue_count}
-            </Badge>
-          {:else}
-            <span class="tree-clean"></span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+            {#if row.ns.node.issue_count > 0}
+              <Badge variant="destructive" class="gap-1 shrink-0" title={`${row.ns.node.issue_count} issues`}>
+                <TriangleAlert class="size-3" />
+                {row.ns.node.issue_count}
+              </Badge>
+            {:else}
+              <span class="tree-clean"></span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </div>
   {/if}
 </div>
 
@@ -223,20 +243,26 @@
   }
 
   .tree-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
+    position: relative;
     max-height: 520px;
     overflow-y: auto;
   }
 
+  .tree-spacer {
+    position: relative;
+    width: 100%;
+  }
+
   .tree-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
+    height: 28px;
+    padding: 0 8px;
     padding-left: calc(8px + var(--tree-depth) * 18px);
     border-radius: 6px;
     font-size: 0.85rem;
