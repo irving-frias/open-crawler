@@ -271,6 +271,12 @@
   "detail.pagespeed_tbt": "Total Blocking Time",
   "detail.pagespeed_speed_index": "Speed Index",
   "detail.social": "Social & Open Graph",
+  "element.reference.title": "Element reference",
+  "element.categories": "Categories",
+  "element.contexts": "Contexts",
+  "element.content_model": "Content model",
+  "element.parameters": "Parameters",
+  "element.browser_support": "Browser support",
   "settings.pagespeed_api_key": "PageSpeed Insights API Key",
   "settings.pagespeed_api_key_placeholder": "Optional - works without a key at low volume",
   "settings.pagespeed_api_key_hint": "Get one at Google Cloud Console to lift the quota."

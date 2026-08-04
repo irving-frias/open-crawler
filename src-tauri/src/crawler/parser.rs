@@ -658,52 +658,41 @@ impl SeoParser {
             Err(_) => return 0,
         };
 
+        // Rule (equivalent of //input[(@id and not(//label[@for=current()/@id])) or
+        // (not(@id) and not(parent::label))]): an input is valid only if it has an id
+        // with an associated <label for="id">, or it has no id but its direct parent
+        // is a <label>.
         let mut count = 0;
         for input in document.select(&selector) {
-            let id = input.value().attr("id");
-            let has_aria_label = input.value().attr("aria-label").is_some();
-            let has_aria_labelledby = input.value().attr("aria-labelledby").is_some();
-            let has_title = input.value().attr("title").is_some();
-
-            if has_aria_label || has_aria_labelledby || has_title {
-                continue;
-            }
-
-            if let Some(input_id) = id {
-                let has_label = {
+            match input.value().attr("id") {
+                Some(input_id) => {
                     let label_selector_str = format!("label[for='{}']", input_id);
-                    Selector::parse(&label_selector_str)
+                    let has_label = Selector::parse(&label_selector_str)
                         .ok()
                         .map(|s| document.select(&s).next().is_some())
-                        .unwrap_or(false)
-                };
-                if has_label {
-                    continue;
+                        .unwrap_or(false);
+                    if has_label {
+                        continue;
+                    }
                 }
-                // Also check if input is inside a label
-                if self.is_inside_label(document, input) {
-                    continue;
+                None => {
+                    if self.is_direct_child_of_label(input) {
+                        continue;
+                    }
                 }
             }
-
             count += 1;
         }
 
         count
     }
 
-    fn is_inside_label(&self, _document: &Html, input: scraper::ElementRef) -> bool {
-        // Walk up parents to check if input is nested inside a <label>
-        let mut current = input.parent();
-        while let Some(parent) = current {
-            if let Some(parent_el) = scraper::ElementRef::wrap(parent) {
-                if parent_el.value().name() == "label" {
-                    return true;
-                }
-            }
-            current = parent.parent();
-        }
-        false
+    fn is_direct_child_of_label(&self, input: scraper::ElementRef) -> bool {
+        input
+            .parent()
+            .and_then(scraper::ElementRef::wrap)
+            .map(|parent| parent.value().name() == "label")
+            .unwrap_or(false)
     }
 
     fn count_empty_links(&self, document: &Html) -> usize {
@@ -1291,6 +1280,41 @@ mod tests {
         assert!(error_types.contains(&"missing_title"));
         assert!(error_types.contains(&"img_no_alt"));
         assert!(error_types.contains(&"input_no_label"));
+    }
+
+    #[test]
+    fn test_input_label_rule_and_img_alt_rule() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>Test</title></head>
+<body>
+    <main>
+        <label for="a">A</label>
+        <input type="text" id="a">
+        <input type="text" id="b">
+        <label>B<input type="text"></label>
+        <label><span><input type="text"></span></label>
+        <label for="c"><input type="text" id="c2"></label>
+        <input type="text">
+        <img src="x.jpg">
+        <img src="y.jpg" alt="">
+        <img src="z.jpg" alt="ok">
+    </main>
+</body>
+</html>"#;
+        let document = Html::parse_document(html);
+        let issues = parser.analyze_semantics(&document);
+
+        let img_issue = issues.iter().find(|i| i.issue_type == "img_no_alt")
+            .expect("img_no_alt issue should exist");
+        let img_count: usize = img_issue.message.split_whitespace().next().unwrap().parse().unwrap();
+        assert_eq!(img_count, 2, "expected 2 imgs without alt: {}", img_issue.message);
+
+        let label_issue = issues.iter().find(|i| i.issue_type == "input_no_label")
+            .expect("input_no_label issue should exist");
+        let input_count: usize = label_issue.message.split_whitespace().next().unwrap().parse().unwrap();
+        assert_eq!(input_count, 4, "expected 4 invalid inputs: {}", label_issue.message);
     }
 
     #[test]

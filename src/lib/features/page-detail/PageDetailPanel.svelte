@@ -3,7 +3,7 @@
   import type { PageLink, PageSpeedData } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
-  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2 } from 'lucide-svelte';
+  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -18,6 +18,9 @@
   import { Progress } from '$lib/components/ui/progress/index.js';
   import { cn } from '$lib/utils.js';
   import LinksSection from './sections/LinksSection.svelte';
+  import ElementReferencePanel from './ElementReferencePanel.svelte';
+  import { getElementReference } from '$lib/data/html-elements';
+  import type { ElementReference } from '$lib/data/html-elements';
 
   let {
     pageId = $bindable(''),
@@ -122,6 +125,28 @@
   function parseIssues(json: string | null): any[] {
     if (!json) return [];
     try { return JSON.parse(json); } catch { return []; }
+  }
+
+  let expandedRef = $state<Set<number>>(new Set());
+
+  function toggleRef(index: number) {
+    const next = new Set(expandedRef);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    expandedRef = next;
+  }
+
+  function elementTag(element: string | null | undefined): string | null {
+    if (!element) return null;
+    const match = element.match(/^<([a-zA-Z][a-zA-Z0-9-]*)>/);
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  function elementReference(issue: any): { tag: string; reference: ElementReference } | null {
+    const tag = elementTag(issue?.element);
+    if (!tag) return null;
+    const reference = getElementReference(tag);
+    return reference ? { tag, reference } : null;
   }
 
   function parseHreflang(json: string | null): { lang: string; href: string }[] {
@@ -543,8 +568,9 @@
   <Card size="sm">
     <CardContent class="pt-4">
       <div class="issue-list">
-        {#each parseIssues(detail.semantic_issues_json) as issue}
+        {#each parseIssues(detail.semantic_issues_json) as issue, i (i)}
           {@const params = parseIssueParams(issue.message, issue.issue_type)}
+          {@const refInfo = elementReference(issue)}
           <div class="issue-card issue-{issue.severity}">
             <div class="issue-header">
               <Badge variant={severityBadgeVariant(issue.severity)}>{translateSeverity(issue.severity)}</Badge>
@@ -600,6 +626,22 @@
                 </Popover>
               {/if}
             </div>
+            {#if refInfo}
+              <button
+                class="ref-toggle"
+                type="button"
+                onclick={() => toggleRef(i)}
+                aria-expanded={expandedRef.has(i)}
+              >
+                <ChevronDown
+                  class={cn('size-3.5 transition-transform duration-200', expandedRef.has(i) && 'rotate-180')}
+                />
+                <span>{m['element.reference.title']()}</span>
+              </button>
+              {#if expandedRef.has(i)}
+                <ElementReferencePanel tag={refInfo.tag} reference={refInfo.reference} />
+              {/if}
+            {/if}
           </div>
         {/each}
       </div>
@@ -864,6 +906,26 @@
     gap: 8px;
     font-size: 0.72rem;
     align-items: center;
+  }
+
+  .ref-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: color var(--transition-fast), background var(--transition-fast);
+  }
+  .ref-toggle:hover {
+    color: var(--accent);
+    background: var(--bg-card);
   }
 
   .issue-detail {
