@@ -201,7 +201,7 @@
   "export.stage.pages": "Writing pages…",
   "export.stage.issues": "Writing issues…",
   "export.stage.links": "Writing links…",
-  "export.shared": "Export ready — choose where to save it in the share sheet",
+  "export.shared": "Export complete — file saved to the location you chose",
   "issue.missing_html_lang.name": "Missing HTML Lang",
   "issue.missing_html_lang.message": "Missing lang attribute on <html> element",
   "issue.missing_title.name": "Missing Title",

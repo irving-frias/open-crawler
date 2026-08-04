@@ -63,13 +63,39 @@ pub async fn export_full(
 
     let (write_path, share_after) = export_target(&app, &file_path, &format)?;
 
+    // SAF content URIs (chosen via the save dialog on Android) are not writable
+    // with std::fs, so the export is streamed to a temp file first and then
+    // copied into the user-chosen document through the fs plugin's mobile bridge.
+    let content_uri = if cfg!(mobile) && write_path.starts_with("content://") {
+        Some(write_path.clone())
+    } else {
+        None
+    };
+    let tmp_path: Option<std::path::PathBuf> = if content_uri.is_some() {
+        let ext = if format == "xlsx" { "xlsx" } else { "csv" };
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| AppError::Crawl(e.to_string()))?
+            .join("exports");
+        std::fs::create_dir_all(&dir)?;
+        Some(dir.join(format!("export-tmp-{}.{ext}", std::process::id())))
+    } else {
+        None
+    };
+
+    let dest_path = tmp_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| write_path.clone());
+
     if format == "xlsx" {
         with_repo(&state, |repo| {
             export_xlsx(
                 repo,
                 &app,
                 &project_id,
-                &write_path,
+                &dest_path,
                 total_pages,
                 total_links,
                 total_issues,
@@ -78,9 +104,14 @@ pub async fn export_full(
         .await?;
     } else {
         with_repo(&state, |repo| {
-            export_csv_single(repo, &app, &project_id, &write_path, total_pages)
+            export_csv_single(repo, &app, &project_id, &dest_path, total_pages)
         })
         .await?;
+    }
+
+    if let (Some(uri), Some(tmp)) = (content_uri, tmp_path) {
+        copy_to_content_uri(&app, &uri, &tmp)?;
+        let _ = std::fs::remove_file(&tmp);
     }
 
     if share_after {
@@ -90,12 +121,39 @@ pub async fn export_full(
     Ok(())
 }
 
+/// Copies a file into an Android `content://` URI (SAF) by resolving the URI to
+/// a writable file descriptor through the fs plugin's mobile bridge.
+#[cfg(target_os = "android")]
+fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::Path) -> Result<(), AppError> {
+    use std::io::Write;
+
+    use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
+
+    let mut src_file = std::fs::File::open(src)?;
+    let mut opts = OpenOptions::new();
+    opts.write(true).truncate(true).create(true);
+    let mut dst_file = app
+        .fs()
+        .open(FilePath::Url(url::Url::parse(uri)?), opts)
+        .map_err(|e| AppError::Crawl(format!("failed to open content URI: {e}")))?;
+    std::io::copy(&mut src_file, &mut dst_file)?;
+    dst_file.flush()?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+fn copy_to_content_uri(_app: &AppHandle, _uri: &str, _src: &std::path::Path) -> Result<(), AppError> {
+    Ok(())
+}
+
 /// Resolves the destination file for an export.
 ///
 /// On desktop the user picks a path via the save dialog and the file is
-/// written straight to it. On mobile that dialog returns a `content://` URI
-/// that `std::fs` cannot open (os error 2 / ENOENT), so the file is written to
-/// the app data dir instead and the native share sheet is opened afterwards.
+/// written straight to it. On mobile the save dialog returns a `content://`
+/// URI (SAF) that `std::fs` cannot open, so that URI is passed through and the
+/// write is handled via the fs plugin's mobile bridge. A plain filename on
+/// mobile falls back to the legacy behavior: write to the app data dir and
+/// open the native share sheet afterwards.
 fn export_target(
     app: &AppHandle,
     file_path: &str,
@@ -105,6 +163,12 @@ fn export_target(
         return Ok((file_path.to_string(), false));
     }
 
+    // A SAF content URI chosen by the user via the save dialog: write straight to it.
+    if file_path.starts_with("content://") {
+        return Ok((file_path.to_string(), false));
+    }
+
+    // Legacy fallback: keep the file in the app data dir and open the share sheet.
     let ext = if format == "xlsx" { "xlsx" } else { "csv" };
     let file_name = Path::new(file_path)
         .file_name()

@@ -806,23 +806,20 @@ export function createAppShell(): AppShell {
       const ext = format === 'xlsx' ? 'xlsx' : 'csv';
       const defaultName = `crawl-results-${state.selectedProjectId}.${ext}`;
 
-      let path: string;
-      if (mobile) {
-        path = defaultName;
-      } else {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const picked = await save({
-          defaultPath: defaultName,
-          filters: [
-            {
-              name: format === 'xlsx' ? 'Excel' : 'CSV',
-              extensions: [ext],
-            },
-          ],
-        });
-        if (!picked) return;
-        path = picked.toLowerCase().endsWith(`.${ext}`) ? picked : `${picked}.${ext}`;
-      }
+      // Show the native save dialog on every platform. On Android this opens the
+      // SAF picker (ACTION_CREATE_DOCUMENT) so the user can choose the destination.
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const picked = await save({
+        defaultPath: defaultName,
+        filters: [
+          {
+            name: format === 'xlsx' ? 'Excel' : 'CSV',
+            extensions: [ext],
+          },
+        ],
+      });
+      if (!picked) return;
+      const path = mobile || picked.toLowerCase().endsWith(`.${ext}`) ? picked : `${picked}.${ext}`;
 
       state.exportProgress = { running: true, percent: 0, stage: '' };
       const unlisten = await listen<{ stage: string; percent: number }>('export-progress', (event) => {
