@@ -236,7 +236,26 @@ fn handle_request(
 
     match path_segment.as_str() {
         "/health" => respond_text(request, 200, "ok"),
-        "/" => respond_landing(request, &path, &token),
+        "/receive" => {
+            let peer = url
+                .split('?')
+                .nth(1)
+                .and_then(|q| {
+                    q.split('&')
+                        .find(|kv| kv.starts_with("peer="))
+                        .map(|kv| &kv[5..])
+                })
+                .map(percent_decode)
+                .unwrap_or_default();
+            respond_receive(request, &peer);
+        }
+        "/" => {
+            let ttl_minutes = expires_at
+                .duration_since(SystemTime::now())
+                .map(|d| (d.as_secs() + 59) / 60)
+                .unwrap_or(1);
+            respond_landing(request, &path, &token, ttl_minutes);
+        }
         _ => {
             let expected = format!("/dl/{token}/");
             if path_segment.starts_with(&expected) {
@@ -248,7 +267,7 @@ fn handle_request(
     }
 }
 
-fn respond_landing(request: Request, path: &Path, token: &str) {
+fn respond_landing(request: Request, path: &Path, token: &str, ttl_minutes: u64) {
     let file_name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -262,6 +281,11 @@ fn respond_landing(request: Request, path: &Path, token: &str) {
         format!("{} KB", size / 1024)
     };
     let url = format!("/dl/{token}/{name_enc}");
+    let expiry_label = if ttl_minutes == 1 {
+        "expires in 1 minute".to_string()
+    } else {
+        format!("expires in {ttl_minutes} minutes")
+    };
 
     let html = format!(
         r#"<!doctype html>
@@ -287,7 +311,7 @@ fn respond_landing(request: Request, path: &Path, token: &str) {
     <h1>{file_name}</h1>
     <p>{size_label}</p>
     <a class="btn" href="{url}">Download package</a>
-    <p class="meta">Sent from Open Crawler · expires in 15 minutes</p>
+    <p class="meta">Sent from Open Crawler · {expiry_label}</p>
   </div>
 </body>
 </html>"#
@@ -324,6 +348,118 @@ fn respond_text(request: Request, status: u16, body: &str) {
                 .expect("valid header"),
         );
     let _ = request.respond(response);
+}
+
+/// Browser-only receiver page (`/receive?peer=<peerId>`): connects to the
+/// sender's WebRTC peer and offers the received package as a download. Lets
+/// anyone on the same network receive a package without installing the app.
+fn respond_receive(request: Request, peer: &str) {
+    let peer_js = peer.replace('\\', "\\\\").replace('\'', "\\'");
+    let html = format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Crawler — Receive</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<style>
+  body {{ font-family: system-ui, sans-serif; background:#1e1e2e; color:#e0e0e0;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }}
+  .card {{ background:#2e3440; padding:2.5rem; border-radius:16px; max-width:420px;
+          text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.4); width:100%; }}
+  h1 {{ margin:0 0 .5rem; font-size:1.4rem; }}
+  p {{ color:#a8b3c5; margin:.25rem 0; }}
+  progress {{ width:100%; height:10px; margin:1.5rem 0 .5rem; appearance:none; border:none;
+             border-radius:5px; overflow:hidden; background:#3b4252; }}
+  progress::-webkit-progress-bar {{ background:#3b4252; }}
+  progress::-webkit-progress-value {{ background:#5e81ac; }}
+  .btn {{ display:none; margin-top:1.5rem; background:#5e81ac; color:#fff;
+         text-decoration:none; padding:.8rem 1.6rem; border-radius:10px; font-weight:600; }}
+  .meta {{ margin-top:1rem; font-size:.85rem; color:#7f8ea3; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Open Crawler</h1>
+    <p id="status">Connecting…</p>
+    <progress id="progress" max="100" value="0"></progress>
+    <p id="pct"></p>
+    <a id="download" class="btn">Save package</a>
+    <p class="meta">Receiving a package sent from Open Crawler</p>
+  </div>
+<script>
+(function () {{
+  var peerId = {peer_js_placeholder};
+  var statusEl = document.getElementById('status');
+  var progressEl = document.getElementById('progress');
+  var pctEl = document.getElementById('pct');
+  var downloadEl = document.getElementById('download');
+  function status(msg) {{ statusEl.textContent = msg; }}
+  function setPct(v) {{ progressEl.value = v; pctEl.textContent = v + '%'; }}
+
+  if (!peerId) {{ status('Missing peer id.'); return; }}
+  if (typeof window.Peer === 'undefined') {{ status('This browser cannot connect (needs WebRTC).'); return; }}
+
+  var peer = new Peer('ocp-browser-' + Math.random().toString(36).slice(2, 12));
+  peer.on('error', function (e) {{ status('Error: ' + (e.message || e.type)); }});
+  peer.on('open', function () {{
+    var conn = peer.connect(peerId, {{ reliable: true }});
+    var chunks = [];
+    var received = 0, total = 0, name = 'package.ocproj';
+    conn.on('open', function () {{ status('Connected — receiving…'); }});
+    conn.on('error', function (e) {{ status('Error: ' + (e.message || e.type)); }});
+    conn.on('data', function (data) {{
+      if (data && typeof data === 'object' && data.type === 'header') {{
+        name = data.name || name; total = data.size || 0;
+        conn.send({{ type: 'ack' }});
+      }} else if (data && typeof data === 'object' && data.type === 'done') {{
+        var blob = new Blob(chunks, {{ type: 'application/octet-stream' }});
+        downloadEl.href = URL.createObjectURL(blob);
+        downloadEl.download = name;
+        downloadEl.style.display = 'inline-block';
+        downloadEl.textContent = 'Save ' + name + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)';
+        status('Done — save the package file.');
+        setPct(100);
+        peer.destroy();
+      }} else if (data && typeof data === 'object' && data.type === 'error') {{
+        status('Error: ' + data.message);
+      }} else {{
+        chunks.push(new Uint8Array(data));
+        received += (data.byteLength || 0);
+        setPct(total ? Math.round((received / total) * 100) : 0);
+      }}
+    }});
+    conn.send({{ type: 'request' }});
+  }});
+}})();
+</script>
+</body>
+</html>"#,
+        peer_js_placeholder = if peer_js.is_empty() {
+            "null".to_string()
+        } else {
+            format!("'{peer_js}'")
+        }
+    );
+    respond_html(request, 200, &html);
+}
+
+fn respond_html(request: Request, status: u16, body: &str) {
+    let response = Response::from_string(body.to_string())
+        .with_status_code(StatusCode(status))
+        .with_header(
+            Header::from_bytes("Content-Type", "text/html; charset=utf-8")
+                .expect("valid header"),
+        );
+    let _ = request.respond(response);
+}
+
+fn percent_decode(s: &str) -> String {
+    percent_encoding::percent_decode_str(s)
+        .decode_utf8()
+        .map(|c| c.into_owned())
+        .unwrap_or_else(|_| s.to_string())
 }
 
 fn percent_encode(s: &str) -> String {

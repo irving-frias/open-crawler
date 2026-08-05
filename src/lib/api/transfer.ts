@@ -84,3 +84,7 @@ export function importSharedIntent(mode: ImportConflictMode): Promise<ImportSumm
 export function openShareSheet(filePath: string): Promise<void> {
   return invoke<void>('open_share_sheet', { filePath });
 }
+
+export function btSend(addr: string, filePath: string): Promise<void> {
+  return invoke<void>('bt_send', { addr, filePath });
+}

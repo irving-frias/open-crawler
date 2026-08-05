@@ -3,8 +3,8 @@
 ## Project Overview
 SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + Bun**.
 
-**Current Phase:** Sprints 1-3 complete + caninclude replacement + **Sprint 4 (SEO features F0-F8) complete** + **Sprint 5 (performance: page_issues, spawn_blocking, WAL)** + **Sprint 6 (OR filters, radar icon, README, cookies, site Basic Auth) complete** — now building **data sharing between devices (WiFi ✅ + Bluetooth/Nearby ✅ + P2P over internet)**
-**Status:** Backend compiles, 0 clippy warnings, 77 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth + OR across categories), URL dedup, include/exclude glob patterns, custom headers + configurable timeout + cookies + site Basic Auth, proxy (URL+auth), theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view, visual style system (Classic/Neumorph/Clay/Glass/Brutalism), XLSX/CSV export with native save dialog + Android SAF + native share sheet, `.ocproj` package export/import (P1 done) — import re-keyed globally to fix cross-project config `FOREIGN KEY constraint failed`, WiFi LAN transfer server + QR (P2 done), **Bluetooth/Nearby sharing: receive-as-share-target on Android + native share sheet on desktop macOS (AirDrop) (P3 done)**
+**Current Phase:** Sprints 1-3 complete + caninclude replacement + **Sprint 4 (SEO features F0-F8) complete** + **Sprint 5 (performance: page_issues, spawn_blocking, WAL)** + **Sprint 6 (OR filters, radar icon, README, cookies, site Basic Auth) complete** + **Sprint 7 (sharing round 2: release-size/TLS + WebRTC P2P + real OBEX Bluetooth) complete** — data sharing between devices (WiFi ✅ + Bluetooth/Nearby ✅ + P2P over internet ✅)
+**Status:** Backend compiles, 0 clippy warnings, 86 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth + OR across categories), URL dedup, include/exclude glob patterns, custom headers + configurable timeout + cookies + site Basic Auth, proxy (URL+auth), theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view, visual style system (Classic/Neumorph/Clay/Glass/Brutalism), XLSX/CSV export with native save dialog + Android SAF + native share sheet, `.ocproj` package export/import (P1 done) — import re-keyed globally to fix cross-project config `FOREIGN KEY constraint failed`, WiFi LAN transfer server + QR (P2 done), **Bluetooth/Nearby sharing: receive-as-share-target on Android + native share sheet on desktop macOS (AirDrop) (P3 done)**, **release profile (`strip`, `lto="fat"`, `codegen-units=1`, `opt-level="s"`, `panic="abort"`), `native-tls` removed → rustls-only, Android network security config (cleartext LAN/localhost), real OBEX Object Push over RFCOMM for Linux+Windows (S7, untested on hardware), WebRTC P2P over internet via PeerJS + QR scan + browser `/receive` page (S7 done)**
 
 ---
 
@@ -396,14 +396,43 @@ Export options: project subset (default: selected), **lightweight** (exclude htm
 
 **P2P deps (P4/P5):** JS `peerjs@1.5.5`, `jsQR`, `@types/qrcode`; Rust `libp2p = "0.56"`. P4 camera perms: `android.permission.CAMERA` in AndroidManifest, `NSCameraUsageDescription` in macOS Info.plist.
 
-**Explicit non-goals:** real desktop Bluetooth (OBEX) — covered by WiFi + native macOS share sheet (AirDrop); iOS receive (needs Share Extension) — future. Verify `usesCleartextTraffic` (`${usesCleartextTraffic}` in manifest) is true for HTTP LAN on Android.
+**Explicit non-goals (updated):** iOS receive (needs Share Extension) — future; macOS desktop Bluetooth OBEX — macOS has no public RFCOMM API, covered by the native share sheet (AirDrop). Real desktop Bluetooth OBEX for **Linux + Windows** is now implemented (S7, experimental/unverified on real hardware). Verify `usesCleartextTraffic` — replaced with `networkSecurityConfig` allowing cleartext only for private LAN ranges + localhost (S7).
+
+### Sprint 7 — sharing round 2 (DONE ✅)
+
+**F1 Binary size & speed**
+- `[profile.release]` in `Cargo.toml`: `strip = true`, `lto = "fat"`, `codegen-units = 1`, `opt-level = "s"`, `panic = "abort"`.
+- `native-tls` dependency removed (and its reqwest feature); TLS is rustls-only (`cargo check`/`clippy`/`test --lib` 77→ pass).
+
+**F2 WiFi LAN hardening**
+- `AndroidManifest.xml`: added `ACCESS_NETWORK_STATE` + `ACCESS_WIFI_STATE`; `android:usesCleartextTraffic="${usesCleartextTraffic}"` replaced with `android:networkSecurityConfig="@xml/network_security_config"` (cleartext allowed for private LAN ranges `10/8`, `172.16/12`, `192.168/16`, `169.254/16` + localhost).
+- `build.gradle.kts`: both `usesCleartextTraffic` manifestPlaceholder lines removed.
+- `server.rs`: landing page now uses the real configured TTL (was hardcoded "15 minutes").
+
+**F3 Real OBEX Bluetooth (Windows/Linux) — `transfer/obex/`**
+- `codec.rs` — pure OBEX 1.5 client packet codec (CONNECT with Object Push Target UUID, PUT/PUT-Final with Name/Length/Body/End-of-Body/Connection-ID headers, DISCONNECT, response parsing by header type: Unicode/bytes 2-byte length, 1-byte and 4-byte quantities). 10 unit tests.
+- `linux.rs` — raw `AF_BLUETOOTH`/`BTPROTO_RFCOMM` socket transport (poll-based connect timeout, `SO_RCVTIMEO`/`SO_SNDTIMEO` 60s, MAC parsing, channel fallback `[9, 10, 12, 11, 5, 7, 8]` since no SDP).
+- `windows.rs` — WinRT `Windows.Devices.Bluetooth.Rfcomm` transport (OS-side SDP lookup of `ObexObjectPush`, `StreamSocket` + `DataReader`/`DataWriter`, thread RoInitialized for stream lifetime).
+- `mod.rs` — blocking `send_file()` with per-channel retry, chunked streaming (15,360 B), progress callback; run via `spawn_blocking` from the new `bt_send` command (stage `bluetooth` on `transfer-progress`).
+- Frontend: Bluetooth tab "Send over Bluetooth (OBEX)" section — address input (MAC), send button, status + progress; `get_platform` command drives an unsupported-note on macOS/mobile. i18n en/es.
+- ⚠️ **Untested on real Bluetooth hardware** — transports are best-effort; verify on a device and adjust SDP/channel handling.
+
+**F4 WebRTC P2P over internet — `transfer/p2p.ts`**
+- PeerJS sender/receiver (cloud signaling `0.peerjs.com`, TURN fallback), chunked + paced (`bufferedAmount`) binary data channel, jsQR camera scanning, `ocp2p:` code parsing. Linux WebKitGTK lacks WebRTC → tab shows unsupported hint.
+- `server.rs` adds `GET /receive?peer=<id>` — a static browser receiver page served by the LAN server (same-network receivers need no app); `percent_decode` helper.
+- `app.svelte.ts`: P2P state (busy/peerId/status/progress/error), `exportAndStartP2P` (silent export + sender + LAN server for the browser page), `stopP2P`, `receiveP2P` (writes temp file via fs plugin + imports).
+- TransferDialog: new "Internet (P2P)" tab — QR (`ocp2p:<id>`), copy code, browser-receiver URL, status/progress, stop; receiver: code input + camera scan (video element) + receive.
+- Permissions: `android.permission.CAMERA` in manifest; macOS `NSCameraUsageDescription` via `src-tauri/Info.plist` (merged through `bundle.macOS.infoPlist`).
+- ⚠️ Android `getUserMedia` in the WebView may need the runtime CAMERA grant before the QR scan works — verify on device.
+
+**F5 Docs** — PROGRESS.md updated (this section).
 
 ### Phases
 - **P1 Package+Import** — DONE ✅ (package.rs, commands.rs, 8 tests). Export/Import UI done in P2 frontend.
-- **P2 WiFi** — backend DONE ✅ (server.rs + 1 test `test_transfer_server_serves_file_and_health`, 6 commands registered, import handles `content://`); frontend written & compiles (TransferDialog + QR + download progress). **Remaining**: direct-share wiring (WiFi button exports internally).
-- **P3 Bluetooth/Nearby** — NOT started (share-target receive + manifest intent-filter + Android share).
-- **P4 WebRTC P2P (PeerJS)** — NOT started (PeerJS + jsQR camera scan + `static/receive.html` + deep-link `ocp2p:wr`).
-- **P5 libp2p (Linux/native)** — NOT started (`transfer/p2p.rs` + feature flag + deep-link `ocp2p:lp`).
+- **P2 WiFi** — DONE ✅ (server.rs + 1 test `test_transfer_server_serves_file_and_health`, 6 commands registered, import handles `content://`; TransferDialog + QR + download progress; direct-share wiring exports internally; network security config for cleartext LAN).
+- **P3 Bluetooth/Nearby** — DONE ✅ (share-target receive + manifest intent-filter + Android share sheet). Plus Sprint 7: real OBEX over RFCOMM for Linux/Windows (`transfer/obex/`, `bt_send` command, Bluetooth tab UI) — **experimental, untested on hardware**.
+- **P4 WebRTC P2P (PeerJS)** — DONE ✅ (PeerJS + jsQR camera scan + LAN `/receive` browser page + deep-link `ocp2p:<id>`; sender + receiver wired into TransferDialog).
+- **P5 libp2p (Linux/native)** — NOT started (Linux P2P covered by LAN WiFi receiver page for now; `transfer/p2p.rs` + feature flag + deep-link `ocp2p:lp` remain future work).
 - **P6 Polish** — errors, a11y, README section, mime/asset.
 
 ### Current state
@@ -579,7 +608,7 @@ Persistent State (DB)
 ```bash
 cargo check:     ✅ Compiles successfully
 cargo clippy:    ✅ No warnings (clippy -- -D warnings)
-cargo test:      ✅ 77/77 tests pass (parser, dedup, nesting_table, frontier, robots, migrations, duplicates, page_issues, filters incl. OR semantics, cookies/auth wiring, package round-trips incl. cross-project config re-homing, transfer server)
+cargo test:      ✅ 86/86 tests pass (parser, dedup, nesting_table, frontier, robots, migrations, duplicates, page_issues, filters incl. OR semantics, cookies/auth wiring, package round-trips incl. cross-project config re-homing, transfer server, OBEX codec)
 bun run build:  ✅ Frontend builds to /build
 bun run check:  ✅ 0 errors / 0 warnings
 ```
@@ -621,4 +650,4 @@ bun run check:  ✅ 0 errors / 0 warnings
 
 ---
 
-*Last updated: data sharing — P1 (.ocproj package + import) done, P2 (WiFi LAN server + TransferDialog frontend) backend done + frontend compiles, test fix → 73 tests, clippy clean. P2P plan approved (WebRTC PeerJS primary + libp2p Linux fallback + browser receiver). Next: P2 direct-share wiring, then P3 Bluetooth, P4 PeerJS, P5 libp2p.*
+*Last updated: Sprint 7 complete — release profile (strip/lto=fat/cgu=1/panic=abort) + native-tls removed (rustls-only), Android network security config for cleartext LAN/localhost, WebRTC P2P over internet (PeerJS sender+receiver, QR scan, LAN `/receive` browser page) wired into TransferDialog, real OBEX Object Push over RFCOMM for Linux+Windows (`transfer/obex/` codec + transports, `bt_send` command, Bluetooth tab UI) — OBEX untested on hardware, Android camera runtime grant TBD. 86 tests, clippy clean, svelte-check 0 errors. Next: verify OBEX on a real device, README transfer section, P6 polish.*

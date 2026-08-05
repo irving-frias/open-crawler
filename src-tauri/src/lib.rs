@@ -155,6 +155,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // app
             crate::commands::is_mobile,
+            crate::commands::get_platform,
             crate::commands::get_favicon,
             // projects
             crate::commands::create_project,
@@ -203,6 +204,7 @@ pub fn run() {
             crate::transfer::commands::download_transfer,
             crate::transfer::commands::import_shared_intent,
             crate::transfer::commands::open_share_sheet,
+            crate::transfer::commands::bt_send,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

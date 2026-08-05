@@ -12,7 +12,8 @@
   import { Checkbox } from '$lib/components/ui/checkbox/index.js';
   import { Progress } from '$lib/components/ui/progress/index.js';
   import { toast } from 'svelte-sonner';
-  import { Box, QrCode, Download, FolderOpen, Share2, Link2, Loader2, Bluetooth } from 'lucide-svelte';
+  import { Box, QrCode, Download, FolderOpen, Share2, Link2, Loader2, Bluetooth, Globe, Camera, Scan } from 'lucide-svelte';
+  import { startQrScanner, webRtcAvailable } from './p2p';
 
   const app = getAppShell();
 
@@ -22,6 +23,20 @@
     open: boolean;
   } = $props();
   let isMobile = $state(false);
+  let platform = $state('');
+  let btAddr = $state('');
+
+  const obexSupported = $derived(platform === 'linux' || platform === 'windows');
+
+  const btStatusLabel = $derived(
+    app.btStatus === 'exporting'
+      ? m['transfer.bt.status.exporting']()
+      : app.btStatus === 'sending'
+        ? m['transfer.bt.status.sending']()
+        : app.btStatus === 'complete'
+          ? m['transfer.bt.status.complete']()
+          : ''
+  );
 
   let includeCredentials = $state(false);
   let lightweight = $state(false);
@@ -32,6 +47,11 @@
   let nowSecs = $state(Date.now());
   let receivedAtSecs = $state(0);
   let expiresTotal = $state(0);
+  let p2pCode = $state('');
+  let p2pQrDataUrl = $state('');
+  let scanning = $state(false);
+  let stopScan: (() => void) | null = null;
+  let videoEl = $state<HTMLVideoElement | null>(null);
 
   const conflictOptions = $derived([
     { value: 'skip', label: m['transfer.import.skip']() },
@@ -66,8 +86,72 @@
     return `${mm}:${ss.toString().padStart(2, '0')}`;
   }
 
+  const p2pStatusLabel = $derived(
+    (app.p2pStatus || '') === 'exporting'
+      ? m['transfer.p2p.status.exporting']()
+      : (app.p2pStatus || '') === 'ready'
+        ? m['transfer.p2p.status.ready']()
+        : (app.p2pStatus || '') === 'connected'
+          ? m['transfer.p2p.status.connected']()
+          : (app.p2pStatus || '') === 'sending' || app.p2pStatus === 'sending-header'
+            ? m['transfer.p2p.status.sending']()
+            : (app.p2pStatus || '') === 'receiving'
+              ? m['transfer.p2p.status.receiving']()
+              : (app.p2pStatus || '') === 'connecting'
+                ? m['transfer.p2p.status.connecting']()
+                : (app.p2pStatus || '') === 'complete'
+                  ? m['transfer.p2p.status.complete']()
+                  : ''
+  );
+
+  const p2pError = $derived(
+    app.p2pStatus === 'error' && app.p2pError ? app.p2pError : ''
+  );
+
+  // Browser receiver page served by the LAN server: http://<ip>:<port>/receive?peer=<id>
+  const p2pBrowserUrl = $derived(
+    app.activeTransfer && app.p2pPeerId
+      ? (app.activeTransfer.urls[0]?.split('/dl/')[0] ?? '') +
+          '/receive?peer=' +
+          encodeURIComponent(app.p2pPeerId)
+      : ''
+  );
+
+  function toggleScan() {
+    if (scanning) {
+      stopScan?.();
+      stopScan = null;
+      scanning = false;
+      return;
+    }
+    if (!videoEl) return;
+    scanning = true;
+    stopScan = startQrScanner(
+      videoEl,
+      (text) => {
+        p2pCode = text;
+        stopScan?.();
+        stopScan = null;
+        scanning = false;
+      },
+      (message) => {
+        toast.error(message);
+        stopScan?.();
+        stopScan = null;
+        scanning = false;
+      }
+    );
+  }
+
+  async function handleReceiveP2P() {
+    if (!p2pCode.trim()) return;
+    await app.receiveP2P(p2pCode, conflictMode as 'skip' | 'copy' | 'overwrite');
+    p2pCode = '';
+  }
+
   $effect(() => {
     api.crawl.isMobile().then((v) => (isMobile = v)).catch(() => {});
+    api.crawl.getPlatform().then((v) => (platform = v)).catch(() => {});
   });
 
   $effect(() => {
@@ -90,6 +174,24 @@
     if (!open || !app.activeTransfer) return;
     const id = setInterval(() => (nowSecs = Date.now()), 1000);
     return () => clearInterval(id);
+  });
+
+  $effect(() => {
+    if (!app.p2pPeerId) {
+      p2pQrDataUrl = '';
+      return;
+    }
+    QRCode.toDataURL(`ocp2p:${app.p2pPeerId}`, { width: 280, margin: 2, errorCorrectionLevel: 'M' })
+      .then((d) => (p2pQrDataUrl = d))
+      .catch(() => (p2pQrDataUrl = ''));
+  });
+
+  $effect(() => {
+    if (!open) {
+      stopScan?.();
+      stopScan = null;
+      scanning = false;
+    }
   });
 
   async function handleExport(shareAfter = false) {
@@ -197,6 +299,10 @@
         <Tabs.Trigger value="bluetooth">
           <Bluetooth class="size-4" />
           {m['transfer.tab.bluetooth']()}
+        </Tabs.Trigger>
+        <Tabs.Trigger value="p2p">
+          <Globe class="size-4" />
+          {m['transfer.tab.p2p']()}
         </Tabs.Trigger>
       </Tabs.List>
 
@@ -381,6 +487,166 @@
           </Button>
         {:else}
           <p class="text-xs text-muted-foreground">{m['transfer.bt.desktop_hint']()}</p>
+        {/if}
+
+        <div class="flex items-center gap-2">
+          <div class="h-px flex-1 bg-border"></div>
+          <span class="text-xs text-muted-foreground">{m['transfer.import.or']()}</span>
+          <div class="h-px flex-1 bg-border"></div>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm font-medium">{m['transfer.bt.obex_title']()}</p>
+          {#if obexSupported}
+            <Label for="bt-addr">{m['transfer.bt.obex_hint']()}</Label>
+            <Input
+              id="bt-addr"
+              type="text"
+              bind:value={btAddr}
+              placeholder={m['transfer.bt.obex_placeholder']()}
+              pattern="^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+              disabled={app.btBusy}
+            />
+            <Button
+              class="w-full"
+              variant="outline"
+              onclick={() => app.sendViaObex(btAddr, includeCredentials, lightweight)}
+              disabled={app.btBusy || !btAddr.trim()}
+            >
+              {#if app.btBusy}
+                <Loader2 class="size-4 animate-spin" />
+              {/if}
+              <Bluetooth class="size-4" />
+              {m['transfer.bt.obex_send']()}
+            </Button>
+            {#if btStatusLabel || app.btError}
+              <p class="text-sm text-muted-foreground">{app.btError || btStatusLabel}</p>
+            {/if}
+            {#if app.btStatus === 'sending' && app.transferProgress.stage === 'bluetooth'}
+              <div class="w-full space-y-1">
+                <Progress value={app.transferProgress.percent} class="h-2" />
+                <p class="text-xs text-muted-foreground">{Math.round(app.transferProgress.percent)}%</p>
+              </div>
+            {/if}
+          {:else}
+            <p class="text-xs text-amber-500">{m['transfer.bt.obex_unsupported']()}</p>
+          {/if}
+        </div>
+      </Tabs.Content>
+
+      <!-- ==================== INTERNET (P2P) ==================== -->
+      <Tabs.Content value="p2p" class="space-y-4">
+        {#if app.p2pPeerId}
+          <div class="flex flex-col items-center gap-3">
+            {#if p2pQrDataUrl}
+              <img src={p2pQrDataUrl} alt="QR" class="h-56 w-56 rounded-lg border bg-white p-2" />
+            {:else}
+              <div class="flex h-56 w-56 items-center justify-center rounded-lg border">
+                <Loader2 class="size-6 animate-spin text-muted-foreground" />
+              </div>
+            {/if}
+            <p class="text-center text-sm text-muted-foreground">{m['transfer.p2p.scan_hint']()}</p>
+
+            <div class="w-full space-y-2">
+              <div class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+                <span class="truncate font-mono text-xs">ocp2p:{app.p2pPeerId}</span>
+                <button
+                  class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                  onclick={() => copyText(`ocp2p:${app.p2pPeerId}`)}
+                >
+                  {m['transfer.wifi.copy']()}
+                </button>
+              </div>
+              {#if p2pBrowserUrl}
+                <div class="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <span class="truncate font-mono text-xs">{p2pBrowserUrl}</span>
+                  <button
+                    class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                    onclick={() => copyText(p2pBrowserUrl)}
+                  >
+                    {m['transfer.wifi.copy']()}
+                  </button>
+                </div>
+                <p class="text-xs text-muted-foreground">{m['transfer.p2p.browser_receiver']()}</p>
+              {/if}
+            </div>
+
+            {#if p2pStatusLabel || p2pError}
+              <p class="text-sm text-muted-foreground">{p2pError || p2pStatusLabel}</p>
+            {/if}
+            {#if app.p2pProgress.percent > 0}
+              <div class="w-full space-y-1">
+                <Progress value={app.p2pProgress.percent} class="h-2" />
+                <p class="text-xs text-muted-foreground">{Math.round(app.p2pProgress.percent)}%</p>
+              </div>
+            {/if}
+
+            <Button variant="destructive" class="w-full" onclick={app.stopP2P} disabled={app.p2pBusy}>
+              {m['transfer.p2p.stop']()}
+            </Button>
+          </div>
+        {:else}
+          <p class="text-sm text-muted-foreground">{m['transfer.p2p.intro']()}</p>
+          {#if !webRtcAvailable()}
+            <p class="text-xs text-amber-500">{m['transfer.p2p.unsupported']()}</p>
+          {/if}
+          <Button class="w-full" onclick={() => app.exportAndStartP2P(includeCredentials, lightweight)} disabled={app.transferBusy || !webRtcAvailable()}>
+            {#if app.transferBusy}
+              <Loader2 class="size-4 animate-spin" />
+            {/if}
+            <Globe class="size-4" />
+            {m['transfer.p2p.send']()}
+          </Button>
+          <p class="text-xs text-muted-foreground">{m['transfer.p2p.send_hint']()}</p>
+
+          <div class="flex items-center gap-2">
+            <div class="h-px flex-1 bg-border"></div>
+            <span class="text-xs text-muted-foreground">{m['transfer.import.or']()}</span>
+            <div class="h-px flex-1 bg-border"></div>
+          </div>
+
+          <div class="space-y-2">
+            <Label for="p2p-code">{m['transfer.p2p.code']()}</Label>
+            <div class="flex gap-2">
+              <Input
+                id="p2p-code"
+                type="text"
+                bind:value={p2pCode}
+                placeholder={m['transfer.p2p.paste_placeholder']()}
+              />
+              <Button
+                variant="outline"
+                onclick={toggleScan}
+                aria-label={m['transfer.p2p.scan']()}
+              >
+                {#if scanning}
+                  <Loader2 class="size-4 animate-spin" />
+                {:else}
+                  <Camera class="size-4" />
+                {/if}
+              </Button>
+            </div>
+            {#if scanning}
+              <video bind:this={videoEl} class="h-52 w-full rounded-lg border bg-black object-cover" muted playsinline></video>
+              <p class="text-xs text-muted-foreground"><Scan class="mr-1 inline size-3" />{m['transfer.p2p.scan']()}…</p>
+            {/if}
+            <Button class="w-full" onclick={handleReceiveP2P} disabled={app.p2pBusy || !p2pCode.trim()}>
+              {#if app.p2pBusy}
+                <Loader2 class="size-4 animate-spin" />
+              {/if}
+              <Download class="size-4" />
+              {m['transfer.p2p.receive']()}
+            </Button>
+            {#if p2pStatusLabel || p2pError}
+              <p class="text-sm text-muted-foreground">{p2pError || p2pStatusLabel}</p>
+            {/if}
+            {#if app.p2pProgress.percent > 0}
+              <div class="w-full space-y-1">
+                <Progress value={app.p2pProgress.percent} class="h-2" />
+                <p class="text-xs text-muted-foreground">{Math.round(app.p2pProgress.percent)}%</p>
+              </div>
+            {/if}
+          </div>
         {/if}
       </Tabs.Content>
     </Tabs.Root>

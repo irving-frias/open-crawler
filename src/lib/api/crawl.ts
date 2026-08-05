@@ -29,6 +29,10 @@ export function isMobile(): Promise<boolean> {
   return invoke<boolean>('is_mobile');
 }
 
+export function getPlatform(): Promise<string> {
+  return invoke<string>('get_platform');
+}
+
 export function getFavicon(url: string): Promise<string | null> {
   return invoke<string | null>('get_favicon', { url });
 }

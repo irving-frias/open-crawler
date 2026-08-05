@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::features::with_repo;
+use crate::transfer::obex;
 use crate::transfer::package::{
     export_package as package_export, import_package as package_import, ExportPackageInfo,
     ImportMode, ImportSummary,
@@ -143,6 +144,26 @@ pub async fn export_package(
 #[tauri::command]
 pub fn open_share_sheet(app: AppHandle, file_path: String) -> Result<(), AppError> {
     share_package(&app, &file_path)
+}
+
+/// Sends an already-exported package to a Bluetooth device over OBEX Object
+/// Push (Windows/Linux). Progress is reported through the `transfer-progress`
+/// event with stage `"bluetooth"`.
+///
+/// NOTE: experimental — RFCOMM transports have not been verified against real
+/// hardware yet. macOS/iOS fall back to the system share sheet instead.
+#[tauri::command]
+pub async fn bt_send(app: AppHandle, addr: String, file_path: String) -> Result<(), AppError> {
+    let path = std::path::PathBuf::from(&file_path);
+    let app = app.clone();
+
+    tokio::task::spawn_blocking(move || {
+        obex::send_file(&addr, &path, |sent, total| {
+            emit_transfer_progress(&app, "bluetooth", sent, total);
+        })
+    })
+    .await
+    .map_err(|e| AppError::Crawl(format!("Bluetooth task failed: {e}")))?
 }
 
 #[tauri::command]

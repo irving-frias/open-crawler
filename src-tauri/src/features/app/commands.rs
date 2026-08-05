@@ -10,6 +10,12 @@ pub fn is_mobile() -> bool {
     cfg!(mobile)
 }
 
+/// The host OS as a lowercase string (`"linux"`, `"windows"`, `"macos"`).
+#[tauri::command]
+pub fn get_platform() -> String {
+    std::env::consts::OS.to_string()
+}
+
 /// Best-effort favicon discovery: parses the page's `<link rel="icon">` tags,
 /// falling back to `/favicon.ico` at the site origin. Returns `None` when the
 /// URL is invalid or the icon cannot be resolved.

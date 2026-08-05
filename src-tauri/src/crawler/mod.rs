@@ -49,12 +49,6 @@ pub(crate) fn client_with_proxy(
 ) -> Result<reqwest::ClientBuilder, AppError> {
     let builder = reqwest::Client::builder();
 
-    #[cfg(not(target_os = "android"))]
-    let builder = builder.use_preconfigured_tls(
-        native_tls::TlsConnector::new()
-            .map_err(|e| AppError::Io(std::io::Error::other(e)))?,
-    );
-
     let Some(proxy) = proxy else {
         return Ok(builder);
     };

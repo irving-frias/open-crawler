@@ -7,5 +7,6 @@
 
 pub mod commands;
 pub mod desktop_share;
+pub mod obex;
 pub mod package;
 pub mod server;

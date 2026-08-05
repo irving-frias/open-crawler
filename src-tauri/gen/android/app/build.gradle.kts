@@ -18,7 +18,6 @@ android {
     compileSdk = 36
     namespace = "com.opencrawler.app"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.opencrawler.app"
         minSdk = 28
         targetSdk = 36
@@ -40,7 +39,6 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
