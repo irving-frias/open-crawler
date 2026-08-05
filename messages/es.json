@@ -322,6 +322,7 @@
   "transfer.wifi.start": "Iniciar compartición WiFi",
   "transfer.wifi.no_package": "Exporta primero un paquete para compartirlo por WiFi.",
   "transfer.wifi.export_first": "Al iniciar se exportará el proyecto seleccionado como paquete y se empezará a compartir automáticamente.",
+  "transfer.wifi.troubleshoot": "¿No funciona? Asegúrate de que ambos dispositivos estén en el mismo Wi-Fi, que el cortafuegos permita conexiones entrantes y usa la dirección de tu red Wi-Fi (ignora las de VPN/túnel).",
   "transfer.import.mode": "Si el nombre de un proyecto coincide",
   "transfer.import.mode_hint": "Omitir conserva los datos existentes, copiar los duplica y sobrescribir los reemplaza.",
   "transfer.import.skip": "Omitir",

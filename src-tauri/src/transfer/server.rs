@@ -71,16 +71,10 @@ pub fn start_transfer_server(
         .unwrap_or(DEFAULT_PORT);
 
     let token = Uuid::new_v4().simple().to_string();
-    let file_name = file_path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "open-crawler.ocproj".to_string());
+    let file_name = file_name_of(file_path);
     let file_name_enc = percent_encode(&file_name);
 
-    let mut urls = vec![format!("http://127.0.0.1:{port}/dl/{token}/{file_name_enc}")];
-    if let Ok(ip) = local_ip_address::local_ip() {
-        urls.insert(0, format!("http://{ip}:{port}/dl/{token}/{file_name_enc}"));
-    }
+    let urls = lan_urls(port, &token, &file_name_enc);
 
     let server = Arc::new(server);
     let stop = Arc::new(AtomicBool::new(false));
@@ -162,23 +156,66 @@ pub fn active_transfer(state: &AppState) -> Option<TransferInfo> {
     let active = slot.as_ref()?;
     let now = SystemTime::now();
     let expired = now > active.expires_at;
-    Some(TransferInfo {
+    let expires_in_secs = active
+        .expires_at
+        .duration_since(now)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let file_name = active
+        .path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let file_size_bytes = std::fs::metadata(&active.path).map(|m| m.len()).unwrap_or(0);
+    (!expired).then_some(TransferInfo {
         urls: active.urls.clone(),
         port: active.port,
         token: active.token.clone(),
-        expires_in_secs: active
-            .expires_at
-            .duration_since(now)
-            .map(|d| d.as_secs())
-            .unwrap_or(0),
-        file_name: active
-            .path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        file_size_bytes: std::fs::metadata(&active.path).map(|m| m.len()).unwrap_or(0),
+        expires_in_secs,
+        file_name,
+        file_size_bytes,
     })
-    .filter(|_| !expired)
+}
+
+fn file_name_of(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "open-crawler.ocproj".to_string())
+}
+
+/// Builds the download URLs shown to the sender. The default-route address
+/// (what `local_ip()` returns) goes first because it is the most likely one
+/// to be reachable; every other non-loopback, non-link-local IPv4 interface
+/// is listed too so the sender can pick the address that actually works (e.g.
+/// WiFi vs. VPN vs. cellular). `127.0.0.1` is appended last as a self-test.
+fn lan_urls(port: u16, token: &str, file_name_enc: &str) -> Vec<String> {
+    let dl = |ip: &std::net::Ipv4Addr| format!("http://{ip}:{port}/dl/{token}/{file_name_enc}");
+
+    let mut urls: Vec<String> = Vec::new();
+    let push = |ip: &std::net::Ipv4Addr, urls: &mut Vec<String>| {
+        let url = dl(ip);
+        if !urls.contains(&url) {
+            urls.push(url);
+        }
+    };
+
+    if let Ok(std::net::IpAddr::V4(ip)) = local_ip_address::local_ip() {
+        push(&ip, &mut urls);
+    }
+
+    if let Ok(ifas) = local_ip_address::list_afinet_netifas() {
+        for (_, ip) in ifas {
+            if let std::net::IpAddr::V4(v4) = ip {
+                if v4.is_loopback() || v4.is_link_local() || v4.is_unspecified() {
+                    continue;
+                }
+                push(&v4, &mut urls);
+            }
+        }
+    }
+
+    urls.push(dl(&std::net::Ipv4Addr::LOCALHOST));
+    urls
 }
 
 fn handle_request(
@@ -390,6 +427,11 @@ mod tests {
         let info = start_transfer_server(&state, &path, 1).unwrap();
         assert_eq!(info.file_size_bytes, 12);
         assert!(!info.urls.is_empty());
+        assert!(info
+            .urls
+            .iter()
+            .any(|u| u.contains("127.0.0.1") && u.contains(&info.token)));
+        assert_eq!(info.urls.len(), info.urls.iter().collect::<std::collections::HashSet<_>>().len());
 
         let addr = format!("127.0.0.1:{}", info.port);
 

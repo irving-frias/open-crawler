@@ -322,6 +322,7 @@
   "transfer.wifi.start": "Start WiFi sharing",
   "transfer.wifi.no_package": "Export a package first to share it over WiFi.",
   "transfer.wifi.export_first": "Starting will export the selected project as a package and begin sharing automatically.",
+  "transfer.wifi.troubleshoot": "Can't connect? Make sure both devices are on the same Wi-Fi, your firewall allows incoming connections, and use the address matching your Wi-Fi network (ignore VPN/tunnel ones).",
   "transfer.import.mode": "When a project name conflicts",
   "transfer.import.mode_hint": "Skip keeps existing data, copy duplicates it, overwrite replaces it.",
   "transfer.import.skip": "Skip",

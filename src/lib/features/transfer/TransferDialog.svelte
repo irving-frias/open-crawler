@@ -250,6 +250,8 @@
               {/each}
             </div>
 
+            <p class="w-full text-xs text-muted-foreground">{m['transfer.wifi.troubleshoot']()}</p>
+
             <div class="w-full space-y-1 rounded-lg border p-3 text-sm">
               <div class="flex justify-between">
                 <span class="text-muted-foreground">{m['transfer.wifi.file']()}</span>
