@@ -131,7 +131,7 @@ pub async fn export_full(
 /// Copies a file into an Android `content://` URI (SAF) by resolving the URI to
 /// a writable file descriptor through the fs plugin's mobile bridge.
 #[cfg(target_os = "android")]
-fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::Path) -> Result<(), AppError> {
     use std::io::Write;
 
     use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
@@ -149,8 +149,33 @@ fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::Path) -> Res
 }
 
 #[cfg(not(target_os = "android"))]
-fn copy_to_content_uri(_app: &AppHandle, _uri: &str, _src: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_to_content_uri(_app: &AppHandle, _uri: &str, _src: &std::path::Path) -> Result<(), AppError> {
     Ok(())
+}
+
+/// Copies a file from an Android `content://` URI (SAF picker result) into the
+/// app data dir so it can be read with plain `std::fs`.
+#[cfg(target_os = "android")]
+pub(crate) fn copy_from_content_uri(app: &AppHandle, uri: &str, dst: &std::path::Path) -> Result<(), AppError> {
+    use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
+
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut opts = OpenOptions::new();
+    opts.read(true);
+    let mut src_file = app
+        .fs()
+        .open(FilePath::Url(url::Url::parse(uri)?), opts)
+        .map_err(|e| AppError::Crawl(format!("failed to open content URI: {e}")))?;
+    let mut dst_file = std::fs::File::create(dst)?;
+    std::io::copy(&mut src_file, &mut dst_file)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn copy_from_content_uri(_app: &AppHandle, _uri: &str, _dst: &std::path::Path) -> Result<(), AppError> {
+    Err(AppError::Crawl("content URI import not supported".into()))
 }
 
 /// Resolves the destination file for an export.

@@ -6,6 +6,7 @@ pub mod features;
 pub mod models;
 pub mod nesting_table;
 pub mod pagespeed;
+pub mod transfer;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -44,6 +45,7 @@ pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub crawls: Arc<RwLock<HashMap<String, CrawlState>>>,
     pub results_cache: ResultsCacheArc,
+    pub transfer_server: std::sync::Mutex<Option<crate::transfer::server::TransferServerState>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -130,6 +132,7 @@ pub fn run() {
                 db: Mutex::new(conn),
                 crawls: Arc::new(RwLock::new(HashMap::new())),
                 results_cache: Arc::new(Mutex::new(lru::LruCache::new(NonZeroUsize::new(512).unwrap()))),
+                transfer_server: std::sync::Mutex::new(None),
             };
 
             app.manage(Arc::new(RwLock::new(state)));
@@ -178,6 +181,13 @@ pub fn run() {
             crate::commands::save_settings,
             // export
             crate::commands::export_full,
+            // transfer
+            crate::transfer::commands::export_package,
+            crate::transfer::commands::import_package,
+            crate::transfer::commands::start_transfer_server,
+            crate::transfer::commands::stop_transfer_server,
+            crate::transfer::commands::get_active_transfer,
+            crate::transfer::commands::download_transfer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

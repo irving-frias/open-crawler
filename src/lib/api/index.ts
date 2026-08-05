@@ -7,6 +7,7 @@ export * as snapshots from './snapshots';
 export * as pagespeed from './pagespeed';
 export * as settings from './settings';
 export * as exportApi from './export';
+export * as transferApi from './transfer';
 export * from './projects';
 export * from './crawl';
 export * from './results';

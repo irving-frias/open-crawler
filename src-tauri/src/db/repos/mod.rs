@@ -69,6 +69,12 @@ impl<'a> CrawlRepo<'a> {
         Self { conn, results_cache }
     }
 
+    /// Exposes the raw SQLite connection for low-level operations (e.g. the
+    /// transfer/package module's `VACUUM INTO` and `ATTACH`).
+    pub fn connection(&self) -> &'a Connection {
+        self.conn
+    }
+
     pub(crate) fn invalidate_cache_for_project(&self, project_id: &str) {
         if let Some(ref cache_arc) = self.results_cache {
             let mut cache = cache_arc.lock().unwrap();

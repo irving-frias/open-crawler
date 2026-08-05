@@ -3,8 +3,8 @@
 ## Project Overview
 SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 5 + TypeScript + Bun**.
 
-**Current Phase:** Sprints 1-3 complete (UI quick wins, performance/filters, advanced crawl config) + caninclude replacement + **Sprint 4 (advanced SEO features F0-F8) complete**
-**Status:** Backend compiles, 0 clippy warnings, 53 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth), URL dedup, include/exclude glob patterns, custom headers + configurable timeout, theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view
+**Current Phase:** Sprints 1-3 complete + caninclude replacement + **Sprint 4 (SEO features F0-F8) complete** + **Sprint 5 (performance: page_issues, spawn_blocking, WAL)** + **Sprint 6 (OR filters, radar icon, README, cookies, site Basic Auth) complete** — now building **data sharing between devices (WiFi + Bluetooth + P2P over internet)**
+**Status:** Backend compiles, 0 clippy warnings, 73 tests pass, streaming results, resume capability, frontier, robots.txt, semantic HTML audit with static nesting matrix (no API), virtualized results table, filters (status/severity/depth + OR across categories), URL dedup, include/exclude glob patterns, custom headers + configurable timeout + cookies + site Basic Auth, proxy (URL+auth), theme system, i18n (en/es), Android CI workflow, dashboard overview, crawl comparison, site tree with issue badges, PageSpeed audits, readability scores, duplicate detection (simhash), keyword aggregation, Open Graph/Twitter view, visual style system (Classic/Neumorph/Clay/Glass/Brutalism), XLSX/CSV export with native save dialog + Android SAF + native share sheet, `.ocproj` package export/import (P1 done), WiFi LAN transfer server backend + TransferDialog frontend (P2 backend done)
 
 ---
 
@@ -341,6 +341,78 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 | F9.1 | `cargo check` clean, `cargo test --lib` → 53 passed / 3 ignored, `cargo clippy -- -D warnings` clean, `bun run build` + `bun run check` 0 errors | ✅ |
 | F9.2 | 13 commands registered in `lib.rs` invoke_handler | ✅ |
 
+### Sprint 5: Performance (page_issues + DB off async runtime + WAL) ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| S5.x | `page_issues` normalized table (migration 006), all DB work on `spawn_blocking` via `with_repo`, WAL + `synchronous=NORMAL` + 64MB cache + mmap + `temp_store=MEMORY`, single-round-trip site tree, windowed results, export only errors | ✅ |
+
+### Sprint 6: OR Filters + Icon + Cookies + Site Auth ✅ COMPLETED
+
+| # | Task | Status |
+|---|------|--------|
+| S6.1 | Result filters rewritten with union (OR) semantics across categories: `and_clauses` (missing_title/duplicate_title/noindex/404) + `filter_clauses` (status/severity/domain/depth/issue) joined with OR; `test_filter_combined`, `test_filter_or_across_categories`, `test_filter_or_still_scoped_to_project` — 64 tests pass, clippy clean, svelte-check 0 errors | ✅ |
+| S6.2 | Radar app icon (`src-tauri/icons/icon-source.svg` → `bunx tauri icon`, all platforms incl. Android/iOS) | ✅ |
+| S6.3 | README refresh for current features/architecture | ✅ |
+| S6.4 | **Cookies** in advanced options: `CrawlConfig.cookies: Vec<String>`; `cookie_header_value()` helper (`crawler/mod.rs`); Cookie header in `HttpFetcher`, `RobotsChecker`, `SitemapParser`; engine wires `config.cookies`; `recrawl_page` reuses project cookies; frontend textarea (one cookie/line) in `CrawlControls.svelte`, i18n `config.cookies*` | ✅ |
+| S6.5 | **Site Basic Auth**: `SiteAuth { username, password }` model, `CrawlConfig.site_auth`, `apply_basic_auth()` helper (`crawler/mod.rs`), `Authorization: Basic` on fetcher/robots/sitemap, `recrawl_page` reuses site_auth; frontend "Site username/password" fields, i18n `config.site_*` | ✅ |
+| S6.6 | Committed: `bc19c1f` (OR filters), `3b3d0c8` (icon), `1ac1bf8` (README), `a149bc7` (cookies + Basic Auth) — all pushed to `main` | ✅ |
+
+---
+
+## CURRENT TASK: Data Sharing between devices (WiFi + Bluetooth + P2P) — IN PROGRESS
+
+**Goal:** Export & share the app's data (projects + results + configs) between devices via an **importable `.ocproj` package**, transferable over **WiFi (LAN HTTP server + QR)**, **Bluetooth/Nearby (Android share sheet + receive-as-share-target)** and **P2P over the internet (WebRTC via PeerJS, libp2p fallback) when devices are on different networks**. All device pairs (Android↔Android, Desktop↔Android, Desktop↔Desktop). Receiver MUST be able to import. **Direct share**: choosing WiFi/Bluetooth/P2P exports the package automatically (no separate export step); Export/Import tabs stay as standalone features.
+
+**User decisions locked:**
+- Data = app-data package (importable), NOT just reports.
+- Channels = all of them (WiFi LAN+QR AND Bluetooth/Nearby AND P2P when on different networks).
+- Receiver = must import to continue analysis.
+- Package = `{ importable }`; channels = `{ ambos }` (WiFi LAN+QR y Bluetooth/Nearby); receptor = `{ importar }`; pares = `{ todas las combinaciones }`; conflict modes `skip` (default) + `copy` (+ `overwrite`).
+- P2P plan approved: **Option A = WebRTC DataChannels via PeerJS** (primary, `0.peerjs.com` cloud signaling, no infra, TURN fallback; Android Chromium WebView ✅, macOS WKWebView ✅, Windows WebView2 ✅; Linux WebKitGTK ❌ WebRTC) → **Option B = libp2p in Rust** (fallback Linux/native). Browser receiver `static/receive.html`. QR scan via `jsQR` + camera permission; manual code entry always available as fallback.
+
+### Design
+
+**Package format `.ocproj`** = ZIP (`zip 8.6.0`) with:
+- `manifest.json`: `{ format: 1, app_version, schema_version, exported_at, projects: [{id,name,page_count,size_bytes,has_html,has_screenshots}], sha256, include_credentials }`
+- `open-crawler.db`: clean copy via `VACUUM INTO` (works with WAL). Zip compresses `html_body` (TEXT, first 100KB, gzip+base64) + `screenshot_png` (BLOB gzip) well.
+
+Export options: project subset (default: selected), **lightweight** (exclude html_body+screenshot_png — for Bluetooth), **include credentials** (`cookies`/`site_auth`/`proxy` in config_json + crawl_config columns are SECRETS — scrub by default).
+
+**New backend module `src-tauri/src/transfer/`:**
+- `package.rs` (P1 DONE): `export_package` (VACUUM INTO → prune unselected projects in reverse-FK order → scrub creds / lightweight → zip + manifest sha256), `import_package` (validate format<=1 + sha256 → tempdir → `run_migrations` → copy all 10 tables in FK order with full re-key `HashMap<old_id,new_id>` for project/config/session/page/snapshot in `unchecked_transaction`; `skip` (default) | `copy` | `overwrite` by project name; legacy `default` placeholder skipped; per-project errors → `summary.warnings`; no import cancel in UI).
+- `server.rs` (P2 backend DONE): `start_transfer_server(path) -> TransferInfo {urls, port, token, expires_in_secs, file_name, file_size_bytes}` — bind `0.0.0.0` port 45231 (ephemeral fallback) with `tiny_http`. Routes: `GET /` landing HTML, `GET /dl/<token>/<name>` streams file (validates token, `percent_encode`), `GET /health`. Auto-expiry 15 min (configurable TTL) + `stop_transfer_server()`. LAN IPs via `local-ip-address`. Server stored in `AppState.transfer_server: Mutex<Option<TransferServerState>>` (`{path, token, port, urls, expires_at, stop: Arc<AtomicBool>, _server: Arc<Server>}`). `lib.rs` requires `tauri::Manager` for `app.path()`.
+- `commands.rs` (P2 backend DONE): `export_package`, `import_package` (mobile content:// via `copy_from_content_uri`), `start_transfer_server`, `stop_transfer_server`, `get_active_transfer` (reconstructs urls/port from saved state), `download_transfer` (reqwest `stream` feature, events `transfer-progress`, requires `futures::StreamExt` + `tokio::io::AsyncWriteExt`), `share_package` (mobile-only via `tauri_plugin_share`), `package_target`. All registered in `lib.rs` invoke_handler.
+- `p2p.rs` (P5, plan approved, NOT started): libp2p = `0.56` (features `tcp, noise, yamux, relay, dcutr, mdns, kad, identify, tokio`), `Relay(client)` + `Identify` + `Dcutr` + `Mdns` + `Kademlia` + `StreamProtocol` streaming; rendezvous by relay multiaddr in QR or DHT `hash(code)`; DCUtR hole-punch after relay. Feature-flag in `Cargo.toml` (proposed default-on).
+
+**Deep-link (QR/links):** `ocp2p:<format>:<code>` with format `wr` (WebRTC room) or `lp` (libp2p multiaddr). Emisor = callee, receptor = caller. DataChannel messages: `handshake {file_name,size,sha256}` → binary chunks 16–64 KB with backpressure via `bufferedAmount` → `done`/`error`. Receiver writes to `<appData>/transfers/<name>` then calls `import_package(dest, mode)` (receiver picks conflict mode). Progress via `transfer-progress` event.
+
+**Frontend (P2 written, compiles):** `src/lib/features/transfer/TransferDialog.svelte` (tabs Export / WiFi / Import + QR via npm `qrcode`, expiry countdown, copy URLs, TTL select, conflict-mode select, download-with-progress bar `{stage, processed, total, percent}`), `src/lib/api/transfer.ts` wrappers, `app.svelte.ts` state/actions (`exportPackage` save-dialog `.ocproj` / mobile share; `importPackage`; `startTransferServer`/`stopTransferServer`; `downloadTransfer` + `listen('transfer-progress')`), Share button in `CrawlControls.svelte` (visible when `hasResults`), i18n `transfer.*` keys (334 keys en/es), paraglide compiled. **PENDING**: direct-share (WiFi/Bluetooth/P2P buttons call `exportPackage()` internally).
+
+**Android receiving (share target, Phase P3, NOT started):** add `android.intent.action.SEND` intent-filter (mime `application/octet-stream` + `application/x-opencrawler-package`) to `src-tauri/gen/android/app/src/main/AndroidManifest.xml`; add `tauri-plugin-mobile-sharetarget` dep + capability; frontend polls `popIntentQueue` on launch/`tauri://focus`, copies shared URI to temp via fs-plugin mobile bridge (reuse `copy_to_content_uri` in `export/commands.rs`), prompt import. ⚠️ plugin is text-first — validate file-URI reading; fallback = custom MainActivity or `getSharedFiles`.
+
+**P2P deps (P4/P5):** JS `peerjs@1.5.5`, `jsQR`, `@types/qrcode`; Rust `libp2p = "0.56"`. P4 camera perms: `android.permission.CAMERA` in AndroidManifest, `NSCameraUsageDescription` in macOS Info.plist.
+
+**Explicit non-goals:** real desktop Bluetooth (OBEX) — covered by WiFi; iOS receive (needs Share Extension) — future. Verify `usesCleartextTraffic` (`${usesCleartextTraffic}` in manifest) is true for HTTP LAN on Android.
+
+### Phases
+- **P1 Package+Import** — DONE ✅ (package.rs, commands.rs, 8 tests). Export/Import UI done in P2 frontend.
+- **P2 WiFi** — backend DONE ✅ (server.rs + 1 test `test_transfer_server_serves_file_and_health`, 6 commands registered, import handles `content://`); frontend written & compiles (TransferDialog + QR + download progress). **Remaining**: direct-share wiring (WiFi button exports internally).
+- **P3 Bluetooth/Nearby** — NOT started (share-target receive + manifest intent-filter + Android share).
+- **P4 WebRTC P2P (PeerJS)** — NOT started (PeerJS + jsQR camera scan + `static/receive.html` + deep-link `ocp2p:wr`).
+- **P5 libp2p (Linux/native)** — NOT started (`transfer/p2p.rs` + feature flag + deep-link `ocp2p:lp`).
+- **P6 Polish** — errors, a11y, README section, mime/asset.
+
+### Current state
+- **P1 (Package + Import) — DONE.** `src-tauri/src/transfer/` created: `mod.rs`, `package.rs`, `commands.rs`. Registered in `lib.rs` (`pub mod transfer;` + export/import in invoke_handler).
+  - `package.rs`: `export_package` (VACUUM INTO → scrub secrets → optional lightweight → manifest sha256 → ZIP via `zip` 8.6), `import_package` (validate format+sha256 → extract DB → `run_migrations` → copy all 10 tables with full re-key of project/config/session/page/snapshot ids; `skip`/`copy`/`overwrite` modes by project name; skips legacy `default` placeholder).
+  - `commands.rs`: mirrors `export_target` (desktop path / mobile SAF content:// or share-sheet fallback). `copy_to_content_uri` made `pub(crate)`; `copy_from_content_uri` added for mobile import.
+  - Real bugs fixed while writing tests: `crawl_queue` has NO `status` column; `html_body` is TEXT (gzip+base64) not BLOB; `page_issues.position` is INTEGER; page/session/snapshot ids must be re-keyed for `copy` mode (FK + UNIQUE collisions).
+  - 8 new tests in `package.rs` (round-trip row counts per table, skip/copy/overwrite conflicts, project filter, lightweight, credential scrub, corrupt checksum). `cargo test --lib` → 72 passed.
+- **P2 (WiFi LAN) — backend DONE.** `server.rs` (tiny_http 0.12, bind 0.0.0.0:45231 + ephemeral fallback, TTL 15min, `/`, `/dl/<token>/<name>`, `/health`, `TransferServerState`, `TransferInfo`). Commands `start_transfer_server`/`stop_transfer_server`/`get_active_transfer`/`download_transfer` (with `TransferProgress` + `transfer-progress` event) registered. `import_package` handles `content://` on mobile. `reqwest` + feature `stream`. **Test fixed** (RwLock tokio vs std + Content-Length parsing in `http_get` instead of read_to_string) → **73 tests pass**, clippy `-D warnings` clean.
+- **Frontend (TransferDialog) — written and compiles:** `src/lib/api/transfer.ts` + export; `app.svelte.ts` state/actions; `TransferDialog.svelte` tabs Export/WiFi/Import with QR (`qrcode`), expiry countdown, copy URLs, TTL + conflict-mode selects, download-progress bar; Share button in `CrawlControls.svelte`; i18n `transfer.*` (334 keys en/es), paraglide compiled. `bun run check` = 0 errors, `bun run build` = ok.
+- Prior feature (cookies+BasicAuth) fully merged as `a149bc7`.
+
 ---
 
 ## What's Next
@@ -462,10 +534,11 @@ tools/generate_nesting_table.js   # Regenerates nesting_table.rs from src-tauri/
 AppState
 ├── db: Mutex<Connection>              # SQLite connection
 ├── results_cache: ResultsCacheArc     # LRU results cache (Mutex<LruCache<ResultsCacheKey, ...>>)
-└── crawls: Arc<RwLock<HashMap<String, CrawlState>>>
-    └── CrawlState
-        ├── cancellation: CancellationToken
-        └── progress: CrawlProgress
+├── crawls: Arc<RwLock<HashMap<String, CrawlState>>>
+│   └── CrawlState
+│       ├── cancellation: CancellationToken
+│       └── progress: CrawlProgress
+└── transfer_server: Mutex<Option<TransferServerState>>  # active WiFi LAN server (P2)
 
 CrawlEngine
 ├── frontier: Frontier                  # Domain-rotating priority queue
@@ -502,7 +575,7 @@ Persistent State (DB)
 ```bash
 cargo check:     ✅ Compiles successfully
 cargo clippy:    ✅ No warnings (clippy -- -D warnings)
-cargo test:      ✅ 62/62 tests pass (parser 13, dedup 8, nesting_table 4, frontier 6, robots 3, migrations 2, duplicates 1, page_issues 2, filters 7)
+cargo test:      ✅ 73/73 tests pass (parser, dedup, nesting_table, frontier, robots, migrations, duplicates, page_issues, filters incl. OR semantics, cookies/auth wiring, package round-trips, transfer server)
 bun run build:  ✅ Frontend builds to /build
 bun run check:  ✅ 0 errors / 0 warnings
 ```
@@ -534,8 +607,14 @@ bun run check:  ✅ 0 errors / 0 warnings
 - Duplicate detection uses `simhash::simhash` + `hamming_distance <= 10` (tunable); runs automatically after each crawl via non-blocking `tokio::spawn`
 - Crawl snapshots are dumped transactionally to `crawl_snapshot_data` after each crawl for A/B comparison
 - Content hash is `format!("{:x}", simhash::simhash(text))`; readability is Flesch Reading Ease clamped to 0-100
-- Edits to `messages/en.json`/`es.json` require `bun run build` to regenerate Paraglide (`src/lib/paraglide/`) before `bun run check`
+- Edits to `messages/en.json`/`es.json` require `node_modules/.bin/paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide` (or `bun run build`) to regenerate Paraglide before `bun run check`
+- `HttpFetcher::new(user_agent, timeout_ms, custom_headers, cookies, site_auth, proxy)` — arg order updated (cookies+site_auth added); robots/sitemap follow same pattern
+- `RobotsChecker::new(user_agent, cookies, site_auth, proxy)` / `SitemapParser::new(user_agent, cookies, site_auth, proxy)`
+- Helpers in `crawler/mod.rs`: `cookie_header_value(&[String]) -> Option<String>` (joins with "; "), `apply_basic_auth(RequestBuilder, &Option<SiteAuth>)` (basic_auth if username non-empty)
+- `tauri-plugin-share` already registered (`lib.rs:65`) — mobile-only native share sheet; `share_export` in `export/commands.rs` is no-op on non-mobile
+- DB lives at `~/Library/Application Support/com.opencrawler.app/open-crawler.db`; `crawled_pages` carries `html_body` (first 100KB) + `screenshot_png` BLOB — these make packages large; lightweight mode should drop them
+- App targets: desktop (macOS/Win/Linux) + Android (`gen/` only has android; iOS noted but not built)
 
 ---
 
-*Last updated: Sprint 5 (performance: normalized page_issues table, spawn_blocking DB worker, WAL, crawl engine in-flight atomic) completed — 62 tests, clippy clean, bun run build/check 0 errors*
+*Last updated: data sharing — P1 (.ocproj package + import) done, P2 (WiFi LAN server + TransferDialog frontend) backend done + frontend compiles, test fix → 73 tests, clippy clean. P2P plan approved (WebRTC PeerJS primary + libp2p Linux fallback + browser receiver). Next: P2 direct-share wiring, then P3 Bluetooth, P4 PeerJS, P5 libp2p.*

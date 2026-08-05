@@ -1,6 +1,13 @@
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'svelte-sonner';
 import * as api from '$lib/api';
+import type {
+  ExportPackageInfo,
+  ImportConflictMode,
+  ImportSummary,
+  TransferInfo,
+  TransferProgress,
+} from '$lib/api/transfer';
 import type { Project } from '$lib/api/types';
 import { applyTheme, applyUiStyle } from '$lib/theme.js';
 import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
@@ -88,6 +95,11 @@ export interface AppFields {
   streamedCount: number;
   siteFavicon: string;
   exportProgress: ExportProgress;
+  transferDialogOpen: boolean;
+  transferBusy: boolean;
+  transferProgress: TransferProgress;
+  lastPackage: ExportPackageInfo | null;
+  activeTransfer: TransferInfo | null;
   expandedIssueUrl: string;
   activeTab: TabValue;
   detailPageId: string;
@@ -127,6 +139,11 @@ export interface AppShell extends AppFields {
   openDetail(pageId: string): void;
   onSearchInput(query: string): void;
   exportFull(format: 'xlsx' | 'csv'): Promise<void>;
+  exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean): Promise<ExportPackageInfo | null>;
+  importPackage(filePath: string, mode: ImportConflictMode): Promise<ImportSummary>;
+  startTransferServer(filePath: string, minutes?: number): Promise<TransferInfo | null>;
+  stopTransferServer(): Promise<void>;
+  downloadTransfer(url: string, dest: string): Promise<void>;
 }
 
 export function formatDuration(secs: number): string {
@@ -187,6 +204,11 @@ export function createAppShell(): AppShell {
     streamedCount: 0,
     siteFavicon: '',
     exportProgress: { running: false, percent: 0, stage: '' } as ExportProgress,
+    transferDialogOpen: false,
+    transferBusy: false,
+    transferProgress: { stage: '', processed: 0, total: 0, percent: 0 } as TransferProgress,
+    lastPackage: null as ExportPackageInfo | null,
+    activeTransfer: null as TransferInfo | null,
     expandedIssueUrl: '',
     activeTab: 'results' as TabValue,
     detailPageId: '',
@@ -909,6 +931,116 @@ export function createAppShell(): AppShell {
     }
   }
 
+  // ==================== TRANSFER (package export / import / WiFi) ====================
+
+  async function exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean) {
+    if (!state.selectedProjectId || state.transferBusy) return null;
+    state.transferBusy = true;
+    try {
+      const mobile = await api.crawl.isMobile();
+      const defaultName = `open-crawler-${state.selectedProjectId}.ocproj`;
+
+      let filePath: string;
+      if (mobile) {
+        filePath = defaultName;
+      } else {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const picked = await save({
+          defaultPath: defaultName,
+          filters: [{ name: 'Open Crawler Package', extensions: ['ocproj'] }],
+        });
+        if (!picked) return null;
+        filePath = picked.toLowerCase().endsWith('.ocproj') ? picked : `${picked}.ocproj`;
+      }
+
+      const info = await api.transferApi.exportPackage(
+        [state.selectedProjectId],
+        filePath,
+        lightweight,
+        includeCredentials,
+        shareAfter
+      );
+      state.lastPackage = info;
+      state.transferBusy = false;
+      toast.success(m['transfer.exported']({ name: info.file_name }));
+      return info;
+    } catch (e) {
+      state.transferBusy = false;
+      state.error = String(e);
+      toast.error(String(e));
+      return null;
+    }
+  }
+
+  async function importPackage(filePath: string, mode: ImportConflictMode) {
+    if (state.transferBusy) return { imported: [], skipped: [], warnings: [] } as ImportSummary;
+    state.transferBusy = true;
+    try {
+      const summary = await api.transferApi.importPackage(filePath, mode);
+      await loadProjects();
+      if (summary.imported.length > 0 && !state.selectedProjectId) {
+        selectProject(summary.imported[0].id);
+      }
+      toast.success(
+        m['transfer.imported']({ count: summary.imported.length, skipped: summary.skipped.length })
+      );
+      for (const w of summary.warnings) toast.warning(w);
+      return summary;
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+      return { imported: [], skipped: [], warnings: [] } as ImportSummary;
+    } finally {
+      state.transferBusy = false;
+    }
+  }
+
+  async function startTransferServer(filePath: string, minutes?: number) {
+    if (state.transferBusy) return null;
+    state.transferBusy = true;
+    try {
+      const info = await api.transferApi.startTransferServer(filePath, minutes);
+      state.activeTransfer = info;
+      return info;
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+      return null;
+    } finally {
+      state.transferBusy = false;
+    }
+  }
+
+  async function stopTransferServer() {
+    try {
+      await api.transferApi.stopTransferServer();
+      state.activeTransfer = null;
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+    }
+  }
+
+  async function downloadTransfer(url: string, dest: string) {
+    if (state.transferBusy) return;
+    state.transferBusy = true;
+    state.transferProgress = { stage: 'download', processed: 0, total: 0, percent: 0 };
+    const unlisten = await listen<TransferProgress>('transfer-progress', (event) => {
+      state.transferProgress = {
+        stage: event.payload.stage,
+        processed: event.payload.processed,
+        total: event.payload.total,
+        percent: Math.min(event.payload.percent, 100),
+      };
+    });
+    try {
+      await api.transferApi.downloadTransfer(url, dest);
+    } finally {
+      unlisten();
+      state.transferBusy = false;
+    }
+  }
+
   // ==================== SELECTORS ====================
 
   function getSelectedProject() {
@@ -937,6 +1069,11 @@ export function createAppShell(): AppShell {
   state.openDetail = openDetail;
   state.onSearchInput = onSearchInput;
   state.exportFull = exportFull;
+  state.exportPackage = exportPackage;
+  state.importPackage = importPackage;
+  state.startTransferServer = startTransferServer;
+  state.stopTransferServer = stopTransferServer;
+  state.downloadTransfer = downloadTransfer;
 
   return state;
 }

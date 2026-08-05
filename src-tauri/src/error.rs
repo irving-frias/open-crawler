@@ -34,6 +34,9 @@ pub enum AppError {
 
     #[error("PageSpeed API error: {0}")]
     Pagespeed(String),
+
+    #[error("Archive error: {0}")]
+    Archive(#[from] zip::result::ZipError),
 }
 
 impl Serialize for AppError {

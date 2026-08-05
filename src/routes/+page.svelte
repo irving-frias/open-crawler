@@ -9,6 +9,7 @@
   import ResumeDialog from '$lib/features/crawl-controls/ResumeDialog.svelte';
   import ResultsView from '$lib/features/results/ResultsView.svelte';
   import ExportProgressBar from '$lib/features/export/ExportProgressBar.svelte';
+  import TransferDialog from '$lib/features/transfer/TransferDialog.svelte';
   import Splash from '$lib/features/splash/Splash.svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -177,6 +178,7 @@
         onStop={app.stopCrawl}
         onRefresh={() => app.loadResults(app.currentPage)}
         onExport={app.exportFull}
+        onTransfer={() => (app.transferDialogOpen = true)}
       />
 
       {#if app.status === 'running'}
@@ -224,6 +226,8 @@
 {/if}
 
 <ExportProgressBar exportProgress={app.exportProgress} />
+
+<TransferDialog bind:open={app.transferDialogOpen} />
 
 <DeleteProjectDialog
   bind:open={app.deleteDialogOpen}

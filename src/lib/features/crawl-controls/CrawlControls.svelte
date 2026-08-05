@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { RefreshCw, Download, ChevronDown, FileSpreadsheet, FileText } from 'lucide-svelte';
+  import { RefreshCw, Download, ChevronDown, FileSpreadsheet, FileText, Send } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -29,6 +29,7 @@
     onStop,
     onRefresh,
     onExport,
+    onTransfer,
   }: {
     status: CrawlStatus;
     resumableInfo: ResumableInfo | null;
@@ -50,6 +51,7 @@
     onStop: () => void;
     onRefresh: () => void;
     onExport: (format: 'xlsx' | 'csv') => void;
+    onTransfer: () => void;
   } = $props();
 
   let seedError = $state(false);
@@ -216,6 +218,12 @@
       <RefreshCw class="size-4" />
       {m['config.refresh']()}
     </Button>
+    {#if hasResults}
+      <Button variant="outline" class="gap-1.5" onclick={onTransfer}>
+        <Send class="size-4" />
+        {m['transfer.open']()}
+      </Button>
+    {/if}
     {#if hasResults}
       <Popover.Root>
         <Popover.Trigger>
