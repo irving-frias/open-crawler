@@ -1,4 +1,5 @@
-import Peer, { DataConnection } from 'peerjs';
+import Peer from 'peerjs';
+import type { DataConnection } from 'peerjs';
 import jsQR from 'jsqr';
 import { open, readFile } from '@tauri-apps/plugin-fs';
 

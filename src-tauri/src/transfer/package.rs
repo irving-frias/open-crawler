@@ -1231,7 +1231,7 @@ mod tests {
         assert_eq!(manifest.format, PACKAGE_FORMAT);
         assert_eq!(manifest.projects.len(), 1);
         assert_eq!(manifest.projects[0].page_count, 2);
-        assert_eq!(manifest.projects[0].has_html, true);
+        assert!(manifest.projects[0].has_html);
         drop(mf);
 
         let mut db = zip.by_name(DB_ENTRY).unwrap();
@@ -1450,8 +1450,7 @@ mod tests {
             .unwrap();
         let dest_repo = CrawlRepo::new(&dest_conn, None);
         let err = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip)
-            .err()
-            .expect("import must fail");
+            .expect_err("import must fail");
         assert!(err.to_string().contains("checksum") || err.to_string().contains("archive"));
         let project_count: i64 = dest_conn
             .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))

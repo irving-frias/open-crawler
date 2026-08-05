@@ -252,7 +252,7 @@ fn handle_request(
         "/" => {
             let ttl_minutes = expires_at
                 .duration_since(SystemTime::now())
-                .map(|d| (d.as_secs() + 59) / 60)
+                .map(|d| d.as_secs().div_ceil(60))
                 .unwrap_or(1);
             respond_landing(request, &path, &token, ttl_minutes);
         }

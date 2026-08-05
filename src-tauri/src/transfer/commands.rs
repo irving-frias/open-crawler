@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tracing::warn;
-#[cfg(any(mobile, test))]
+#[cfg(mobile)]
 use uuid::Uuid;
 
 use crate::error::AppError;
