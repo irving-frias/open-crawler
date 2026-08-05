@@ -40,7 +40,6 @@ pub trait ObexStream: Send {
 }
 
 /// Opens an RFCOMM connection to `addr` (e.g. `"AA:BB:CC:DD:EE:FF"`).
-#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn connect(addr: &str, channel: u8) -> Result<Box<dyn ObexStream>, AppError> {
     #[cfg(target_os = "linux")]
     {
@@ -50,6 +49,13 @@ fn connect(addr: &str, channel: u8) -> Result<Box<dyn ObexStream>, AppError> {
     {
         let _ = channel;
         Ok(Box::new(windows::connect(addr)?))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = (addr, channel);
+        Err(AppError::Crawl(
+            "Bluetooth OBEX is not supported on this platform".to_string(),
+        ))
     }
 }
 
