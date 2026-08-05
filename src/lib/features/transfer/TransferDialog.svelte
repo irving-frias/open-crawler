@@ -1,5 +1,5 @@
 <script lang="ts">
-  import QRCode from 'qrcode';
+  import { toDataURL } from 'qrcode';
   import { m } from '$lib/paraglide/messages.js';
   import { getAppShell } from '$lib/app.svelte';
   import * as api from '$lib/api';
@@ -162,7 +162,7 @@
       expiresTotal = t.expires_in_secs;
     }
     if (t && t.urls.length > 0) {
-      QRCode.toDataURL(t.urls[0], { width: 280, margin: 2, errorCorrectionLevel: 'M' })
+      toDataURL(t.urls[0], { width: 280, margin: 2, errorCorrectionLevel: 'M' })
         .then((d) => (qrDataUrl = d))
         .catch(() => (qrDataUrl = ''));
     } else {
@@ -181,7 +181,7 @@
       p2pQrDataUrl = '';
       return;
     }
-    QRCode.toDataURL(`ocp2p:${app.p2pPeerId}`, { width: 280, margin: 2, errorCorrectionLevel: 'M' })
+    toDataURL(`ocp2p:${app.p2pPeerId}`, { width: 280, margin: 2, errorCorrectionLevel: 'M' })
       .then((d) => (p2pQrDataUrl = d))
       .catch(() => (p2pQrDataUrl = ''));
   });
