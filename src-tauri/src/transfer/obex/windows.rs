@@ -9,11 +9,12 @@
 use std::time::{Duration, Instant};
 
 use windows::Devices::Bluetooth::BluetoothDevice;
-use windows::Devices::Bluetooth::Rfcomm::BluetoothRfcommServiceId;
+use windows::Devices::Bluetooth::Rfcomm::RfcommServiceId;
 use windows::Foundation::{AsyncStatus, IAsyncOperation};
 use windows::Networking::Sockets::StreamSocket;
 use windows::Storage::Streams::{DataReader, DataWriter, IInputStream, IOutputStream};
 use windows::Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED};
+use windows::core::Interface;
 
 use crate::error::AppError;
 
@@ -45,7 +46,7 @@ pub fn connect(addr: &str) -> Result<WindowsRfcomm, AppError> {
         Duration::from_secs(20),
     )?;
 
-    let service_id = BluetoothRfcommServiceId::ObexObjectPush().map_err(win_err)?;
+    let service_id = RfcommServiceId::FromShortId(0x1105).map_err(win_err)?;
     let services_result = await_op(
         &device.GetRfcommServicesForIdAsync(&service_id).map_err(win_err)?,
         Duration::from_secs(20),
@@ -70,8 +71,8 @@ pub fn connect(addr: &str) -> Result<WindowsRfcomm, AppError> {
 
     let output: IOutputStream = socket.OutputStream().map_err(win_err)?;
     let input: IInputStream = socket.InputStream().map_err(win_err)?;
-    let writer = DataWriter::new(&output).map_err(win_err)?;
-    let reader = DataReader::new(&input).map_err(win_err)?;
+    let writer = DataWriter::CreateDataWriter(&output).map_err(win_err)?;
+    let reader = DataReader::CreateDataReader(&input).map_err(win_err)?;
 
     Ok(WindowsRfcomm {
         reader,
@@ -83,17 +84,26 @@ pub fn connect(addr: &str) -> Result<WindowsRfcomm, AppError> {
 impl ObexStream for WindowsRfcomm {
     fn write_all(&mut self, data: &[u8]) -> Result<(), AppError> {
         self.writer.WriteBytes(data).map_err(win_err)?;
-        await_op(&self.writer.StoreAsync().map_err(win_err)?, Duration::from_secs(30))?;
+        let store: IAsyncOperation<u32> = self
+            .writer
+            .StoreAsync()
+            .map_err(win_err)?
+            .cast()
+            .map_err(win_err)?;
+        await_op(&store, Duration::from_secs(30))?;
         Ok(())
     }
 
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), AppError> {
         let mut offset = 0usize;
         while offset < buf.len() {
-            let loaded = await_op(
-                &self.reader.LoadAsync((buf.len() - offset) as u32).map_err(win_err)?,
-                Duration::from_secs(60),
-            )? as usize;
+            let load: IAsyncOperation<u32> = self
+                .reader
+                .LoadAsync((buf.len() - offset) as u32)
+                .map_err(win_err)?
+                .cast()
+                .map_err(win_err)?;
+            let loaded = await_op(&load, Duration::from_secs(60))? as usize;
             if loaded == 0 {
                 return Err(AppError::Crawl("RFCOMM connection closed".into()));
             }
@@ -142,7 +152,10 @@ fn await_action(op: &windows::Foundation::IAsyncAction, timeout: Duration) -> Re
 fn await_op<T>(
     op: &IAsyncOperation<T>,
     timeout: Duration,
-) -> Result<T, AppError> {
+) -> Result<T, AppError>
+where
+    T: windows::core::RuntimeType,
+{
     let deadline = Instant::now() + timeout;
     loop {
         let status = op.Status().map_err(win_err)?;
