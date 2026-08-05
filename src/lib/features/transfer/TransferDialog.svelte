@@ -97,8 +97,7 @@
   }
 
   async function handleStartWifi() {
-    if (!app.lastPackage) return;
-    await app.startTransferServer(app.lastPackage.path, parseInt(minutes, 10));
+    await app.exportAndStartWifi(includeCredentials, lightweight, parseInt(minutes, 10));
   }
 
   async function handlePickImport() {
@@ -155,6 +154,32 @@
       <Dialog.Description>{m['transfer.subtitle']()}</Dialog.Description>
     </Dialog.Header>
 
+    <div class="mb-4 flex flex-col gap-3 rounded-lg border p-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium">{app.getSelectedProject()?.name ?? ''}</p>
+          <p class="text-xs text-muted-foreground">{m['transfer.export.selected_project']()}</p>
+        </div>
+        <Checkbox
+          checked={includeCredentials}
+          onCheckedChange={(c) => (includeCredentials = c === true)}
+          aria-label={m['transfer.export.include_credentials']()}
+        />
+      </div>
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium">{m['transfer.export.lightweight']()}</p>
+          <p class="text-xs text-muted-foreground">{m['transfer.export.lightweight_hint']()}</p>
+        </div>
+        <Checkbox
+          checked={lightweight}
+          onCheckedChange={(c) => (lightweight = c === true)}
+          aria-label={m['transfer.export.lightweight']()}
+        />
+      </div>
+      <p class="text-xs text-muted-foreground">{m['transfer.export.credentials_hint']()}</p>
+    </div>
+
     <Tabs.Root value={transfer ? 'wifi' : 'export'} class="mb-4">
       <Tabs.List class="w-full">
         <Tabs.Trigger value="export">
@@ -173,33 +198,7 @@
 
       <!-- ==================== EXPORT ==================== -->
       <Tabs.Content value="export" class="space-y-4">
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p class="text-sm font-medium">{app.getSelectedProject()?.name ?? ''}</p>
-              <p class="text-xs text-muted-foreground">{m['transfer.export.selected_project']()}</p>
-            </div>
-            <Checkbox
-              checked={includeCredentials}
-              onCheckedChange={(c) => (includeCredentials = c === true)}
-              aria-label={m['transfer.export.include_credentials']()}
-            />
-          </div>
-          <div class="flex items-center justify-between rounded-lg border p-3">
-            <div>
-              <p class="text-sm font-medium">{m['transfer.export.lightweight']()}</p>
-              <p class="text-xs text-muted-foreground">{m['transfer.export.lightweight_hint']()}</p>
-            </div>
-            <Checkbox
-              checked={lightweight}
-              onCheckedChange={(c) => (lightweight = c === true)}
-              aria-label={m['transfer.export.lightweight']()}
-            />
-          </div>
-        </div>
-
         <div class="flex flex-col gap-2">
-          <p class="text-xs text-muted-foreground">{m['transfer.export.credentials_hint']()}</p>
           <Button onclick={() => handleExport(false)} disabled={app.transferBusy}>
             {#if app.transferBusy}
               <Loader2 class="size-4 animate-spin" />
@@ -271,36 +270,27 @@
             </Button>
           </div>
         {:else}
-          {#if app.lastPackage}
-            <div class="rounded-lg border p-3 text-sm">
-              <p class="font-medium break-all">{app.lastPackage.file_name}</p>
-              <p class="text-xs text-muted-foreground">{formatBytes(app.lastPackage.size_bytes)}</p>
-            </div>
-            <div class="grid gap-1.5">
-              <Label for="minutes">{m['transfer.wifi.ttl']()}</Label>
-              <Select.Root type="single" bind:value={minutes}>
-                <Select.Trigger id="minutes" class="w-full">
-                  <span data-slot="select-value">{minutesLabel}</span>
-                </Select.Trigger>
-                <Select.Content>
-                  {#each minutesOptions as opt}
-                    <Select.Item value={opt.value} label={opt.label} />
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-            </div>
-            <Button class="w-full" onclick={handleStartWifi} disabled={app.transferBusy}>
-              {#if app.transferBusy}
-                <Loader2 class="size-4 animate-spin" />
-              {/if}
-              <QrCode class="size-4" />
-              {m['transfer.wifi.start']()}
-            </Button>
-          {:else}
-            <div class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {m['transfer.wifi.no_package']()}
-            </div>
-          {/if}
+          <div class="grid gap-1.5">
+            <Label for="minutes">{m['transfer.wifi.ttl']()}</Label>
+            <Select.Root type="single" bind:value={minutes}>
+              <Select.Trigger id="minutes" class="w-full">
+                <span data-slot="select-value">{minutesLabel}</span>
+              </Select.Trigger>
+              <Select.Content>
+                {#each minutesOptions as opt}
+                  <Select.Item value={opt.value} label={opt.label} />
+                {/each}
+              </Select.Content>
+            </Select.Root>
+          </div>
+          <p class="text-xs text-muted-foreground">{m['transfer.wifi.export_first']()}</p>
+          <Button class="w-full" onclick={handleStartWifi} disabled={app.transferBusy}>
+            {#if app.transferBusy}
+              <Loader2 class="size-4 animate-spin" />
+            {/if}
+            <QrCode class="size-4" />
+            {m['transfer.wifi.start']()}
+          </Button>
         {/if}
       </Tabs.Content>
 

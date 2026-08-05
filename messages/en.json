@@ -321,6 +321,7 @@
   "transfer.wifi.ttl": "Share link expires after",
   "transfer.wifi.start": "Start WiFi sharing",
   "transfer.wifi.no_package": "Export a package first to share it over WiFi.",
+  "transfer.wifi.export_first": "Starting will export the selected project as a package and begin sharing automatically.",
   "transfer.import.mode": "When a project name conflicts",
   "transfer.import.mode_hint": "Skip keeps existing data, copy duplicates it, overwrite replaces it.",
   "transfer.import.skip": "Skip",

@@ -140,6 +140,7 @@ export interface AppShell extends AppFields {
   onSearchInput(query: string): void;
   exportFull(format: 'xlsx' | 'csv'): Promise<void>;
   exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean): Promise<ExportPackageInfo | null>;
+  exportAndStartWifi(includeCredentials: boolean, lightweight: boolean, minutes?: number): Promise<void>;
   importPackage(filePath: string, mode: ImportConflictMode): Promise<ImportSummary>;
   startTransferServer(filePath: string, minutes?: number): Promise<TransferInfo | null>;
   stopTransferServer(): Promise<void>;
@@ -260,6 +261,13 @@ export function createAppShell(): AppShell {
   if (typeof persisted.checkSitemap === 'boolean') state.checkSitemap = persisted.checkSitemap;
   if (typeof persisted.checkSemantics === 'boolean') state.checkSemantics = persisted.checkSemantics;
   if (persisted.activeTab) state.activeTab = persisted.activeTab as TabValue;
+  if (persisted.lastPackage && typeof persisted.lastPackage === 'object') {
+    state.lastPackage = persisted.lastPackage as ExportPackageInfo;
+  }
+  const persistedActiveTransfer =
+    persisted.activeTransfer && typeof persisted.activeTransfer === 'object'
+      ? (persisted.activeTransfer as TransferInfo)
+      : null;
 
   $effect(() => {
     const snapshot = {
@@ -274,6 +282,8 @@ export function createAppShell(): AppShell {
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
       activeTab: state.activeTab,
+      lastPackage: state.lastPackage,
+      activeTransfer: state.activeTransfer,
     };
     try {
       localStorage.setItem(PERSIST_KEY, JSON.stringify(snapshot));
@@ -289,6 +299,7 @@ export function createAppShell(): AppShell {
   let resultsRequestSeq = 0;
   let streamRefreshing = false;
   let streamRefreshQueued = false;
+  let transferRestored = false;
   const unlistenFns: (() => void)[] = [];
   let disposed = false;
 
@@ -430,6 +441,10 @@ export function createAppShell(): AppShell {
       console.error('[Projects] Failed to load:', e);
     } finally {
       state.initialized = true;
+      if (!transferRestored) {
+        transferRestored = true;
+        restoreTransferServer();
+      }
     }
   }
 
@@ -937,8 +952,9 @@ export function createAppShell(): AppShell {
     if (!state.selectedProjectId || state.transferBusy) return null;
     state.transferBusy = true;
     try {
+      const projectId = state.selectedProjectId;
       const mobile = await api.crawl.isMobile();
-      const defaultName = `open-crawler-${state.selectedProjectId}.ocproj`;
+      const defaultName = `open-crawler-${projectId}.ocproj`;
 
       let filePath: string;
       if (mobile) {
@@ -954,21 +970,50 @@ export function createAppShell(): AppShell {
       }
 
       const info = await api.transferApi.exportPackage(
-        [state.selectedProjectId],
+        [projectId],
         filePath,
         lightweight,
         includeCredentials,
-        shareAfter
+        shareAfter,
+        false
       );
       state.lastPackage = info;
-      state.transferBusy = false;
       toast.success(m['transfer.exported']({ name: info.file_name }));
       return info;
     } catch (e) {
-      state.transferBusy = false;
       state.error = String(e);
       toast.error(String(e));
       return null;
+    } finally {
+      state.transferBusy = false;
+    }
+  }
+
+  // Direct share: export to a managed transfers dir (no save dialog / share
+  // sheet) and immediately start the LAN WiFi server so it can be scanned.
+  async function exportAndStartWifi(includeCredentials: boolean, lightweight: boolean, minutes?: number) {
+    if (!state.selectedProjectId || state.transferBusy) return;
+    state.transferBusy = true;
+    try {
+      const projectId = state.selectedProjectId;
+      const name = `open-crawler-${projectId}.ocproj`;
+      const info = await api.transferApi.exportPackage(
+        [projectId],
+        name,
+        lightweight,
+        includeCredentials,
+        false,
+        true
+      );
+      state.lastPackage = info;
+      const transfer = await api.transferApi.startTransferServer(info.path, minutes ?? 15);
+      state.activeTransfer = transfer;
+      toast.success(m['transfer.exported']({ name: info.file_name }));
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+    } finally {
+      state.transferBusy = false;
     }
   }
 
@@ -1021,6 +1066,19 @@ export function createAppShell(): AppShell {
     }
   }
 
+  // Re-open the WiFi server that was active when the app closed, so a transfer
+  // still works after a restart (no need to export again).
+  async function restoreTransferServer() {
+    if (!state.lastPackage || !persistedActiveTransfer) return;
+    try {
+      const minutes = Math.max(1, Math.round(persistedActiveTransfer.expires_in_secs / 60));
+      const info = await api.transferApi.startTransferServer(state.lastPackage.path, minutes);
+      state.activeTransfer = info;
+    } catch (e) {
+      console.warn('[Transfer] Could not restore active WiFi server:', e);
+    }
+  }
+
   async function downloadTransfer(url: string, dest: string) {
     if (state.transferBusy) return;
     state.transferBusy = true;
@@ -1070,6 +1128,7 @@ export function createAppShell(): AppShell {
   state.onSearchInput = onSearchInput;
   state.exportFull = exportFull;
   state.exportPackage = exportPackage;
+  state.exportAndStartWifi = exportAndStartWifi;
   state.importPackage = importPackage;
   state.startTransferServer = startTransferServer;
   state.stopTransferServer = stopTransferServer;

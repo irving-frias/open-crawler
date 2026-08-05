@@ -44,7 +44,8 @@ export function exportPackage(
   filePath: string,
   lightweight?: boolean,
   includeCredentials?: boolean,
-  shareAfter?: boolean
+  shareAfter?: boolean,
+  silent?: boolean
 ): Promise<ExportPackageInfo> {
   return invoke<ExportPackageInfo>('export_package', {
     projectIds,
@@ -52,6 +53,7 @@ export function exportPackage(
     lightweight,
     includeCredentials,
     shareAfter,
+    silent,
   });
 }
 

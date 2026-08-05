@@ -47,6 +47,7 @@ fn package_target(app: &AppHandle, file_path: &str) -> Result<(String, bool), Ap
     Ok((dir.join(&file_name).to_string_lossy().into_owned(), true))
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_package(
     app: AppHandle,
@@ -56,12 +57,33 @@ pub async fn export_package(
     lightweight: Option<bool>,
     include_credentials: Option<bool>,
     share_after: Option<bool>,
+    silent: Option<bool>,
 ) -> Result<ExportPackageInfo, AppError> {
     let lightweight = lightweight.unwrap_or(false);
     let include_credentials = include_credentials.unwrap_or(false);
     let share_after = share_after.unwrap_or(false);
+    let silent = silent.unwrap_or(false);
 
-    let (write_path, will_share) = package_target(&app, &file_path)?;
+    // Silent mode writes into a managed transfers dir (no save dialog on
+    // desktop, no share sheet on mobile) — used by the direct-share flow
+    // (WiFi/Bluetooth/P2P) where export happens automatically as step 1.
+    let (write_path, will_share) = if silent {
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| AppError::Crawl(e.to_string()))?
+            .join("transfers");
+        std::fs::create_dir_all(&dir)?;
+        let file_name = Path::new(&file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "open-crawler.ocproj".to_string());
+        (dir.join(&file_name).to_string_lossy().into_owned(), false)
+    } else {
+        package_target(&app, &file_path)?
+    };
 
     let content_uri = if cfg!(mobile) && write_path.starts_with("content://") {
         Some(write_path.clone())
@@ -104,7 +126,7 @@ pub async fn export_package(
         let _ = std::fs::remove_file(&tmp);
     }
 
-    if will_share || share_after {
+    if !silent && (will_share || share_after) {
         share_package(&app, &write_path);
     }
 

@@ -321,6 +321,7 @@
   "transfer.wifi.ttl": "El enlace caduca a los",
   "transfer.wifi.start": "Iniciar compartición WiFi",
   "transfer.wifi.no_package": "Exporta primero un paquete para compartirlo por WiFi.",
+  "transfer.wifi.export_first": "Al iniciar se exportará el proyecto seleccionado como paquete y se empezará a compartir automáticamente.",
   "transfer.import.mode": "Si el nombre de un proyecto coincide",
   "transfer.import.mode_hint": "Omitir conserva los datos existentes, copiar los duplica y sobrescribir los reemplaza.",
   "transfer.import.skip": "Omitir",
