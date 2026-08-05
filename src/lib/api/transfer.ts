@@ -76,3 +76,11 @@ export function getActiveTransfer(): Promise<TransferInfo | null> {
 export function downloadTransfer(url: string, dest: string): Promise<void> {
   return invoke<void>('download_transfer', { url, dest });
 }
+
+export function importSharedIntent(mode: ImportConflictMode): Promise<ImportSummary | null> {
+  return invoke<ImportSummary | null>('import_shared_intent', { mode });
+}
+
+export function openShareSheet(filePath: string): Promise<void> {
+  return invoke<void>('open_share_sheet', { filePath });
+}

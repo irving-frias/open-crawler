@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -368,12 +368,12 @@ fn import_package_inner(
         ));
     }
 
-    let mut src = Connection::open(&db_path)?;
+    let src = Connection::open(&db_path)?;
     // Bring older snapshots up to the current schema before copying.
     crate::db::schema::run_migrations(&src)?;
 
     let mut summary = ImportSummary::default();
-    copy_projects(&mut src, repo, &mut summary, mode)?;
+    copy_projects(&src, repo, &mut summary, mode)?;
 
     drop(src);
     let _ = fs::remove_dir_all(&dir);
@@ -432,13 +432,24 @@ struct SrcProject {
 /// Copies every project in `src` into the live database, re-keying all ids so
 /// no collision with existing data is possible. Conflict handling is by project
 /// *name*: `Skip` leaves it out, `Copy` duplicates it, `Overwrite` replaces it.
+///
+/// Copying is global (one pass over all source rows) rather than per-project.
+/// Real databases contain cross-project references — pages and links whose
+/// `config_id` points at the legacy `default` config that belongs to a
+/// different project — which a per-project re-keying would orphan and then
+/// fail with `FOREIGN KEY constraint failed`. Global maps let every reference
+/// resolve to the freshly re-keyed parent row. A config whose owning project is
+/// skipped is re-homed to the first imported project that references it;
+/// orphaned queue / snapshot-data rows are dropped.
 fn copy_projects(
-    src: &mut Connection,
+    src: &Connection,
     repo: &CrawlRepo,
     summary: &mut ImportSummary,
     mode: ImportMode,
 ) -> Result<(), AppError> {
-    let list: Vec<SrcProject> = src
+    let dest = repo.connection();
+
+    let projects: Vec<SrcProject> = src
         .prepare(
             "SELECT p.id, p.name, p.created_at, p.updated_at,
                     (SELECT COUNT(*) FROM crawled_pages c WHERE c.project_id = p.id)
@@ -456,42 +467,88 @@ fn copy_projects(
         .filter_map(|r| r.ok())
         .collect();
 
-    for project in list {
+    if projects.is_empty() {
+        return Ok(());
+    }
+
+    let tx = dest.unchecked_transaction()?;
+
+    // Re-key every source project, applying the conflict mode by name. Skipped
+    // projects never reach `imported`, so none of their own rows are copied,
+    // but they still get an entry in `project_map` so re-homed references from
+    // imported projects can resolve to a valid parent row.
+    let mut project_map: HashMap<String, String> = HashMap::new();
+    let mut imported: HashSet<String> = HashSet::new();
+    for project in &projects {
+        let new_id = Uuid::new_v4().to_string();
+        project_map.insert(project.id.clone(), new_id.clone());
+
         // The legacy 'default' placeholder is empty and meaningless to share.
+        // It is still registered in `project_map` so re-homed references from
+        // imported projects can resolve, but it is never copied itself.
         if project.id == "default" {
             continue;
         }
 
-        let existing = name_exists(repo.connection(), &project.name)?;
-        if existing && mode == ImportMode::Skip {
-            summary.skipped.push(ImportEntry {
-                id: project.id.clone(),
-                name: project.name.clone(),
-                page_count: project.page_count,
-            });
-            continue;
-        }
-
-        if existing && mode == ImportMode::Overwrite {
-            let target_id = find_project_id_by_name(repo.connection(), &project.name)?;
-            if let Some(tid) = target_id {
-                repo.delete_project(&tid)?;
+        if name_exists(dest, &project.name)? {
+            match mode {
+                ImportMode::Skip => {
+                    summary.skipped.push(ImportEntry {
+                        id: project.id.clone(),
+                        name: project.name.clone(),
+                        page_count: project.page_count,
+                    });
+                    continue;
+                }
+                ImportMode::Overwrite => {
+                    if let Some(tid) = find_project_id_by_name(dest, &project.name)? {
+                        delete_project_rows(&tx, &tid)?;
+                    }
+                }
+                ImportMode::Copy => {}
             }
         }
 
-        let new_id = Uuid::new_v4().to_string();
-        match copy_project(src, repo.connection(), &project, &new_id) {
-            Ok(()) => summary.imported.push(ImportEntry {
-                id: new_id,
-                name: project.name.clone(),
-                page_count: project.page_count,
-            }),
-            Err(e) => {
-                summary.warnings.push(format!("{}: {e}", project.name));
-                warn!("Failed to import project {}: {}", project.name, e);
+        imported.insert(project.id.clone());
+        tx.execute(
+            "INSERT INTO projects (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                new_id,
+                project.name,
+                project.created_at,
+                project.updated_at
+            ],
+        )?;
+    }
+
+    if imported.is_empty() {
+        tx.commit()?;
+        return Ok(());
+    }
+
+    let config_map = copy_configs(src, &tx, &project_map, &imported)?;
+    let session_map = copy_sessions(src, &tx, &project_map, &imported)?;
+    let page_map = copy_pages(src, &tx, &project_map, &imported, &config_map)?;
+    copy_page_links(src, &tx, &project_map, &imported, &config_map)?;
+    copy_errors(src, &tx, &project_map, &imported, &config_map)?;
+    copy_page_issues(src, &tx, &project_map, &imported, &page_map)?;
+    copy_snapshots(src, &tx, &project_map, &imported, &page_map, &config_map)?;
+    copy_queue(src, &tx, &imported, &session_map)?;
+
+    tx.commit()?;
+
+    for project in projects {
+        if imported.contains(&project.id) {
+            if let Some(new_id) = project_map.get(&project.id) {
+                summary.imported.push(ImportEntry {
+                    id: new_id.clone(),
+                    name: project.name.clone(),
+                    page_count: project.page_count,
+                });
             }
         }
     }
+
     Ok(())
 }
 
@@ -515,82 +572,104 @@ fn find_project_id_by_name(conn: &Connection, name: &str) -> Result<Option<Strin
     Ok(None)
 }
 
-/// Copies a single project and all its related rows into `dest`, re-keying
-/// project/config/session/snapshot ids. Page ids are preserved (uuid4, and the
-/// unique (project_id, url) index is scoped to the fresh project id).
-fn copy_project(
+/// Builds an `IN (?, ?, ...)` placeholder list of the given length.
+fn in_placeholders(count: usize) -> String {
+    vec!["?"; count].join(",")
+}
+
+/// Re-keys every `crawl_config` row globally. A config whose owning project is
+/// skipped is re-homed to the first imported project that references it (via
+/// pages, links or errors); a config referenced by nothing imported is dropped.
+fn copy_configs(
     src: &Connection,
-    dest: &Connection,
-    project: &SrcProject,
-    new_project_id: &str,
-) -> Result<(), AppError> {
-    let tx = dest.unchecked_transaction()?;
-
-    tx.execute(
-        "INSERT INTO projects (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-        params![
-            new_project_id,
-            project.name,
-            project.created_at,
-            project.updated_at
-        ],
-    )?;
-
-    let mut config_map: HashMap<String, String> = HashMap::new();
+    tx: &rusqlite::Transaction<'_>,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
+) -> Result<HashMap<String, String>, AppError> {
+    let mut references: HashMap<String, Vec<Option<String>>> = HashMap::new();
     {
         let mut stmt = src.prepare(
-            "SELECT id, project_id, seed_urls, max_pages, max_depth, user_agent,
-                    respect_robots, created_at
-             FROM crawl_config WHERE project_id = ?1",
+            "SELECT DISTINCT config_id, project_id FROM crawled_pages
+             UNION
+             SELECT DISTINCT config_id, project_id FROM page_links
+             UNION
+             SELECT DISTINCT config_id, project_id FROM crawl_errors",
         )?;
-        let mut rows = stmt.query(params![project.id])?;
-        let mut insert = tx.prepare(
-            "INSERT INTO crawl_config
-                (id, project_id, seed_urls, max_pages, max_depth, user_agent,
-                 respect_robots, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )?;
-        while let Some(row) = rows.next()? {
-            let old_id: String = row.get(0)?;
-            let new_id = Uuid::new_v4().to_string();
-            insert.execute(params![
-                new_id,
-                new_project_id,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, i64>(6)?,
-                row.get::<_, String>(7)?,
-            ])?;
-            config_map.insert(old_id, new_id);
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+            ))
+        })?;
+        for row in rows {
+            let (config_id, project_id) = row?;
+            references.entry(config_id).or_default().push(project_id);
         }
     }
 
-    let session_map = copy_sessions(src, &tx, &project.id, new_project_id)?;
-    let page_map = copy_pages(src, &tx, &project.id, new_project_id, &config_map)?;
-    copy_page_links(src, &tx, &project.id, &config_map)?;
-    copy_errors(src, &tx, &project.id, &config_map)?;
-    copy_page_issues(src, &tx, &project.id, &page_map)?;
-    copy_snapshots(src, &tx, &project.id, new_project_id, &page_map)?;
-    copy_queue(src, &tx, &project.id, &session_map)?;
+    let mut stmt = src.prepare(
+        "SELECT id, project_id, seed_urls, max_pages, max_depth, user_agent,
+                respect_robots, created_at
+         FROM crawl_config",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut insert = tx.prepare(
+        "INSERT INTO crawl_config
+            (id, project_id, seed_urls, max_pages, max_depth, user_agent,
+             respect_robots, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    )?;
+    let mut config_map: HashMap<String, String> = HashMap::new();
 
-    tx.commit()?;
-    Ok(())
+    while let Some(row) = rows.next()? {
+        let old_id: String = row.get(0)?;
+        let old_project: String = row.get(1)?;
+        let new_id = Uuid::new_v4().to_string();
+        config_map.insert(old_id.clone(), new_id.clone());
+
+        let owner = if imported.contains(&old_project) {
+            project_map.get(&old_project).cloned()
+        } else {
+            references
+                .get(&old_id)
+                .and_then(|pids| {
+                    pids.iter().find_map(|p| match p {
+                        Some(pid) if imported.contains(pid) => Some(pid),
+                        _ => None,
+                    })
+                })
+                .and_then(|p| project_map.get(p).cloned())
+        };
+        let Some(owner) = owner else { continue; };
+
+        insert.execute(params![
+            new_id,
+            owner,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, i64>(6)?,
+            row.get::<_, String>(7)?,
+        ])?;
+    }
+    Ok(config_map)
 }
 
 fn copy_sessions(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
-    new_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
 ) -> Result<HashMap<String, String>, AppError> {
-    let mut stmt = src.prepare(
+    let mut stmt = src.prepare(&format!(
         "SELECT id, project_id, config_json, status, pages_crawled, errors,
                 elapsed_secs, seed_urls, created_at, updated_at
-         FROM crawl_sessions WHERE project_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+         FROM crawl_sessions WHERE project_id IN ({})",
+        in_placeholders(imported.len())
+    ))?;
+    let project_ids: Vec<&String> = imported.iter().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
     let mut insert = tx.prepare(
         "INSERT INTO crawl_sessions
             (id, project_id, config_json, status, pages_crawled, errors,
@@ -601,20 +680,22 @@ fn copy_sessions(
 
     while let Some(row) = rows.next()? {
         let old_id: String = row.get(0)?;
+        let old_project: String = row.get(1)?;
         let new_id = Uuid::new_v4().to_string();
+        let new_project = project_map.get(&old_project).cloned().unwrap_or_default();
         let config_json: String = row.get(2)?;
         // Point the embedded project_id at the freshly created project so
         // restoring the config later keeps working.
         let config_json = match serde_json::from_str::<CrawlConfig>(&config_json) {
             Ok(mut cfg) => {
-                cfg.project_id = Some(new_project_id.to_string());
+                cfg.project_id = Some(new_project.clone());
                 serde_json::to_string(&cfg).unwrap_or(config_json)
             }
             Err(_) => config_json,
         };
         insert.execute(params![
             new_id,
-            new_project_id,
+            new_project,
             config_json,
             row.get::<_, String>(3)?,
             row.get::<_, i64>(4)?,
@@ -632,20 +713,22 @@ fn copy_sessions(
 fn copy_pages(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
-    new_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
     config_map: &HashMap<String, String>,
 ) -> Result<HashMap<String, String>, AppError> {
-    let mut stmt = src.prepare(
+    let mut stmt = src.prepare(&format!(
         "SELECT id, config_id, project_id, url, status_code, title,
                 meta_description, h1, canonical, size_bytes, load_time_ms,
                 is_indexable, depth, parent_url, crawl_timestamp, html_lang,
                 hreflang_json, semantic_issues_json, html_body, screenshot_png,
                 readability_score, content_hash, duplicate_group_id,
                 keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
-         FROM crawled_pages WHERE project_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+         FROM crawled_pages WHERE project_id IN ({})",
+        in_placeholders(imported.len())
+    ))?;
+    let project_ids: Vec<&String> = imported.iter().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
     let mut insert = tx.prepare(
         "INSERT INTO crawled_pages
             (id, config_id, project_id, url, status_code, title, meta_description,
@@ -661,13 +744,15 @@ fn copy_pages(
 
     while let Some(row) = rows.next()? {
         let old_page_id: String = row.get(0)?;
-        let new_page_id = Uuid::new_v4().to_string();
         let old_config_id: String = row.get(1)?;
+        let old_project: String = row.get(2)?;
+        let new_page_id = Uuid::new_v4().to_string();
         let new_config_id = config_map.get(&old_config_id).cloned().unwrap_or_default();
+        let new_project = project_map.get(&old_project).cloned().unwrap_or_default();
         insert.execute(params![
             new_page_id,
             new_config_id,
-            new_project_id,
+            new_project,
             row.get::<_, String>(3)?,
             row.get::<_, Option<i64>>(4)?,
             row.get::<_, Option<String>>(5)?,
@@ -702,29 +787,39 @@ fn copy_pages(
 fn copy_page_links(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
     config_map: &HashMap<String, String>,
 ) -> Result<(), AppError> {
-    let mut stmt = src.prepare(
-        "SELECT from_url, to_url, config_id, link_type, anchor_text, is_follow
-         FROM page_links
-         WHERE config_id IN (SELECT id FROM crawl_config WHERE project_id = ?1)",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+    if config_map.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = src.prepare(&format!(
+        "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+         FROM page_links WHERE config_id IN ({})",
+        in_placeholders(config_map.len())
+    ))?;
+    let config_ids: Vec<&String> = config_map.keys().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(config_ids))?;
     let mut insert = tx.prepare(
-        "INSERT INTO page_links (from_url, to_url, config_id, link_type, anchor_text, is_follow)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )?;
     while let Some(row) = rows.next()? {
         let old_config_id: String = row.get(2)?;
+        let old_project: Option<String> = row.get(3)?;
         let new_config_id = config_map.get(&old_config_id).cloned().unwrap_or_default();
+        let new_project = old_project
+            .and_then(|p| imported.contains(&p).then(|| project_map.get(&p).cloned()))
+            .flatten();
         insert.execute(params![
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             new_config_id,
-            row.get::<_, String>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, Option<i64>>(5)?,
+            new_project,
+            row.get::<_, String>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<i64>>(6)?,
         ])?;
     }
     Ok(())
@@ -733,28 +828,38 @@ fn copy_page_links(
 fn copy_errors(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
     config_map: &HashMap<String, String>,
 ) -> Result<(), AppError> {
-    let mut stmt = src.prepare(
-        "SELECT url, config_id, error_type, error_message, timestamp
-         FROM crawl_errors
-         WHERE config_id IN (SELECT id FROM crawl_config WHERE project_id = ?1)",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+    if config_map.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = src.prepare(&format!(
+        "SELECT url, config_id, project_id, error_type, error_message, timestamp
+         FROM crawl_errors WHERE config_id IN ({})",
+        in_placeholders(config_map.len())
+    ))?;
+    let config_ids: Vec<&String> = config_map.keys().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(config_ids))?;
     let mut insert = tx.prepare(
-        "INSERT INTO crawl_errors (url, config_id, error_type, error_message, timestamp)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO crawl_errors (url, config_id, project_id, error_type, error_message, timestamp)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )?;
     while let Some(row) = rows.next()? {
         let old_config_id: String = row.get(1)?;
+        let old_project: Option<String> = row.get(2)?;
         let new_config_id = config_map.get(&old_config_id).cloned().unwrap_or_default();
+        let new_project = old_project
+            .and_then(|p| imported.contains(&p).then(|| project_map.get(&p).cloned()))
+            .flatten();
         insert.execute(params![
             row.get::<_, String>(0)?,
             new_config_id,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, String>(4)?,
+            new_project,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, String>(5)?,
         ])?;
     }
     Ok(())
@@ -763,15 +868,18 @@ fn copy_errors(
 fn copy_page_issues(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
     page_map: &HashMap<String, String>,
 ) -> Result<(), AppError> {
-    let mut stmt = src.prepare(
+    let mut stmt = src.prepare(&format!(
         "SELECT page_id, issue_type, severity, message, element, css_selector,
-                xpath, position
-         FROM page_issues WHERE project_id = ?1",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+                xpath, position, project_id
+         FROM page_issues WHERE project_id IN ({})",
+        in_placeholders(imported.len())
+    ))?;
+    let project_ids: Vec<&String> = imported.iter().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
     let mut insert = tx.prepare(
         "INSERT INTO page_issues
             (project_id, page_id, issue_type, severity, message, element,
@@ -781,8 +889,13 @@ fn copy_page_issues(
     while let Some(row) = rows.next()? {
         let old_page_id: String = row.get(0)?;
         let new_page_id = page_map.get(&old_page_id).cloned().unwrap_or_default();
+        if new_page_id.is_empty() {
+            continue; // page belongs to a skipped project
+        }
+        let old_project: String = row.get(8)?;
+        let new_project = project_map.get(&old_project).cloned().unwrap_or_default();
         insert.execute(params![
-            old_project_id,
+            new_project,
             new_page_id,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
@@ -799,19 +912,22 @@ fn copy_page_issues(
 fn copy_snapshots(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
-    new_project_id: &str,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
     page_map: &HashMap<String, String>,
+    config_map: &HashMap<String, String>,
 ) -> Result<(), AppError> {
     let mut snapshot_map: HashMap<String, String> = HashMap::new();
     {
-        let mut stmt = src.prepare(
+        let mut stmt = src.prepare(&format!(
             "SELECT id, project_id, config_id, snapshot_time, total_pages,
                     indexed_pages, broken_pages, avg_load_ms, avg_size_bytes,
                     avg_readability, status_counts_json
-             FROM crawl_snapshots WHERE project_id = ?1",
-        )?;
-        let mut rows = stmt.query(params![old_project_id])?;
+             FROM crawl_snapshots WHERE project_id IN ({})",
+            in_placeholders(imported.len())
+        ))?;
+        let project_ids: Vec<&String> = imported.iter().collect();
+        let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
         let mut insert = tx.prepare(
             "INSERT INTO crawl_snapshots
                 (id, project_id, config_id, snapshot_time, total_pages,
@@ -821,11 +937,15 @@ fn copy_snapshots(
         )?;
         while let Some(row) = rows.next()? {
             let old_sid: String = row.get(0)?;
+            let old_project: String = row.get(1)?;
+            let old_config: String = row.get(2)?;
             let new_sid = Uuid::new_v4().to_string();
+            let new_project = project_map.get(&old_project).cloned().unwrap_or_default();
+            let new_config = config_map.get(&old_config).cloned().unwrap_or_default();
             insert.execute(params![
                 new_sid,
-                new_project_id,
-                row.get::<_, String>(2)?,
+                new_project,
+                new_config,
                 row.get::<_, String>(3)?,
                 row.get::<_, i64>(4)?,
                 row.get::<_, i64>(5)?,
@@ -843,9 +963,9 @@ fn copy_snapshots(
         "SELECT snapshot_id, page_id, url, status_code, title, meta_description,
                 size_bytes, load_time_ms, is_indexable, readability_score
          FROM crawl_snapshot_data
-         WHERE snapshot_id IN (SELECT id FROM crawl_snapshots WHERE project_id = ?1)",
+         WHERE snapshot_id IN (SELECT id FROM crawl_snapshots)",
     )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+    let mut rows = stmt.query([])?;
     let mut insert = tx.prepare(
         "INSERT INTO crawl_snapshot_data
             (snapshot_id, page_id, url, status_code, title, meta_description,
@@ -856,7 +976,13 @@ fn copy_snapshots(
         let old_sid: String = row.get(0)?;
         let old_page_id: String = row.get(1)?;
         let new_sid = snapshot_map.get(&old_sid).cloned().unwrap_or_default();
+        if new_sid.is_empty() {
+            continue; // snapshot belongs to a skipped project
+        }
         let new_page_id = page_map.get(&old_page_id).cloned().unwrap_or_default();
+        if new_page_id.is_empty() {
+            continue; // page belongs to a skipped project
+        }
         insert.execute(params![
             new_sid,
             new_page_id,
@@ -876,15 +1002,17 @@ fn copy_snapshots(
 fn copy_queue(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
-    old_project_id: &str,
+    imported: &HashSet<String>,
     session_map: &HashMap<String, String>,
 ) -> Result<(), AppError> {
-    let mut stmt = src.prepare(
-        "SELECT session_id, url, depth
-         FROM crawl_queue
-         WHERE session_id IN (SELECT id FROM crawl_sessions WHERE project_id = ?1)",
-    )?;
-    let mut rows = stmt.query(params![old_project_id])?;
+    let mut stmt = src.prepare(&format!(
+        "SELECT q.session_id, q.url, q.depth
+         FROM crawl_queue q
+         WHERE q.session_id IN (SELECT id FROM crawl_sessions WHERE project_id IN ({}))",
+        in_placeholders(imported.len())
+    ))?;
+    let project_ids: Vec<&String> = imported.iter().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
     let mut insert = tx.prepare(
         "INSERT INTO crawl_queue (session_id, url, depth)
          VALUES (?1, ?2, ?3)",
@@ -892,6 +1020,9 @@ fn copy_queue(
     while let Some(row) = rows.next()? {
         let old_sid: String = row.get(0)?;
         let new_sid = session_map.get(&old_sid).cloned().unwrap_or_default();
+        if new_sid.is_empty() {
+            continue; // session belongs to a skipped project
+        }
         insert.execute(params![
             new_sid,
             row.get::<_, String>(1)?,
@@ -990,6 +1121,79 @@ mod tests {
             q("SELECT COUNT(*) FROM crawl_sessions"),
             q("SELECT COUNT(*) FROM crawl_queue"),
         )
+    }
+
+    #[test]
+    fn test_import_rehomes_config_referenced_across_projects() {
+        // Regression: a package where pages/links in one project reference the
+        // legacy 'default' config owned by the (skipped) 'default' project used
+        // to fail with `FOREIGN KEY constraint failed`. The config must be
+        // re-homed to the importing project instead of being dropped.
+        let work = TempDir::new("xh");
+        let src_path = work.0.join("src.db");
+        let pkg_path = work.0.join("out.ocproj");
+
+        let src_conn = temp_conn(&src_path);
+        src_conn
+            .execute(
+                "INSERT INTO crawl_config (id, project_id, seed_urls, max_pages, created_at)
+                 VALUES ('cfg-shared', 'default', '[\"https://x.com\"]', 10, datetime('now'))",
+                [],
+            )
+            .unwrap();
+        src_conn
+            .execute_batch(
+                "INSERT INTO projects (id, name, created_at, updated_at)
+                 VALUES ('proj-afa', 'afa', datetime('now'), datetime('now'));
+                 INSERT INTO crawled_pages
+                     (id, config_id, project_id, url, status_code, is_indexable, crawl_timestamp)
+                     VALUES ('page-afa-1', 'cfg-shared', 'proj-afa', 'https://x.com/a', 200, 1,
+                             datetime('now')),
+                            ('page-afa-2', 'cfg-shared', 'proj-afa', 'https://x.com/b', 404, 0,
+                             datetime('now'));
+                 INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type)
+                     VALUES ('https://x.com/a', 'https://x.com/b', 'cfg-shared', 'proj-afa', 'href');",
+            )
+            .unwrap();
+
+        let repo = CrawlRepo::new(&src_conn, None);
+        export_package_inner(&repo, &work.0, None, false, false, &pkg_path).unwrap();
+
+        let dest_conn = temp_conn(&work.0.join("dest.db"));
+        let dest_repo = CrawlRepo::new(&dest_conn, None);
+        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+
+        assert_eq!(summary.imported.len(), 1, "afa imports, legacy default is skipped");
+        assert_eq!(summary.imported[0].name, "afa");
+        assert!(summary.warnings.is_empty());
+
+        let (configs, config_project, pages, links): (i64, Option<String>, i64, i64) = dest_conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM crawl_config),
+                        (SELECT project_id FROM crawl_config),
+                        (SELECT COUNT(*) FROM crawled_pages),
+                        (SELECT COUNT(*) FROM page_links)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(configs, 1);
+        assert_eq!(config_project.as_deref(), Some(summary.imported[0].id.as_str()));
+        assert_eq!(pages, 2);
+        assert_eq!(links, 1);
+
+        // The imported pages point at the re-homed config.
+        let dest_cfg: String = dest_conn
+            .query_row("SELECT id FROM crawl_config LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let page_cfg: String = dest_conn
+            .query_row(
+                "SELECT config_id FROM crawled_pages WHERE url = 'https://x.com/a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(page_cfg, dest_cfg);
     }
 
     #[test]

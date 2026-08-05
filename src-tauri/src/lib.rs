@@ -59,12 +59,25 @@ pub fn run() {
 
     info!("Starting Open Crawler");
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_share::init())
+    let builder = {
+        let base = tauri::Builder::default()
+            .plugin(tauri_plugin_shell::init())
+            .plugin(tauri_plugin_dialog::init())
+            .plugin(tauri_plugin_fs::init())
+            .plugin(tauri_plugin_notification::init())
+            .plugin(tauri_plugin_share::init());
+
+        #[cfg(mobile)]
+        {
+            base.plugin(tauri_plugin_mobile_sharetarget::init())
+        }
+        #[cfg(not(mobile))]
+        {
+            base
+        }
+    };
+
+    builder
         .setup(|app| {
             let app_data_dir = match app.path().app_data_dir() {
                 Ok(dir) => dir,
@@ -188,6 +201,8 @@ pub fn run() {
             crate::transfer::commands::stop_transfer_server,
             crate::transfer::commands::get_active_transfer,
             crate::transfer::commands::download_transfer,
+            crate::transfer::commands::import_shared_intent,
+            crate::transfer::commands::open_share_sheet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

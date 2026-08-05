@@ -6,5 +6,6 @@
 //! import validates and merges projects back into the local database.
 
 pub mod commands;
+pub mod desktop_share;
 pub mod package;
 pub mod server;

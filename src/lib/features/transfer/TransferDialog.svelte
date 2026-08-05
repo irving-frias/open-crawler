@@ -12,7 +12,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox/index.js';
   import { Progress } from '$lib/components/ui/progress/index.js';
   import { toast } from 'svelte-sonner';
-  import { Box, QrCode, Download, FolderOpen, Share2, Link2, Loader2 } from 'lucide-svelte';
+  import { Box, QrCode, Download, FolderOpen, Share2, Link2, Loader2, Bluetooth } from 'lucide-svelte';
 
   const app = getAppShell();
 
@@ -194,6 +194,10 @@
           <Download class="size-4" />
           {m['transfer.tab.import']()}
         </Tabs.Trigger>
+        <Tabs.Trigger value="bluetooth">
+          <Bluetooth class="size-4" />
+          {m['transfer.tab.bluetooth']()}
+        </Tabs.Trigger>
       </Tabs.List>
 
       <!-- ==================== EXPORT ==================== -->
@@ -341,6 +345,43 @@
             </div>
           {/if}
         </div>
+      </Tabs.Content>
+      <!-- ==================== BLUETOOTH / NEARBY ==================== -->
+      <Tabs.Content value="bluetooth" class="space-y-4">
+        <p class="text-sm text-muted-foreground">{m['transfer.bt.intro']()}</p>
+
+        <Button variant="outline" class="w-full" onclick={() => app.exportAndShare(includeCredentials, lightweight)} disabled={app.transferBusy}>
+          {#if app.transferBusy}
+            <Loader2 class="size-4 animate-spin" />
+          {/if}
+          <Share2 class="size-4" />
+          {m['transfer.bt.send']()}
+        </Button>
+
+        {#if isMobile}
+          <div class="flex items-center gap-2">
+            <div class="h-px flex-1 bg-border"></div>
+            <span class="text-xs text-muted-foreground">{m['transfer.import.or']()}</span>
+            <div class="h-px flex-1 bg-border"></div>
+          </div>
+
+          <p class="text-xs text-muted-foreground">{m['transfer.bt.hint']()}</p>
+
+          <Button
+            variant="outline"
+            class="w-full"
+            onclick={() => app.importSharedIntent(conflictMode as 'skip' | 'copy' | 'overwrite')}
+            disabled={app.shareImporting}
+          >
+            {#if app.shareImporting}
+              <Loader2 class="size-4 animate-spin" />
+            {/if}
+            <Download class="size-4" />
+            {m['transfer.bt.check']()}
+          </Button>
+        {:else}
+          <p class="text-xs text-muted-foreground">{m['transfer.bt.desktop_hint']()}</p>
+        {/if}
       </Tabs.Content>
     </Tabs.Root>
   </Dialog.Content>

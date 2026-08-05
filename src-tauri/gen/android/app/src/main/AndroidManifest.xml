@@ -22,6 +22,14 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+
+            <!-- Receive .ocproj packages shared to the app (Bluetooth / Nearby / files) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-opencrawler-package" />
+            </intent-filter>
         </activity>
 
         <provider

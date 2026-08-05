@@ -100,6 +100,8 @@ export interface AppFields {
   transferProgress: TransferProgress;
   lastPackage: ExportPackageInfo | null;
   activeTransfer: TransferInfo | null;
+  shareImporting: boolean;
+  shareChecked: boolean;
   expandedIssueUrl: string;
   activeTab: TabValue;
   detailPageId: string;
@@ -141,7 +143,9 @@ export interface AppShell extends AppFields {
   exportFull(format: 'xlsx' | 'csv'): Promise<void>;
   exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean): Promise<ExportPackageInfo | null>;
   exportAndStartWifi(includeCredentials: boolean, lightweight: boolean, minutes?: number): Promise<void>;
+  exportAndShare(includeCredentials: boolean, lightweight: boolean): Promise<void>;
   importPackage(filePath: string, mode: ImportConflictMode): Promise<ImportSummary>;
+  importSharedIntent(mode: ImportConflictMode): Promise<ImportSummary | null>;
   startTransferServer(filePath: string, minutes?: number): Promise<TransferInfo | null>;
   stopTransferServer(): Promise<void>;
   downloadTransfer(url: string, dest: string): Promise<void>;
@@ -210,6 +214,8 @@ export function createAppShell(): AppShell {
     transferProgress: { stage: '', processed: 0, total: 0, percent: 0 } as TransferProgress,
     lastPackage: null as ExportPackageInfo | null,
     activeTransfer: null as TransferInfo | null,
+    shareImporting: false,
+    shareChecked: false,
     expandedIssueUrl: '',
     activeTab: 'results' as TabValue,
     detailPageId: '',
@@ -346,6 +352,12 @@ export function createAppShell(): AppShell {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     );
 
+    // On Android, packages shared into the app are only available once the
+    // webview is focused again — drain the share-target queue each time.
+    register(listen<any>('tauri://focus', () => {
+      checkIncomingShare();
+    }));
+
     register(listen<any>('crawl-started', (event) => {
       console.log('[Crawler] crawl-started:', event.payload);
       if (state.notificationsEnabled) {
@@ -445,6 +457,7 @@ export function createAppShell(): AppShell {
         transferRestored = true;
         restoreTransferServer();
       }
+      checkIncomingShare();
     }
   }
 
@@ -1017,6 +1030,42 @@ export function createAppShell(): AppShell {
     }
   }
 
+  // Direct share to a nearby device: on mobile this uses the system share
+  // sheet (Bluetooth / Nearby); on macOS it opens the native share sheet
+  // (AirDrop). Desktop exports silently to the transfers dir first so there
+  // is no save dialog.
+  async function exportAndShare(includeCredentials: boolean, lightweight: boolean) {
+    if (!state.selectedProjectId || state.transferBusy) return;
+    const mobile = await api.crawl.isMobile();
+    if (mobile) {
+      // Mobile: exportPackage handles the busy flag and opens the native
+      // share sheet (shareAfter=true) after writing the package.
+      await exportPackage(includeCredentials, lightweight, true);
+      return;
+    }
+    state.transferBusy = true;
+    try {
+      const projectId = state.selectedProjectId;
+      const name = `open-crawler-${projectId}.ocproj`;
+      const info = await api.transferApi.exportPackage(
+        [projectId],
+        name,
+        lightweight,
+        includeCredentials,
+        false,
+        true
+      );
+      state.lastPackage = info;
+      await api.transferApi.openShareSheet(info.path);
+      toast.success(m['transfer.exported']({ name: info.file_name }));
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+    } finally {
+      state.transferBusy = false;
+    }
+  }
+
   async function importPackage(filePath: string, mode: ImportConflictMode) {
     if (state.transferBusy) return { imported: [], skipped: [], warnings: [] } as ImportSummary;
     state.transferBusy = true;
@@ -1038,6 +1087,41 @@ export function createAppShell(): AppShell {
     } finally {
       state.transferBusy = false;
     }
+  }
+
+  // Imports a package received through the system share sheet (Bluetooth /
+  // Nearby / files) on mobile. Returns null when the queue is empty.
+  async function importSharedIntent(mode: ImportConflictMode) {
+    if (state.shareImporting) return null;
+    state.shareImporting = true;
+    try {
+      const summary = await api.transferApi.importSharedIntent(mode);
+      if (!summary) return null;
+      await loadProjects();
+      if (summary.imported.length > 0 && !state.selectedProjectId) {
+        selectProject(summary.imported[0].id);
+      }
+      toast.success(
+        m['transfer.imported']({ count: summary.imported.length, skipped: summary.skipped.length })
+      );
+      for (const w of summary.warnings) toast.warning(w);
+      return summary;
+    } catch (e) {
+      state.error = String(e);
+      toast.error(String(e));
+      return null;
+    } finally {
+      state.shareImporting = false;
+    }
+  }
+
+  // Polls the share-target queue once per focus (and once at startup). The
+  // intent may be queued before the webview is ready, so this drains any that
+  // arrived while the app was closed or in the background.
+  function checkIncomingShare() {
+    if (!state.initialized || state.shareChecked) return;
+    state.shareChecked = true;
+    importSharedIntent('skip');
   }
 
   async function startTransferServer(filePath: string, minutes?: number) {
@@ -1129,7 +1213,9 @@ export function createAppShell(): AppShell {
   state.exportFull = exportFull;
   state.exportPackage = exportPackage;
   state.exportAndStartWifi = exportAndStartWifi;
+  state.exportAndShare = exportAndShare;
   state.importPackage = importPackage;
+  state.importSharedIntent = importSharedIntent;
   state.startTransferServer = startTransferServer;
   state.stopTransferServer = stopTransferServer;
   state.downloadTransfer = downloadTransfer;

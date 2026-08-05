@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tracing::warn;
+#[cfg(any(mobile, test))]
+use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::features::with_repo;
@@ -127,10 +129,20 @@ pub async fn export_package(
     }
 
     if !silent && (will_share || share_after) {
-        share_package(&app, &write_path);
+        if let Err(e) = share_package(&app, &write_path) {
+            warn!("Could not open share sheet: {e}");
+        }
     }
 
     Ok(info)
+}
+
+/// Opens the native share sheet (AirDrop on macOS, system share UI on mobile)
+/// for an already-exported package file. Used by the direct-share / Bluetooth
+/// flow after a silent export.
+#[tauri::command]
+pub fn open_share_sheet(app: AppHandle, file_path: String) -> Result<(), AppError> {
+    share_package(&app, &file_path)
 }
 
 #[tauri::command]
@@ -170,7 +182,7 @@ pub async fn import_package(
 }
 
 #[cfg(mobile)]
-fn share_package(app: &AppHandle, path: &str) {
+fn share_package(app: &AppHandle, path: &str) -> Result<(), AppError> {
     use tauri_plugin_share::ShareExt;
 
     let app = app.clone();
@@ -183,11 +195,12 @@ fn share_package(app: &AppHandle, path: &str) {
             group: None,
         });
     });
+    Ok(())
 }
 
 #[cfg(not(mobile))]
-fn share_package(_app: &AppHandle, _path: &str) {
-    warn!("Share sheet requested but not available on this platform");
+fn share_package(app: &AppHandle, path: &str) -> Result<(), AppError> {
+    crate::transfer::desktop_share::share_file(app, path).map_err(AppError::Crawl)
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -287,4 +300,135 @@ pub async fn download_transfer(
     }
     emit_transfer_progress(&app, "download", processed, processed);
     Ok(())
+}
+
+/// Payload extracted from a received Android share intent.
+#[cfg(any(mobile, test))]
+#[derive(Debug, PartialEq, Eq)]
+enum IntentPayload {
+    /// A file URI (`android.intent.extra.STREAM`) pointing at the shared file.
+    Stream(String),
+    /// Plain text (`android.intent.extra.TEXT`) — a transfer URL to download.
+    Text(String),
+}
+
+/// Parses the raw Android intent string produced by `tauri-plugin-mobile-sharetarget`
+/// (an `#Intent;...` URI) into a usable payload, if any.
+#[cfg(any(mobile, test))]
+fn parse_intent_payload(raw: &str) -> Option<IntentPayload> {
+    const STREAM: &str = "S.android.intent.extra.STREAM=";
+    const TEXT: &str = "S.android.intent.extra.TEXT=";
+
+    for part in raw.split(';') {
+        if let Some(v) = part.strip_prefix(STREAM) {
+            return Some(IntentPayload::Stream(url_decode(v)));
+        }
+    }
+    for part in raw.split(';') {
+        if let Some(v) = part.strip_prefix(TEXT) {
+            return Some(IntentPayload::Text(url_decode(v)));
+        }
+    }
+    None
+}
+
+#[cfg(any(mobile, test))]
+fn url_decode(s: &str) -> String {
+    percent_encoding::percent_decode_str(s)
+        .decode_utf8()
+        .map(|c| c.into_owned())
+        .unwrap_or_else(|_| s.to_string())
+}
+
+/// Pops the incoming Android share intent (if any) and imports the received
+/// `.ocproj` package. A `STREAM` extra is treated as a `content://` file URI;
+/// a `TEXT` extra is treated as a transfer URL that gets downloaded first.
+/// Returns `None` when the queue is empty or the payload isn't usable.
+#[tauri::command]
+pub async fn import_shared_intent(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    mode: String,
+) -> Result<Option<ImportSummary>, AppError> {
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_mobile_sharetarget::MobileSharetargetExt;
+
+        let raw = app
+            .mobile_sharetarget()
+            .get_latest_intent()
+            .map_err(|e| AppError::Crawl(format!("share target error: {e}")))?;
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+
+        match parse_intent_payload(&raw) {
+            Some(IntentPayload::Stream(uri)) => {
+                let summary = import_package(app, state, uri, mode).await?;
+                Ok(Some(summary))
+            }
+            Some(IntentPayload::Text(url)) => {
+                let dir = app
+                    .path()
+                    .app_data_dir()
+                    .map_err(|e| AppError::Crawl(e.to_string()))?
+                    .join("transfers");
+                std::fs::create_dir_all(&dir)?;
+                let dest = dir.join(format!("shared-{}.ocproj", Uuid::new_v4().simple()));
+                let url_dl = url.clone();
+                let app_dl = app.clone();
+                let dest_dl = dest.clone();
+                download_transfer(app_dl, url_dl, dest_dl.to_string_lossy().into_owned())
+                    .await?;
+                let summary = import_package(
+                    app,
+                    state,
+                    dest.to_string_lossy().into_owned(),
+                    mode,
+                )
+                .await?;
+                let _ = std::fs::remove_file(&dest);
+                Ok(Some(summary))
+            }
+            None => Ok(None),
+        }
+    }
+
+    #[cfg(not(mobile))]
+    {
+        let _ = (app, state, mode);
+        Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_stream_extra() {
+        let raw = r"#Intent;action=android.intent.action.SEND;type=application/octet-stream;launchFlags=0x13400000;component=com.tauri.dev\/.MainActivity;S.android.intent.extra.STREAM=content%3A%2F%2Fmedia%2Fexternal%2Fdownloads%2F1;end";
+        assert_eq!(
+            parse_intent_payload(raw),
+            Some(IntentPayload::Stream(
+                "content://media/external/downloads/1".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn parses_text_extra() {
+        let raw = r"#Intent;action=android.intent.action.SEND;type=text\/plain;component=com.tauri.dev\/.MainActivity;S.android.intent.extra.TEXT=http%3A%2F%2F192.168.1.5%3A45231%2Fdl%2Fabc%2Fpkg.ocproj;end";
+        assert_eq!(
+            parse_intent_payload(raw),
+            Some(IntentPayload::Text(
+                "http://192.168.1.5:45231/dl/abc/pkg.ocproj".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn returns_none_when_no_payload() {
+        assert_eq!(parse_intent_payload("#Intent;action=android.intent.action.VIEW;end"), None);
+    }
 }
