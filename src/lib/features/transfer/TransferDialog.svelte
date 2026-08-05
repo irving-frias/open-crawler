@@ -337,49 +337,40 @@
         {#if transfer}
           <div class="flex flex-col items-center gap-3">
             {#if qrDataUrl}
-              <img src={qrDataUrl} alt="QR" class="h-56 w-56 rounded-lg border bg-white p-2" />
+              <img src={qrDataUrl} alt="QR" class="h-40 w-40 rounded-lg border bg-white p-1.5" />
             {:else}
-              <div class="flex h-56 w-56 items-center justify-center rounded-lg border">
-                <Loader2 class="size-6 animate-spin text-muted-foreground" />
+              <div class="flex h-40 w-40 items-center justify-center rounded-lg border">
+                <Loader2 class="size-5 animate-spin text-muted-foreground" />
               </div>
             {/if}
-            <p class="text-center text-sm text-muted-foreground">{m['transfer.wifi.scan_hint']()}</p>
+            <p class="text-center text-xs text-muted-foreground">{m['transfer.wifi.scan_hint']()}</p>
 
-            <div class="w-full space-y-2">
+            <div class="max-h-24 w-full space-y-1 overflow-y-auto">
               {#each transfer.urls as url}
                 <button
-                  class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm hover:bg-muted"
+                  class="flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-sm hover:bg-muted"
+                  title={url}
                   onclick={() => copyText(url)}
                 >
-                  <span class="flex items-center gap-2 truncate">
-                    <Link2 class="size-4 shrink-0" />
-                    <span class="truncate font-mono text-xs">{url}</span>
-                  </span>
-                  <span class="shrink-0 text-xs text-muted-foreground">{m['transfer.wifi.copy']()}</span>
+                  <span class="truncate font-mono text-xs">{url}</span>
+                  <Link2 class="size-3.5 shrink-0 text-muted-foreground" />
                 </button>
               {/each}
             </div>
 
             <p class="w-full text-xs text-muted-foreground">{m['transfer.wifi.troubleshoot']()}</p>
 
-            <div class="w-full space-y-1 rounded-lg border p-3 text-sm">
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">{m['transfer.wifi.file']()}</span>
-                <span class="font-medium break-all">{transfer.file_name}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">{m['transfer.wifi.size']()}</span>
-                <span>{formatBytes(transfer.file_size_bytes)}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">{m['transfer.wifi.expires']()}</span>
-                <span class="font-mono">{formatExpiry(expiresIn)}</span>
-              </div>
+            <div class="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2">
+              <span class="flex min-w-0 flex-col gap-0.5">
+                <span class="truncate text-sm font-medium" title={transfer.file_name}>{transfer.file_name}</span>
+                <span class="text-xs text-muted-foreground">
+                  {formatBytes(transfer.file_size_bytes)} · {m['transfer.wifi.expires']()} {formatExpiry(expiresIn)}
+                </span>
+              </span>
+              <Button variant="destructive" size="sm" class="shrink-0" onclick={handleStopWifi}>
+                {m['transfer.wifi.stop']()}
+              </Button>
             </div>
-
-            <Button variant="destructive" class="w-full" onclick={handleStopWifi}>
-              {m['transfer.wifi.stop']()}
-            </Button>
           </div>
         {:else}
           <div class="grid gap-1.5">
