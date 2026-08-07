@@ -14,6 +14,7 @@ struct SnapshotRow {
     load_time_ms: Option<i64>,
     is_indexable: Option<i32>,
     readability_score: Option<f64>,
+    seo_score: Option<f64>,
 }
 
 impl SnapshotRow {
@@ -26,6 +27,7 @@ impl SnapshotRow {
         push_diff(&mut diffs, "load_time_ms", self.load_time_ms.map(|v| v.to_string()), other.load_time_ms.map(|v| v.to_string()));
         push_diff(&mut diffs, "is_indexable", self.is_indexable.map(|v| v.to_string()), other.is_indexable.map(|v| v.to_string()));
         push_diff(&mut diffs, "readability_score", self.readability_score.map(|v| format!("{:.1}", v)), other.readability_score.map(|v| format!("{:.1}", v)));
+        push_diff(&mut diffs, "seo_score", self.seo_score.map(|v| format!("{:.1}", v)), other.seo_score.map(|v| format!("{:.1}", v)));
         diffs
     }
 }
@@ -72,6 +74,7 @@ impl<'a> CrawlRepo<'a> {
                 avg_load_ms: 0.0,
                 avg_size_bytes: 0.0,
                 avg_readability: None,
+                avg_seo_score: None,
             });
         }
 
@@ -100,6 +103,11 @@ impl<'a> CrawlRepo<'a> {
             params![project_id, config_id],
             |r| r.get(0),
         )?;
+        let avg_seo_score: Option<f64> = self.conn.query_row(
+            "SELECT AVG(seo_score) FROM crawled_pages WHERE project_id = ?1 AND config_id = ?2 AND seo_score IS NOT NULL",
+            params![project_id, config_id],
+            |r| r.get(0),
+        )?;
 
         let mut status_stmt = self.conn.prepare(
             "SELECT status_code, COUNT(*) FROM crawled_pages
@@ -121,8 +129,8 @@ impl<'a> CrawlRepo<'a> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO crawl_snapshots
-             (id, project_id, config_id, snapshot_time, total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability, status_counts_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             (id, project_id, config_id, snapshot_time, total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability, avg_seo_score, status_counts_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 snapshot_id,
                 project_id,
@@ -134,13 +142,14 @@ impl<'a> CrawlRepo<'a> {
                 avg_load_ms,
                 avg_size_bytes,
                 avg_readability,
+                avg_seo_score,
                 status_counts_json,
             ],
         )?;
 
         let rows = {
             let mut stmt = tx.prepare(
-                "SELECT id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score
+                "SELECT id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score
                  FROM crawled_pages WHERE project_id = ?1 AND config_id = ?2",
             )?;
             let rows = stmt
@@ -155,6 +164,7 @@ impl<'a> CrawlRepo<'a> {
                         row.get::<_, Option<i64>>(6)?,
                         row.get::<_, Option<i32>>(7)?,
                         row.get::<_, Option<f64>>(8)?,
+                        row.get::<_, Option<f64>>(9)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -165,10 +175,10 @@ impl<'a> CrawlRepo<'a> {
         {
             let mut ins = tx.prepare(
                 "INSERT OR REPLACE INTO crawl_snapshot_data
-                 (snapshot_id, page_id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 (snapshot_id, page_id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
-            for (page_id, url, status, title, desc, size, load, indexable, readability) in rows {
+            for (page_id, url, status, title, desc, size, load, indexable, readability, seo) in rows {
                 ins.execute(params![
                     snapshot_id,
                     page_id,
@@ -180,6 +190,7 @@ impl<'a> CrawlRepo<'a> {
                     load,
                     indexable,
                     readability,
+                    seo,
                 ])?;
             }
         }
@@ -196,12 +207,13 @@ impl<'a> CrawlRepo<'a> {
             avg_load_ms,
             avg_size_bytes,
             avg_readability,
+            avg_seo_score,
         })
     }
 
     pub fn list_crawl_snapshots(&self, project_id: &str) -> Result<Vec<CrawlSnapshot>, AppError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, snapshot_time, total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability
+            "SELECT id, project_id, snapshot_time, total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability, avg_seo_score
              FROM crawl_snapshots WHERE project_id = ?1
              ORDER BY snapshot_time DESC LIMIT 50",
         )?;
@@ -217,6 +229,7 @@ impl<'a> CrawlRepo<'a> {
                     avg_load_ms: row.get(6)?,
                     avg_size_bytes: row.get(7)?,
                     avg_readability: row.get(8)?,
+                    avg_seo_score: row.get(9)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -224,9 +237,9 @@ impl<'a> CrawlRepo<'a> {
     }
 
     fn snapshot_stats(&self, snapshot_id: &str) -> Result<SnapshotStats, AppError> {
-        let (total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability) =
+        let (total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability, avg_seo_score) =
             self.conn.query_row(
-                "SELECT total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability
+                "SELECT total_pages, indexed_pages, broken_pages, avg_load_ms, avg_size_bytes, avg_readability, avg_seo_score
                  FROM crawl_snapshots WHERE id = ?1",
                 params![snapshot_id],
                 |row| {
@@ -237,6 +250,7 @@ impl<'a> CrawlRepo<'a> {
                         row.get::<_, f64>(3)?,
                         row.get::<_, f64>(4)?,
                         row.get::<_, Option<f64>>(5)?,
+                        row.get::<_, Option<f64>>(6)?,
                     ))
                 },
             )?;
@@ -247,6 +261,7 @@ impl<'a> CrawlRepo<'a> {
             avg_load_ms,
             avg_size_bytes,
             avg_readability,
+            avg_seo_score,
         })
     }
 
@@ -255,7 +270,7 @@ impl<'a> CrawlRepo<'a> {
         snapshot_id: &str,
     ) -> Result<std::collections::HashMap<String, SnapshotRow>, AppError> {
         let mut stmt = self.conn.prepare(
-            "SELECT url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score
+            "SELECT url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score
              FROM crawl_snapshot_data WHERE snapshot_id = ?1",
         )?;
         let rows = stmt
@@ -269,6 +284,7 @@ impl<'a> CrawlRepo<'a> {
                     load_time_ms: row.get(5)?,
                     is_indexable: row.get(6)?,
                     readability_score: row.get(7)?,
+                    seo_score: row.get(8)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

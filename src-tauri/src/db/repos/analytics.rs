@@ -312,6 +312,12 @@ impl<'a> CrawlRepo<'a> {
             |r| r.get(0),
         )?;
 
+        let avg_seo_score: Option<f64> = self.conn.query_row(
+            "SELECT AVG(seo_score) FROM crawled_pages WHERE project_id = ?1 AND seo_score IS NOT NULL",
+            params![project_id],
+            |r| r.get(0),
+        )?;
+
         let mut status_stmt = self.conn.prepare(
             "SELECT status_code, COUNT(*) FROM crawled_pages
              WHERE project_id = ?1 AND status_code IS NOT NULL AND blocked = 0
@@ -336,6 +342,7 @@ impl<'a> CrawlRepo<'a> {
             avg_load_ms,
             avg_size_bytes,
             avg_readability,
+            avg_seo_score,
             duplicate_count,
             missing_title_count,
             missing_description_count,

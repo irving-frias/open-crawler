@@ -73,6 +73,8 @@
         return m['tabs.duplicates']();
       case 'keywords':
         return m['tabs.keywords']();
+      case 'schedule':
+        return m['tabs.schedule']();
     }
   }
 
@@ -209,6 +211,12 @@
     {#if components.keywords}
       {@const Keywords = components.keywords}
       <Keywords projectId={selectedProjectId} />
+    {/if}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'schedule'}>
+    {#if components.schedule}
+      {@const SchedulePanel = components.schedule}
+      <SchedulePanel projectId={selectedProjectId} />
     {/if}
   </div>
 </section>

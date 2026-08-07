@@ -48,18 +48,28 @@ pub async fn start_crawl(
     config: CrawlConfig,
     project_id: String,
 ) -> Result<(), AppError> {
+    start_crawl_internal(app, state.inner().clone(), config, &project_id).await
+}
+
+/// Shared crawl-launch path used by the `start_crawl` command and the cron
+/// scheduler. Registers the crawl in `AppState.crawls`, emits `crawl-started`
+/// and spawns the engine on the background runtime.
+pub(crate) async fn start_crawl_internal(
+    app: AppHandle,
+    state: Arc<RwLock<AppState>>,
+    config: CrawlConfig,
+    project_id: &str,
+) -> Result<(), AppError> {
     info!(
         "start_crawl called for project: {} with config: {:?}",
         project_id, config
     );
 
-    let state = state.inner().clone();
-
     // Check if already running for this project
     {
         let state_read = state.read().await;
         let crawls = state_read.crawls.read().await;
-        if crawls.contains_key(&project_id) {
+        if crawls.contains_key(project_id) {
             return Err(AppError::Crawl(format!(
                 "Crawl already running for project: {}",
                 project_id
@@ -72,7 +82,7 @@ pub async fn start_crawl(
 
     // Initial progress
     let progress = CrawlProgress {
-        project_id: project_id.clone(),
+        project_id: project_id.to_string(),
         urls_crawled: 0,
         urls_queued: config.seed_urls.len() as u32,
         current_url: String::new(),
@@ -85,7 +95,7 @@ pub async fn start_crawl(
         let state_write = state.write().await;
         let mut crawls = state_write.crawls.write().await;
         crawls.insert(
-            project_id.clone(),
+            project_id.to_string(),
             CrawlState {
                 cancellation: token.clone(),
                 progress: progress.clone(),
@@ -95,13 +105,13 @@ pub async fn start_crawl(
 
     // Set project_id on config
     let mut config = config;
-    config.project_id = Some(project_id.clone());
+    config.project_id = Some(project_id.to_string());
 
     // Emit started event
     let _ = app.emit(
         "crawl-started",
         serde_json::json!({
-            "project_id": &project_id,
+            "project_id": project_id,
             "seed_urls": &config.seed_urls,
         }),
     );
@@ -109,7 +119,7 @@ pub async fn start_crawl(
     // Start crawl in background
     let state_clone = state.clone();
     let app_handle = Arc::new(app.clone());
-    let project_id_clone = project_id.clone();
+    let project_id_clone = project_id.to_string();
 
     tokio::spawn(async move {
         let mut engine = CrawlEngine::new();

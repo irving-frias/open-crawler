@@ -19,6 +19,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("005_add_blocked_flag.sql"),
     ),
     ("006_add_page_issues", include_str!("006_add_page_issues.sql")),
+    (
+        "007_scheduled_jobs",
+        include_str!("007_scheduled_jobs.sql"),
+    ),
+    ("008_seo_audit", include_str!("008_seo_audit.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -79,6 +84,8 @@ mod tests {
             "og_json",
             "pagespeed_score",
             "pagespeed_json",
+            "seo_score",
+            "seo_audit_json",
         ] {
             assert!(cols.contains(&expected.to_string()), "missing column {}", expected);
         }

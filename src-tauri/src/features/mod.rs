@@ -5,6 +5,8 @@ pub mod export;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;
+pub mod schedule;
+pub mod seo;
 pub mod settings;
 pub mod snapshots;
 

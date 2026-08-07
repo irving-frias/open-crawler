@@ -57,6 +57,8 @@ export interface CrawlResult {
   og_json?: string | null;
   pagespeed_score?: number | null;
   pagespeed_json?: string | null;
+  seo_score?: number | null;
+  seo_audit_json?: string | null;
 }
 
 export interface CrawlProgress {
@@ -113,6 +115,7 @@ export interface DashboardStats {
   avg_load_ms: number;
   avg_size_bytes: number;
   avg_readability?: number | null;
+  avg_seo_score?: number | null;
   duplicate_count: number;
   missing_title_count: number;
   missing_description_count: number;
@@ -131,6 +134,7 @@ export interface CrawlSnapshot {
   avg_load_ms: number;
   avg_size_bytes: number;
   avg_readability?: number | null;
+  avg_seo_score?: number | null;
 }
 
 export interface SnapshotStats {
@@ -140,6 +144,7 @@ export interface SnapshotStats {
   avg_load_ms: number;
   avg_size_bytes: number;
   avg_readability?: number | null;
+  avg_seo_score?: number | null;
 }
 
 export interface UrlFieldDiff {
@@ -147,7 +152,6 @@ export interface UrlFieldDiff {
   before?: string | null;
   after?: string | null;
 }
-
 export interface ChangedUrl {
   url: string;
   diffs: UrlFieldDiff[];
@@ -244,4 +248,93 @@ export interface ExportProgress {
 export interface PageDetail {
   page: CrawlResult;
   links: PageLink[];
+}
+
+export interface ScheduledJob {
+  id: string;
+  project_id: string;
+  cron_expression: string;
+  config_json: string;
+  enabled: boolean;
+  last_run?: string | null;
+  next_run?: string | null;
+  created_at: string;
+}
+
+export interface CreateScheduledJobRequest {
+  project_id: string;
+  cron_expression: string;
+  config_json: string;
+}
+
+export interface UpdateScheduledJobRequest {
+  id: string;
+  cron_expression?: string | null;
+  enabled?: boolean | null;
+}
+
+export interface SeoCheckResult {
+  id: string;
+  category: string;
+  severity: string;
+  passed: boolean;
+  weight: number;
+  message: string;
+  guidance: string;
+  evidence?: string | null;
+}
+
+export interface SeoCategoryResult {
+  category: string;
+  score: number;
+  weight: number;
+  passed_weight: number;
+  total_weight: number;
+  passed_checks: number;
+  total_checks: number;
+}
+
+export interface SeoPriorityFix {
+  id: string;
+  priority: string;
+  message: string;
+  guidance: string;
+  category: string;
+}
+
+export interface SeoAuditResult {
+  score: number;
+  grade: string;
+  categories: SeoCategoryResult[];
+  checks: SeoCheckResult[];
+  priority_fixes: SeoPriorityFix[];
+}
+
+export interface SeoGradeCount {
+  grade: string;
+  count: number;
+}
+
+export interface SeoCategoryAvg {
+  category: string;
+  avg_score: number;
+  pages: number;
+}
+
+export interface SeoIssueCount {
+  id: string;
+  category: string;
+  severity: string;
+  occurrences: number;
+}
+
+export interface SeoOverview {
+  audited_pages: number;
+  total_pages: number;
+  avg_score?: number | null;
+  avg_grade?: string | null;
+  grade_distribution: SeoGradeCount[];
+  category_averages: SeoCategoryAvg[];
+  top_issues: SeoIssueCount[];
+  total_fixes: number;
 }

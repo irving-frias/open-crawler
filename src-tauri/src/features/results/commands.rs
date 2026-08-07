@@ -144,6 +144,21 @@ pub async fn recrawl_page(
     let parser = crate::crawler::parser::SeoParser::new();
     let (seo_data, _outgoing_urls) = parser.parse(&response.html, &url);
 
+    // Re-run the SEO audit for the fresh response.
+    let seo_audit = crate::seo::audit::audit_page(
+        &seo_data,
+        &response.html,
+        &crate::seo::AuditContext {
+            url: response.url.to_string(),
+            status_code: response.status,
+            size_bytes: response.size_bytes,
+            load_time_ms: response.load_time_ms,
+            pagespeed_score: None,
+        },
+    );
+    let seo_audit_json = serde_json::to_string(&seo_audit).ok();
+    let seo_score = Some(seo_audit.score);
+
     // Inline assets for the HTML preview
     let html_body = match crate::crawler::assets::inline_page_assets(&response.html, &url).await {
         Ok(inlined) => Some(inlined),
@@ -224,6 +239,8 @@ pub async fn recrawl_page(
         og_json,
         pagespeed_score: None,
         pagespeed_json: None,
+        seo_score,
+        seo_audit_json,
     };
 
     // Save to DB

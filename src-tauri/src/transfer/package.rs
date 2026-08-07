@@ -723,7 +723,8 @@ fn copy_pages(
                 is_indexable, depth, parent_url, crawl_timestamp, html_lang,
                 hreflang_json, semantic_issues_json, html_body, screenshot_png,
                 readability_score, content_hash, duplicate_group_id,
-                keywords_json, og_json, pagespeed_score, pagespeed_json, blocked
+                keywords_json, og_json, pagespeed_score, pagespeed_json,
+                seo_score, seo_audit_json, blocked
          FROM crawled_pages WHERE project_id IN ({})",
         in_placeholders(imported.len())
     ))?;
@@ -736,9 +737,9 @@ fn copy_pages(
              parent_url, crawl_timestamp, html_lang, hreflang_json,
              semantic_issues_json, html_body, screenshot_png, readability_score,
              content_hash, duplicate_group_id, keywords_json, og_json,
-             pagespeed_score, pagespeed_json, blocked)
+             pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                 ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
+                 ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
     )?;
     let mut page_map: HashMap<String, String> = HashMap::new();
 
@@ -777,7 +778,9 @@ fn copy_pages(
             row.get::<_, Option<String>>(24)?,
             row.get::<_, Option<f64>>(25)?,
             row.get::<_, Option<String>>(26)?,
-            row.get::<_, i64>(27)?,
+            row.get::<_, Option<f64>>(27)?,
+            row.get::<_, Option<String>>(28)?,
+            row.get::<_, i64>(29)?,
         ])?;
         page_map.insert(old_page_id, new_page_id);
     }
@@ -922,7 +925,7 @@ fn copy_snapshots(
         let mut stmt = src.prepare(&format!(
             "SELECT id, project_id, config_id, snapshot_time, total_pages,
                     indexed_pages, broken_pages, avg_load_ms, avg_size_bytes,
-                    avg_readability, status_counts_json
+                    avg_readability, avg_seo_score, status_counts_json
              FROM crawl_snapshots WHERE project_id IN ({})",
             in_placeholders(imported.len())
         ))?;
@@ -932,8 +935,8 @@ fn copy_snapshots(
             "INSERT INTO crawl_snapshots
                 (id, project_id, config_id, snapshot_time, total_pages,
                  indexed_pages, broken_pages, avg_load_ms, avg_size_bytes,
-                 avg_readability, status_counts_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 avg_readability, avg_seo_score, status_counts_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )?;
         while let Some(row) = rows.next()? {
             let old_sid: String = row.get(0)?;
@@ -953,7 +956,8 @@ fn copy_snapshots(
                 row.get::<_, Option<f64>>(7)?,
                 row.get::<_, Option<f64>>(8)?,
                 row.get::<_, Option<f64>>(9)?,
-                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<f64>>(10)?,
+                row.get::<_, Option<String>>(11)?,
             ])?;
             snapshot_map.insert(old_sid, new_sid);
         }
@@ -961,7 +965,7 @@ fn copy_snapshots(
 
     let mut stmt = src.prepare(
         "SELECT snapshot_id, page_id, url, status_code, title, meta_description,
-                size_bytes, load_time_ms, is_indexable, readability_score
+                size_bytes, load_time_ms, is_indexable, readability_score, seo_score
          FROM crawl_snapshot_data
          WHERE snapshot_id IN (SELECT id FROM crawl_snapshots)",
     )?;
@@ -969,8 +973,8 @@ fn copy_snapshots(
     let mut insert = tx.prepare(
         "INSERT INTO crawl_snapshot_data
             (snapshot_id, page_id, url, status_code, title, meta_description,
-             size_bytes, load_time_ms, is_indexable, readability_score)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             size_bytes, load_time_ms, is_indexable, readability_score, seo_score)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
     )?;
     while let Some(row) = rows.next()? {
         let old_sid: String = row.get(0)?;
@@ -994,6 +998,7 @@ fn copy_snapshots(
             row.get::<_, Option<i64>>(7)?,
             row.get::<_, Option<i64>>(8)?,
             row.get::<_, Option<f64>>(9)?,
+            row.get::<_, Option<f64>>(10)?,
         ])?;
     }
     Ok(())

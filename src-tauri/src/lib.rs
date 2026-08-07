@@ -6,6 +6,7 @@ pub mod features;
 pub mod models;
 pub mod nesting_table;
 pub mod pagespeed;
+pub mod seo;
 pub mod transfer;
 
 use std::collections::HashMap;
@@ -150,6 +151,15 @@ pub fn run() {
 
             app.manage(Arc::new(RwLock::new(state)));
 
+            // Start the cron scheduler (background task, one tick per minute).
+            {
+                let app_handle = app.handle().clone();
+                let state = app.state::<Arc<RwLock<AppState>>>().inner().clone();
+                tauri::async_runtime::spawn(crate::features::schedule::scheduler::run_scheduler(
+                    app_handle, state,
+                ));
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -190,9 +200,18 @@ pub fn run() {
             crate::commands::compare_crawls,
             // pagespeed
             crate::commands::get_pagespeed_score,
+            // seo
+            crate::commands::get_seo_audit,
+            crate::commands::run_seo_audit,
+            crate::commands::get_seo_overview,
             // settings
             crate::commands::get_settings,
             crate::commands::save_settings,
+            // schedule
+            crate::commands::list_scheduled_jobs,
+            crate::commands::create_scheduled_job,
+            crate::commands::update_scheduled_job,
+            crate::commands::delete_scheduled_job,
             // export
             crate::commands::export_full,
             // transfer

@@ -4,6 +4,8 @@ pub mod export;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;
+pub mod schedule;
+pub mod seo;
 pub mod settings;
 pub mod snapshots;
 
@@ -133,6 +135,8 @@ mod tests {
             og_json: None,
             pagespeed_score: None,
             pagespeed_json: None,
+            seo_score: None,
+            seo_audit_json: None,
         }
     }
 

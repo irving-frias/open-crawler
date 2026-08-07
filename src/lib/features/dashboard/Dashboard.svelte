@@ -79,6 +79,14 @@
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${Math.round(bytes)} B`;
   }
+
+  function seoGrade(score: number): string {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+  }
 </script>
 
 {#if loading && !stats}
@@ -126,6 +134,12 @@
         <span class="stat-label">{m['dashboard.avg_readability']()}</span>
         <span class="stat-value">
           {stats.avg_readability != null ? Math.round(stats.avg_readability) : '—'}
+        </span>
+      </div>
+      <div class="stat-card stat-seo">
+        <span class="stat-label">{m['seo.label']()}</span>
+        <span class="stat-value">
+          {stats.avg_seo_score != null ? `${Math.round(stats.avg_seo_score)} · ${seoGrade(stats.avg_seo_score)}` : '—'}
         </span>
       </div>
     </div>

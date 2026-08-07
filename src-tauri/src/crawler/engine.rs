@@ -696,6 +696,21 @@ impl CrawlEngine {
         let (seo_data, outgoing_urls) = parser.parse(&response.html, url);
         info!("  -> Title: {:?}", seo_data.title);
 
+        // Run the SEO audit (score + per-check details + priority fixes).
+        let seo_audit = crate::seo::audit::audit_page(
+            &seo_data,
+            &response.html,
+            &crate::seo::AuditContext {
+                url: response.url.to_string(),
+                status_code: response.status,
+                size_bytes: response.size_bytes,
+                load_time_ms: response.load_time_ms,
+                pagespeed_score: None,
+            },
+        );
+        let seo_audit_json = serde_json::to_string(&seo_audit).ok();
+        let seo_score = Some(seo_audit.score);
+
         // Serialize hreflang
         let hreflang_json = if seo_data.hreflang_links.is_empty() {
             None
@@ -784,6 +799,8 @@ impl CrawlEngine {
             og_json,
             pagespeed_score: None,
             pagespeed_json: None,
+            seo_score,
+            seo_audit_json,
         };
 
         // Send result to DbWriter (async, non-blocking)

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
-  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink, BookOpenText } from 'lucide-svelte';
+  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink, BookOpenText, Gauge } from 'lucide-svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
@@ -77,12 +77,28 @@
     return 'destructive';
   }
 
+  function seoVariant(score: number): 'default' | 'warning' | 'destructive' {
+    if (score >= 80) return 'default';
+    if (score >= 60) return 'warning';
+    return 'destructive';
+  }
+
+  function seoGrade(score: number): string {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+  }
+
   interface RowModel {
     page: any;
     issues: any[];
     issueCounts: { errors: number; warnings: number; infos: number };
     readabilityVariant: 'default' | 'warning' | 'destructive' | undefined;
     readabilityLabel: string | null;
+    seoVariant: 'default' | 'warning' | 'destructive' | undefined;
+    seoGrade: string | null;
     titleHtml: string;
   }
 
@@ -93,12 +109,15 @@
       const issues = parseIssues(page.semantic_issues_json);
       const issueCounts = getIssueCounts(issues);
       const hasScore = page.readability_score != null;
+      const hasSeo = page.seo_score != null;
       return {
         page,
         issues,
         issueCounts,
         readabilityVariant: hasScore ? readabilityVariant(page.readability_score) : undefined,
         readabilityLabel: hasScore ? readabilityLabel(page.readability_score) : null,
+        seoVariant: hasSeo ? seoVariant(page.seo_score) : undefined,
+        seoGrade: hasSeo ? seoGrade(page.seo_score) : null,
         titleHtml: applyHighlight(page.title || m['detail.no_title']()),
       };
     })
@@ -196,6 +215,16 @@
             {/if}
           </div>
           <div class="col-issues">
+            {#if row.page.seo_score != null}
+              <Badge
+                variant={row.seoVariant}
+                class="seo-badge gap-1"
+                title={`${m['seo.label']()}: ${m['seo.grade']({ grade: row.seoGrade ?? '' })} (${Math.round(row.page.seo_score)})`}
+              >
+                <Gauge class="size-3.5" />
+                {Math.round(row.page.seo_score)} · {row.seoGrade}
+              </Badge>
+            {/if}
             {#if row.page.readability_score != null}
               <Badge
                 variant={row.readabilityVariant}
@@ -309,7 +338,7 @@
 
   .header-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 90px 130px;
+    grid-template-columns: minmax(0, 1fr) 90px 176px;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -350,7 +379,7 @@
 
   .table-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 90px 130px;
+    grid-template-columns: minmax(0, 1fr) 90px 176px;
     grid-template-rows: auto;
     min-height: 52px;
     padding: 0 16px;
@@ -667,12 +696,12 @@
   @media (min-width: 768px) {
     .header-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 90px 130px;
+      grid-template-columns: minmax(0, 1fr) 90px 176px;
     }
 
     .table-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 90px 130px;
+      grid-template-columns: minmax(0, 1fr) 90px 176px;
       min-height: 52px;
       padding: 0 16px;
       align-items: center;

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getPageDetail, getPagespeedScore } from '$lib/api';
-  import type { PageLink, PageSpeedData, CrawlResult } from '$lib/api/types';
+  import { getPageDetail, getPagespeedScore, getSeoAudit, runSeoAudit } from '$lib/api';
+  import type { PageLink, PageSpeedData, CrawlResult, SeoAuditResult } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
-  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown } from 'lucide-svelte';
+  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown, ScanSearch } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -38,11 +38,14 @@
   let pagespeed = $state<PageSpeedData | null>(null);
   let pagespeedLoading = $state(false);
   let pagespeedError = $state('');
+  let seoAudit = $state<SeoAuditResult | null>(null);
+  let seoLoading = $state(false);
+  let seoError = $state('');
   let detailSeq = 0;
 
   $effect(() => {
     if (pageId) loadDetail();
-    else { detail = null; links = []; activeTab = 'overview'; pagespeed = null; pagespeedError = ''; }
+    else { detail = null; links = []; activeTab = 'overview'; pagespeed = null; pagespeedError = ''; seoAudit = null; seoError = ''; }
   });
 
   async function loadDetail() {
@@ -52,16 +55,57 @@
     activeTab = 'overview';
     pagespeed = null;
     pagespeedError = '';
+    seoAudit = null;
+    seoError = '';
     try {
       const result = await getPageDetail(pageId);
       if (seq !== detailSeq) return;
       detail = result.page;
       links = result.links;
       pagespeed = parsePagespeed(detail?.pagespeed_json);
+      if (detail?.seo_audit_json) seoAudit = parseSeoAudit(detail.seo_audit_json);
     } catch (e) {
       if (seq === detailSeq) error = String(e);
     } finally {
       if (seq === detailSeq) loading = false;
+    }
+  }
+
+  function parseSeoAudit(json: string): SeoAuditResult | null {
+    try { return JSON.parse(json); } catch { return null; }
+  }
+
+  async function loadSeoAudit() {
+    if (!detail?.url) return;
+    seoLoading = true;
+    seoError = '';
+    try {
+      seoAudit = await getSeoAudit(detail.project_id, detail.url);
+      if (seoAudit) {
+        detail.seo_score = seoAudit.score;
+        detail.seo_audit_json = JSON.stringify(seoAudit);
+      }
+    } catch (e) {
+      seoError = String(e);
+    } finally {
+      seoLoading = false;
+    }
+  }
+
+  async function reRunSeoAudit() {
+    if (!pageId) return;
+    seoLoading = true;
+    seoError = '';
+    try {
+      seoAudit = await runSeoAudit(pageId);
+      if (seoAudit) {
+        detail.seo_score = seoAudit.score;
+        detail.seo_audit_json = JSON.stringify(seoAudit);
+      }
+    } catch (e) {
+      seoError = String(e);
+    } finally {
+      seoLoading = false;
     }
   }
 
@@ -201,6 +245,34 @@
     if (severity === 'warning') return 'warning';
     return 'default';
   }
+
+  function seoScoreColor(score: number): string {
+    if (score >= 80) return 'var(--success)';
+    if (score >= 60) return 'var(--warning)';
+    return 'var(--danger)';
+  }
+
+  function seoCategoryLabel(category: string): string {
+    const labels: Record<string, () => string> = {
+      meta: m['seo.category.meta'],
+      technical: m['seo.category.technical'],
+      social: m['seo.category.social'],
+      accessibility: m['seo.category.accessibility'],
+      performance: m['seo.category.performance'],
+      ai_readability: m['seo.category.ai_readability'],
+      sxo: m['seo.category.sxo'],
+    };
+    return labels[category]?.() ?? category;
+  }
+
+  function seoPriorityLabel(priority: string): string {
+    const labels: Record<string, () => string> = {
+      critical: m['seo.priority.critical'],
+      important: m['seo.priority.important'],
+      minor: m['seo.priority.minor'],
+    };
+    return labels[priority]?.() ?? priority;
+  }
 </script>
 
 {#if pageId}
@@ -295,6 +367,29 @@
                   </AccordionHeader>
                   <AccordionContent>
                     {@render seoMetaContent()}
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="seo-audit" class="overview-full">
+                  <AccordionHeader>
+                    <AccordionTrigger>
+                      <span class="inline-flex items-center gap-2">
+                        <ScanSearch class="size-4" />
+                        {m["seo.label"]()}
+                        {#if seoAudit}
+                          <span class="seo-chip" style="color: {seoScoreColor(seoAudit.score)}">
+                            {Math.round(seoAudit.score)} · {seoAudit.grade}
+                          </span>
+                        {:else if detail?.seo_score != null}
+                          <span class="seo-chip" style="color: {seoScoreColor(detail.seo_score)}">
+                            {Math.round(detail.seo_score)}
+                          </span>
+                        {/if}
+                      </span>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    {@render seoContent()}
                   </AccordionContent>
                 </AccordionItem>
 
@@ -404,6 +499,87 @@
         <span class="field-label">{m["detail.indexable"]()}</span>
         <span class="field-value">{detail.is_indexable === true ? m["detail.yes"]() : detail.is_indexable === false ? m["detail.no"]() : m["detail.unknown"]()}</span>
       </div>
+    </CardContent>
+  </Card>
+{/snippet}
+
+{#snippet seoContent()}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-4 pt-4">
+      {#if seoLoading}
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="size-4 animate-spin" />
+          {m["seo.running"]()}
+        </div>
+      {:else if seoError}
+        <Alert variant="destructive">{seoError}</Alert>
+        <div>
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit}>
+            <RotateCw class="size-3.5" />
+            {m["seo.run"]()}
+          </Button>
+        </div>
+      {:else if seoAudit}
+        <div class="seo-head-row">
+          <div
+            class="seo-score"
+            style="--seo-color: {seoScoreColor(seoAudit.score)}"
+          >
+            <span class="seo-score-value">{Math.round(seoAudit.score)}</span>
+            <span class="seo-score-grade">{seoAudit.grade}</span>
+          </div>
+          <div class="seo-categories">
+            {#each seoAudit.categories as cat (cat.category)}
+              <div class="seo-category">
+                <div class="seo-category-head">
+                  <span class="seo-category-name">{seoCategoryLabel(cat.category)}</span>
+                  <span class="seo-category-score" style="color: {seoScoreColor(cat.score)}">
+                    {Math.round(cat.score)}
+                  </span>
+                </div>
+                <Progress value={cat.score} max={100} class="h-1.5" />
+                <span class="seo-category-meta">
+                  {cat.passed_checks}/{cat.total_checks}
+                </span>
+              </div>
+            {/each}
+          </div>
+        </div>
+
+        {#if seoAudit.priority_fixes.length > 0}
+          <div>
+            <h4 class="seo-section-title">{m["seo.priority_fixes"]()}</h4>
+            <div class="seo-fix-list">
+              {#each seoAudit.priority_fixes as fix (fix.id)}
+                <div class="seo-fix seo-fix-{fix.priority}">
+                  <Badge variant={fix.priority === 'critical' ? 'destructive' : fix.priority === 'important' ? 'warning' : 'default'}>
+                    {seoPriorityLabel(fix.priority)}
+                  </Badge>
+                  <div class="seo-fix-body">
+                    <span class="seo-fix-message">{fix.message}</span>
+                    <span class="seo-fix-guidance">{fix.guidance}</span>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit} disabled={seoLoading}>
+            <RotateCw class="size-3.5" />
+            {m["seo.rerun"]()}
+          </Button>
+        </div>
+      {:else}
+        <p class="text-sm text-muted-foreground">{m["seo.empty"]()}</p>
+        <div>
+          <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit} disabled={seoLoading}>
+            <ScanSearch class="size-3.5" />
+            {m["seo.run"]()}
+          </Button>
+        </div>
+      {/if}
     </CardContent>
   </Card>
 {/snippet}
@@ -805,6 +981,134 @@
   .pagespeed-chip {
     font-weight: 700;
     font-size: 0.85rem;
+  }
+
+  .seo-chip {
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .seo-head-row {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .seo-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 120px;
+    height: 120px;
+    border-radius: 9999px;
+    border: 6px solid var(--seo-color);
+    flex-shrink: 0;
+  }
+
+  .seo-score-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--seo-color);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .seo-score-grade {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+
+  .seo-categories {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    flex: 1;
+    min-width: 280px;
+  }
+
+  .seo-category {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--bg-deep);
+    border-radius: 10px;
+    box-shadow: var(--neu-pressed-sm);
+  }
+
+  .seo-category-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .seo-category-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .seo-category-score {
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seo-category-meta {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seo-section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 8px;
+  }
+
+  .seo-fix-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .seo-fix {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-deep);
+    border-radius: 10px;
+    border-left: 3px solid var(--text-muted);
+    box-shadow: var(--neu-pressed-sm);
+  }
+  .seo-fix.seo-fix-critical { border-left-color: var(--danger); }
+  .seo-fix.seo-fix-important { border-left-color: var(--warning); }
+  .seo-fix.seo-fix-minor { border-left-color: var(--info); }
+
+  .seo-fix-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .seo-fix-message {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .seo-fix-guidance {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
   }
 
   .pagespeed-row {

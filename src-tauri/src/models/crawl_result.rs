@@ -32,6 +32,10 @@ pub struct CrawlResult {
     pub og_json: Option<String>,
     pub pagespeed_score: Option<f64>,
     pub pagespeed_json: Option<String>,
+    /// 0-100 SEO audit score computed during the crawl.
+    pub seo_score: Option<f64>,
+    /// Serialized `SeoAuditResult` with per-check details and priority fixes.
+    pub seo_audit_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +119,7 @@ pub struct DashboardStats {
     pub avg_load_ms: f64,
     pub avg_size_bytes: f64,
     pub avg_readability: Option<f64>,
+    pub avg_seo_score: Option<f64>,
     pub duplicate_count: u32,
     pub missing_title_count: u32,
     pub missing_description_count: u32,
@@ -134,6 +139,7 @@ pub struct CrawlSnapshot {
     pub avg_load_ms: f64,
     pub avg_size_bytes: f64,
     pub avg_readability: Option<f64>,
+    pub avg_seo_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +150,7 @@ pub struct SnapshotStats {
     pub avg_load_ms: f64,
     pub avg_size_bytes: f64,
     pub avg_readability: Option<f64>,
+    pub avg_seo_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
