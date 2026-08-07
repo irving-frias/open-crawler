@@ -1,4 +1,4 @@
-export const TAB_IDS = ['results', 'overview', 'dashboard', 'site_tree', 'comparator', 'duplicates', 'keywords', 'schedule'] as const;
+export const TAB_IDS = ['results', 'overview', 'dashboard', 'site_tree', 'comparator', 'duplicates', 'keywords', 'schedule', 'seo'] as const;
 
 export type TabId = (typeof TAB_IDS)[number];
 export type LazyTabId = Exclude<TabId, 'results'>;
@@ -16,6 +16,7 @@ export const TAB_DEFS: TabDef[] = [
   { id: 'duplicates' },
   { id: 'keywords' },
   { id: 'schedule' },
+  { id: 'seo' },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,6 +30,7 @@ const loaders: Record<LazyTabId, () => Promise<{ default: AnyComponent }>> = {
   duplicates: () => import('$lib/features/duplicates/Duplicates.svelte'),
   keywords: () => import('$lib/features/keywords/Keywords.svelte'),
   schedule: () => import('$lib/features/schedule/SchedulePanel.svelte'),
+  seo: () => import('$lib/features/seo/SiteSeoPanel.svelte'),
 };
 
 const cache: Partial<Record<LazyTabId, AnyComponent>> = {};

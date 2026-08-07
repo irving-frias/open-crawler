@@ -387,4 +387,16 @@ impl<'a> CrawlRepo<'a> {
             .optional()?;
         Ok(id)
     }
+
+    pub fn list_page_id_urls(&self, project_id: &str) -> Result<Vec<(String, String)>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, url FROM crawled_pages WHERE project_id = ?1 ORDER BY url",
+        )?;
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
 }

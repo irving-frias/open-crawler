@@ -25,7 +25,7 @@ import {
 const APP_SHELL_KEY = Symbol('open-crawler-app-shell');
 
 export type CrawlStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
-export type TabValue = 'results' | 'overview' | 'dashboard' | 'site_tree' | 'comparator' | 'duplicates' | 'keywords' | 'schedule';
+export type TabValue = 'results' | 'overview' | 'dashboard' | 'site_tree' | 'comparator' | 'duplicates' | 'keywords' | 'schedule' | 'seo';
 
 export interface CrawlProgressState {
   crawled: number;

@@ -85,7 +85,7 @@ impl<'a> CrawlRepo<'a> {
             std::collections::BTreeMap::new();
         let mut category_scores: std::collections::BTreeMap<String, (f64, u32)> =
             std::collections::BTreeMap::new();
-        let mut issue_counts: std::collections::BTreeMap<(String, String, String), u32> =
+        let mut issue_counts: std::collections::BTreeMap<(String, String, String), (u32, String, String)> =
             std::collections::BTreeMap::new();
         let mut total_fixes: u32 = 0;
 
@@ -108,9 +108,12 @@ impl<'a> CrawlRepo<'a> {
             }
             for check in &audit.checks {
                 if !check.passed {
-                    *issue_counts
+                    let entry = issue_counts
                         .entry((check.category.clone(), check.severity.clone(), check.id.clone()))
-                        .or_insert(0) += 1;
+                        .or_insert_with(|| {
+                            (0, check.message.clone(), check.guidance.clone())
+                        });
+                    entry.0 += 1;
                 }
             }
             total_fixes += audit.priority_fixes.len() as u32;
@@ -135,11 +138,13 @@ impl<'a> CrawlRepo<'a> {
 
         let mut top_issues: Vec<SeoIssueCount> = issue_counts
             .into_iter()
-            .map(|((category, severity, id), occurrences)| SeoIssueCount {
+            .map(|((category, severity, id), (occurrences, message, guidance))| SeoIssueCount {
                 id,
                 category,
                 severity,
                 occurrences,
+                message,
+                guidance,
             })
             .collect();
         top_issues.sort_by_key(|b| std::cmp::Reverse(b.occurrences));

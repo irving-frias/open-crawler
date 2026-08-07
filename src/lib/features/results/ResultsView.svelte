@@ -75,6 +75,8 @@
         return m['tabs.keywords']();
       case 'schedule':
         return m['tabs.schedule']();
+      case 'seo':
+        return m['tabs.seo']();
     }
   }
 
@@ -217,6 +219,12 @@
     {#if components.schedule}
       {@const SchedulePanel = components.schedule}
       <SchedulePanel projectId={selectedProjectId} />
+    {/if}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'seo'}>
+    {#if components.seo}
+      {@const SiteSeo = components.seo}
+      <SiteSeo projectId={selectedProjectId} />
     {/if}
   </div>
 </section>

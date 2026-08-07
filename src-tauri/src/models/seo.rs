@@ -40,4 +40,6 @@ pub struct SeoIssueCount {
     pub category: String,
     pub severity: String,
     pub occurrences: u32,
+    pub message: String,
+    pub guidance: String,
 }

@@ -326,6 +326,8 @@ export interface SeoIssueCount {
   category: string;
   severity: string;
   occurrences: number;
+  message: string;
+  guidance: string;
 }
 
 export interface SeoOverview {
@@ -337,4 +339,11 @@ export interface SeoOverview {
   category_averages: SeoCategoryAvg[];
   top_issues: SeoIssueCount[];
   total_fixes: number;
+}
+
+export interface SeoAuditProgress {
+  processed: number;
+  total: number;
+  errors: number;
+  percent: number;
 }

@@ -3,6 +3,7 @@
   import type { PageLink, PageSpeedData, CrawlResult, SeoAuditResult } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
+  import { localizeSeoCheck } from '$lib/seo-checks';
   import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown, ScanSearch } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
@@ -273,6 +274,23 @@
     };
     return labels[priority]?.() ?? priority;
   }
+
+  function localizeFix(fix: { id: string; message: string; guidance: string }): {
+    message: string;
+    guidance: string;
+  } {
+    return localizeSeoCheck(fix.id, fix.message, fix.guidance);
+  }
+
+  const failedChecksByCategory = $derived(
+    seoAudit
+      ? seoAudit.checks.reduce<Record<string, typeof seoAudit.checks>>((acc, check) => {
+          if (check.passed) return acc;
+          (acc[check.category] ??= []).push(check);
+          return acc;
+        }, {})
+      : {}
+  );
 </script>
 
 {#if pageId}
@@ -551,13 +569,39 @@
             <h4 class="seo-section-title">{m["seo.priority_fixes"]()}</h4>
             <div class="seo-fix-list">
               {#each seoAudit.priority_fixes as fix (fix.id)}
+                {@const localized = localizeFix(fix)}
                 <div class="seo-fix seo-fix-{fix.priority}">
                   <Badge variant={fix.priority === 'critical' ? 'destructive' : fix.priority === 'important' ? 'warning' : 'default'}>
                     {seoPriorityLabel(fix.priority)}
                   </Badge>
                   <div class="seo-fix-body">
-                    <span class="seo-fix-message">{fix.message}</span>
-                    <span class="seo-fix-guidance">{fix.guidance}</span>
+                    <span class="seo-fix-message">{localized.message}</span>
+                    <span class="seo-fix-guidance">{localized.guidance}</span>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if Object.keys(failedChecksByCategory).length > 0}
+          <div>
+            <h4 class="seo-section-title">{m["seo.areas_to_improve"]()}</h4>
+            <div class="seo-areas">
+              {#each Object.entries(failedChecksByCategory) as [category, checks] (category)}
+                <div class="seo-area-group">
+                  <div class="seo-area-head">
+                    <span class="seo-area-name">{seoCategoryLabel(category)}</span>
+                    <Badge variant="outline">{checks.length}</Badge>
+                  </div>
+                  <div class="seo-area-list">
+                    {#each checks as check (check.id)}
+                      {@const localized = localizeSeoCheck(check.id, check.message, check.guidance, check.evidence)}
+                      <div class="seo-area-item">
+                        <span class="seo-area-message">{localized.message}</span>
+                        <span class="seo-area-guidance">{localized.guidance}</span>
+                      </div>
+                    {/each}
                   </div>
                 </div>
               {/each}
@@ -1107,6 +1151,57 @@
 
   .seo-fix-guidance {
     font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .seo-areas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .seo-area-group {
+    border: 1px solid var(--border, var(--bg-deep));
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .seo-area-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-deep);
+  }
+
+  .seo-area-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .seo-area-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .seo-area-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .seo-area-message {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .seo-area-guidance {
+    font-size: 0.72rem;
     color: var(--text-secondary);
     line-height: 1.4;
   }

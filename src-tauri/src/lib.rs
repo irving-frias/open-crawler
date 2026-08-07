@@ -204,6 +204,7 @@ pub fn run() {
             crate::commands::get_seo_audit,
             crate::commands::run_seo_audit,
             crate::commands::get_seo_overview,
+            crate::commands::run_seo_audit_all,
             // settings
             crate::commands::get_settings,
             crate::commands::save_settings,
