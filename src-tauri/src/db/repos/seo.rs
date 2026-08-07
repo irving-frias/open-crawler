@@ -86,10 +86,11 @@ impl<'a> CrawlRepo<'a> {
             std::collections::BTreeMap::new();
         let mut category_scores: std::collections::BTreeMap<String, (f64, u32)> =
             std::collections::BTreeMap::new();
-        let mut issue_counts: std::collections::BTreeMap<
+        type IssueCountMap = std::collections::BTreeMap<
             (String, String, String),
             (u32, String, String, Vec<SemanticIssue>),
-        > = std::collections::BTreeMap::new();
+        >;
+        let mut issue_counts: IssueCountMap = IssueCountMap::new();
         let mut total_fixes: u32 = 0;
 
         for (score, json) in &rows {
