@@ -268,6 +268,8 @@
   "issue.heading_skip.message": "El nivel de encabezado salta de h{prev} a h{level}",
   "issue.img_no_alt.name": "Imagen Sin Alt",
   "issue.img_no_alt.message": "La imagen no tiene atributo alt",
+  "issue.img_no_dimensions.name": "Imagen Sin Dimensiones",
+  "issue.img_no_dimensions.message": "La imagen no tiene atributos width/height",
   "issue.input_no_id.name": "Entrada Sin ID",
   "issue.input_no_id.message": "El elemento de formulario no tiene atributo id",
   "issue.input_no_label.name": "Entrada Sin Label",

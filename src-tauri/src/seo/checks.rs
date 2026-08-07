@@ -978,6 +978,8 @@ const SEMANTIC_CHECK_MAP: &[(&str, &[&str])] = &[
     ("h1_count", &["multiple_h1"]),
     ("heading_hierarchy", &["heading_skip"]),
     ("img_alt", &["img_no_alt"]),
+    ("img_dimensions", &["img_no_dimensions"]),
+    ("image_optimization", &["img_no_dimensions"]),
     ("form_labels", &["input_no_label"]),
     ("input_ids", &["input_no_id"]),
     ("aria_controls", &["missing_aria"]),

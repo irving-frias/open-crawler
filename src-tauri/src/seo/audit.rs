@@ -39,8 +39,9 @@ pub struct CheckResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
     /// Concrete offending elements (up to 5) that explain why the check failed.
-    /// Empty for checks without per-element detail.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// Empty for checks without per-element detail. `default` keeps older
+    /// stored audits (which omit the key for empty examples) deserializable.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub examples: Vec<crate::crawler::parser::SemanticIssue>,
 }
 
@@ -71,8 +72,12 @@ pub struct SeoAuditResult {
     pub score: f64,
     /// Letter grade A..F derived from `score`.
     pub grade: String,
+    /// `default` tolerates audits stored by older engine versions.
+    #[serde(default)]
     pub categories: Vec<CategoryResult>,
+    #[serde(default)]
     pub checks: Vec<CheckResult>,
+    #[serde(default)]
     pub priority_fixes: Vec<PriorityFix>,
 }
 
@@ -179,5 +184,73 @@ mod tests {
         let fixes = result.priority_fixes;
         assert!(!fixes.is_empty());
         assert!(fixes.iter().any(|f| f.id == "title_present"));
+    }
+
+    #[test]
+    fn test_audit_json_without_examples_deserializes() {
+        // `examples` is omitted when empty (skip_serializing_if). Stored audits
+        // from the current and previous engines must still parse so the site
+        // overview can aggregate issues (regression: "score but no problems").
+        let json = r#"{
+            "score": 64.0,
+            "grade": "D",
+            "categories": [],
+            "checks": [
+                {"id":"title_length","category":"meta","severity":"warning","passed":false,"weight":2.0,"message":"Title length: 80 chars","guidance":"Keep titles 30-65 chars","evidence":"80"},
+                {"id":"form_labels","category":"accessibility","severity":"error","passed":false,"weight":3.0,"message":"Inputs lack labels","guidance":"Add labels","examples":[{"issue_type":"input_no_label","severity":"error","element":"<input>","message":"x","xpath":"/html/body/input"}]}
+            ],
+            "priority_fixes": []
+        }"#;
+        let audit: SeoAuditResult = serde_json::from_str(json).unwrap();
+        assert_eq!(audit.checks.len(), 2);
+        assert!(audit.checks[0].examples.is_empty());
+        assert_eq!(audit.checks[1].examples.len(), 1);
+    }
+
+    #[test]
+    fn test_img_dimensions_checks_carry_offending_images() {
+        // Images without width/height must be reported as concrete examples on
+        // the img_dimensions / image_optimization checks (not just a count).
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A page used to verify that images missing explicit dimensions are reported individually.">
+    <title>Image dimensions test page with a reasonably long title</title>
+</head>
+<body>
+    <main>
+        <h1>Image dimensions test</h1>
+        <p>This paragraph provides enough content for the page to be considered substantive by the audit engine, with several sentences of meaningful text.</p>
+        <p>A second paragraph continues to describe the topic, expanding on the details and giving the page a comfortable amount of readable text.</p>
+        <img src="/ok.png" alt="With dimensions" width="800" height="600">
+        <img src="/bad1.png" alt="Missing dimensions one">
+        <img src="/bad2.png" alt="Missing dimensions two">
+    </main>
+</body>
+</html>"#;
+        let url = Url::parse("https://example.com/page").unwrap();
+        let parser = SeoParser::new();
+        let (seo, _) = parser.parse(html, &url);
+        let ctx = AuditContext {
+            url: "https://example.com/page".to_string(),
+            status_code: 200,
+            size_bytes: 4096,
+            load_time_ms: 120,
+            pagespeed_score: None,
+        };
+        let result = audit_page(&seo, html, &ctx);
+
+        for id in ["img_dimensions", "image_optimization"] {
+            let check = result.checks.iter().find(|c| c.id == id).unwrap();
+            assert!(!check.passed, "{id} should fail");
+            assert_eq!(check.examples.len(), 2, "{id} should list the 2 offending images");
+            for ex in &check.examples {
+                assert_eq!(ex.issue_type, "img_no_dimensions");
+                assert!(ex.xpath.is_some(), "{id} example should carry an xpath");
+                assert!(ex.snippet.is_some(), "{id} example should carry a snippet");
+            }
+        }
     }
 }

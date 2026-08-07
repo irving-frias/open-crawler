@@ -554,6 +554,24 @@ impl SeoParser {
             }
         }
 
+        // 12b. <img> without explicit width/height (one issue per image).
+        // These cause layout shift (CLS) and are surfaced by the
+        // `img_dimensions` / `image_optimization` SEO checks.
+        let imgs_dims_selector = r#"img:not([width]), img:not([height])"#;
+        let img_no_dims_count = self.count_elements(document, imgs_dims_selector);
+        if img_no_dims_count > 0 {
+            for img in self.iter_elements(document, imgs_dims_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "img_no_dimensions",
+                    "warning",
+                    "<img>",
+                    "Image is missing explicit width and height",
+                    Some(imgs_dims_selector.to_string()),
+                    Some(img),
+                ));
+            }
+        }
+
         // 13. <input>/<textarea>/<select> without id (one issue per element)
         let no_id_selector = "input:not([id]), textarea:not([id]), select:not([id])";
         let inputs_no_id = self.count_elements(document, no_id_selector);
@@ -1338,6 +1356,14 @@ mod tests {
             assert!(issue.xpath.is_some(), "img_no_alt issue should carry an xpath");
             assert!(issue.css_selector.is_some(), "img_no_alt issue should carry a css_selector");
             assert!(issue.snippet.is_some(), "img_no_alt issue should carry a snippet");
+        }
+
+        let dims_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "img_no_dimensions").collect();
+        assert_eq!(dims_issues.len(), 3, "expected 3 imgs without dimensions, got {:#?}", dims_issues);
+        for issue in &dims_issues {
+            assert!(issue.xpath.is_some(), "img_no_dimensions issue should carry an xpath");
+            assert!(issue.css_selector.is_some(), "img_no_dimensions issue should carry a css_selector");
+            assert!(issue.snippet.is_some(), "img_no_dimensions issue should carry a snippet");
         }
 
         let label_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "input_no_label").collect();

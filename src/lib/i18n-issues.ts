@@ -16,6 +16,7 @@ const issueNames: Record<string, () => string> = {
   multiple_h1: () => m["issue.multiple_h1.name"](),
   heading_skip: () => m["issue.heading_skip.name"](),
   img_no_alt: () => m["issue.img_no_alt.name"](),
+  img_no_dimensions: () => m["issue.img_no_dimensions.name"](),
   input_no_id: () => m["issue.input_no_id.name"](),
   input_no_label: () => m["issue.input_no_label.name"](),
   empty_link_text: () => m["issue.empty_link_text.name"](),
@@ -37,6 +38,7 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
   multiple_h1: (p) => m["issue.multiple_h1.message"]({ count: String(p?.count ?? 0) }),
   heading_skip: (p) => m["issue.heading_skip.message"]({ prev: String(p?.prev ?? 0), level: String(p?.level ?? 0) }),
   img_no_alt: () => m["issue.img_no_alt.message"](),
+  img_no_dimensions: () => m["issue.img_no_dimensions.message"](),
   input_no_id: () => m["issue.input_no_id.message"](),
   input_no_label: () => m["issue.input_no_label.message"](),
   empty_link_text: () => m["issue.empty_link_text.message"](),
@@ -98,6 +100,10 @@ const ISSUE_FIXES: Record<string, { en: { fix: string; expected: string }; es: {
   img_no_alt: {
     en: { fix: 'Add a descriptive alt attribute to the image, or set alt="" for decorative images.', expected: '<img src="photo.jpg" alt="A person walking on the beach at sunset">' },
     es: { fix: 'Añade un atributo alt descriptivo a la imagen, o usa alt="" para imágenes decorativas.', expected: '<img src="foto.jpg" alt="Una persona caminando por la playa al atardecer">' },
+  },
+  img_no_dimensions: {
+    en: { fix: 'Set explicit width and height attributes (matching the intrinsic size) so the browser reserves layout space and avoids layout shift.', expected: '<img src="photo.jpg" alt="Photo" width="1200" height="800">' },
+    es: { fix: 'Define los atributos width y height explícitos (coincidiendo con el tamaño intrínseco) para que el navegador reserve el espacio y evite el desplazamiento de layout.', expected: '<img src="foto.jpg" alt="Foto" width="1200" height="800">' },
   },
   input_no_id: {
     en: { fix: 'Give the form control a unique id so it can be associated with a <label>.', expected: '<input type="text" id="email">\n<label for="email">Email</label>' },

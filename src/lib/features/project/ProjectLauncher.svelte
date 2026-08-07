@@ -1,9 +1,15 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { Settings, Plus, FolderOpen, ExternalLink, Trash2 } from 'lucide-svelte';
+  import { getAppShell } from '$lib/app.svelte';
+  import { Settings, Plus, FolderOpen, ExternalLink, Trash2, FileUp, Loader2 } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
+  import * as Select from '$lib/components/ui/select/index.js';
+  import { Label } from '$lib/components/ui/label/index.js';
+  import { toast } from 'svelte-sonner';
   import type { Project } from '$lib/api/types';
+
+  const app = getAppShell();
 
   let {
     projects,
@@ -20,6 +26,34 @@
     onOpenSettings: () => void;
     onDeleteProject: (id: string) => void;
   } = $props();
+
+  let conflictMode = $state('skip');
+  let importing = $state(false);
+
+  const conflictOptions = $derived([
+    { value: 'skip', label: m['transfer.import.skip']() },
+    { value: 'copy', label: m['transfer.import.copy']() },
+    { value: 'overwrite', label: m['transfer.import.overwrite']() },
+  ]);
+  const conflictLabel = $derived(conflictOptions.find((o) => o.value === conflictMode)?.label ?? '');
+
+  async function handlePickImport() {
+    if (importing) return;
+    importing = true;
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        multiple: false,
+        filters: [{ name: 'Open Crawler Package', extensions: ['ocproj'] }],
+      });
+      if (!picked || typeof picked !== 'string') return;
+      await app.importPackage(picked, conflictMode as 'skip' | 'copy' | 'overwrite');
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      importing = false;
+    }
+  }
 </script>
 
 <div class="launcher">
@@ -96,6 +130,41 @@
         {/each}
       </div>
     {/if}
+
+    <div class="import-card">
+      <div class="import-card-head">
+        <FileUp class="size-4" />
+        <h3 class="import-card-title">{m['transfer.tab.import']()}</h3>
+      </div>
+      <div class="import-card-body">
+        <div class="grid gap-1.5">
+          <Label for="launcher-conflict">{m['transfer.import.mode']()}</Label>
+          <Select.Root type="single" bind:value={conflictMode}>
+            <Select.Trigger id="launcher-conflict" class="w-full">
+              <span data-slot="select-value">{conflictLabel}</span>
+            </Select.Trigger>
+            <Select.Content>
+              {#each conflictOptions as opt}
+                <Select.Item value={opt.value} label={opt.label} />
+              {/each}
+            </Select.Content>
+          </Select.Root>
+        </div>
+        <Button
+          class="import-card-btn"
+          onclick={handlePickImport}
+          disabled={importing || app.transferBusy}
+        >
+          {#if importing || app.transferBusy}
+            <Loader2 class="size-4 animate-spin" />
+          {:else}
+            <FolderOpen class="size-4" />
+          {/if}
+          {m['transfer.import.pick']()}
+        </Button>
+        <p class="import-card-hint">{m['transfer.import.mode_hint']()}</p>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -246,5 +315,44 @@
 
   :global(.launcher-open) {
     width: 100%;
+  }
+
+  .import-card {
+    margin-top: 24px;
+    max-width: 420px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .import-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .import-card-title {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .import-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  :global(.import-card-btn) {
+    width: 100%;
+  }
+
+  .import-card-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
   }
 </style>

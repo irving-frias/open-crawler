@@ -268,6 +268,8 @@
   "issue.heading_skip.message": "Heading level skips from h{prev} to h{level}",
   "issue.img_no_alt.name": "Image Missing Alt",
   "issue.img_no_alt.message": "Image is missing the alt attribute",
+  "issue.img_no_dimensions.name": "Image Missing Dimensions",
+  "issue.img_no_dimensions.message": "Image has no width/height attributes",
   "issue.input_no_id.name": "Input Missing ID",
   "issue.input_no_id.message": "Form element is missing the id attribute",
   "issue.input_no_label.name": "Input Missing Label",
