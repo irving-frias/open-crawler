@@ -189,8 +189,22 @@ pub(crate) async fn start_crawl_internal(
 
 async fn validate_url(client: &Client, url_str: &str) -> Result<(), AppError> {
     let _url = Url::parse(url_str)?;
-    let request = client.head(url_str);
-    let response = request.send().await?;
+    let head = client.head(url_str).send().await;
+
+    let response = match head {
+        Ok(r) => r,
+        Err(_) => {
+            let get = client.get(url_str).send().await?;
+            if get.status().is_success() || get.status().is_redirection() {
+                return Ok(());
+            }
+            return Err(AppError::Crawl(format!(
+                "HTTP {} for {}",
+                get.status(),
+                url_str
+            )));
+        }
+    };
 
     if response.status().is_success() {
         return Ok(());
@@ -199,8 +213,7 @@ async fn validate_url(client: &Client, url_str: &str) -> Result<(), AppError> {
     if response.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED
         || response.status() == reqwest::StatusCode::NOT_IMPLEMENTED
     {
-        let get_req = client.get(url_str);
-        let get_response = get_req.send().await?;
+        let get_response = client.get(url_str).send().await?;
         if get_response.status().is_success() || get_response.status().is_redirection() {
             return Ok(());
         }
