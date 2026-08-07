@@ -344,6 +344,10 @@ pub fn issue(
 #[derive(Debug, Clone)]
 pub struct SeoParser;
 
+/// Cap the number of per-element issues emitted per issue type so one page cannot
+/// flood the results (e.g. a gallery with 500 images without alt).
+const MAX_ELEMENT_ISSUES_PER_TYPE: usize = 25;
+
 impl Default for SeoParser {
     fn default() -> Self {
         Self::new()
@@ -513,17 +517,20 @@ impl SeoParser {
             });
         }
 
-        // 10. Multiple <h1>
+        // 10. Multiple <h1> (one issue per extra <h1>)
         let h1_count = self.count_elements(document, "h1");
         if h1_count > 1 {
-            issues.push(SemanticIssue {
-                issue_type: "multiple_h1".to_string(),
-                severity: "warning".to_string(),
-                element: "<h1>".to_string(),
-                message: format!("Multiple <h1> tags found ({})", h1_count),
-                selector: Some("h1".to_string()),
-            ..Default::default()
-            });
+            let h1s = self.iter_elements(document, "h1");
+            for h1 in h1s.into_iter().skip(1).take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "multiple_h1",
+                    "warning",
+                    "<h1>",
+                    &format!("Page has {} <h1> elements; only one is recommended", h1_count),
+                    Some("h1".to_string()),
+                    Some(h1),
+                ));
+            }
         }
 
         // 11. Heading hierarchy skip
@@ -531,69 +538,81 @@ impl SeoParser {
             issues.push(skip_issue);
         }
 
-        // 12. <img> without alt
-        let imgs_no_alt = self.count_elements(document, r#"img:not([alt]), img[alt=""]"#);
-        if imgs_no_alt > 0 {
-            issues.push(SemanticIssue {
-                issue_type: "img_no_alt".to_string(),
-                severity: "error".to_string(),
-                element: "<img>".to_string(),
-                message: format!("{} image(s) missing alt attribute", imgs_no_alt),
-                selector: Some(r#"img:not([alt]), img[alt=""]"#.to_string()),
-            ..Default::default()
-            });
+        // 12. <img> without alt (one issue per image)
+        let imgs_selector = r#"img:not([alt]), img[alt=""]"#;
+        let img_no_alt_count = self.count_elements(document, imgs_selector);
+        if img_no_alt_count > 0 {
+            for img in self.iter_elements(document, imgs_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "img_no_alt",
+                    "error",
+                    "<img>",
+                    "Image is missing the alt attribute",
+                    Some(imgs_selector.to_string()),
+                    Some(img),
+                ));
+            }
         }
 
-        // 13. <input> without id
-        let inputs_no_id = self.count_elements(document, "input:not([id]), textarea:not([id]), select:not([id])");
+        // 13. <input>/<textarea>/<select> without id (one issue per element)
+        let no_id_selector = "input:not([id]), textarea:not([id]), select:not([id])";
+        let inputs_no_id = self.count_elements(document, no_id_selector);
         if inputs_no_id > 0 {
-            issues.push(SemanticIssue {
-                issue_type: "input_no_id".to_string(),
-                severity: "warning".to_string(),
-                element: "<input>".to_string(),
-                message: format!("{} form element(s) missing id attribute", inputs_no_id),
-                selector: Some("input:not([id])".to_string()),
-            ..Default::default()
-            });
+            for el in self.iter_elements(document, no_id_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "input_no_id",
+                    "warning",
+                    &format!("<{}>", el.value().name()),
+                    "Form element is missing the id attribute",
+                    Some(no_id_selector.to_string()),
+                    Some(el),
+                ));
+            }
         }
 
-        // 14. <input> without label
-        let inputs_no_label = self.count_inputs_without_label(document);
-        if inputs_no_label > 0 {
-            issues.push(SemanticIssue {
-                issue_type: "input_no_label".to_string(),
-                severity: "error".to_string(),
-                element: "<input>".to_string(),
-                message: format!("{} input(s) without associated <label>", inputs_no_label),
-                selector: Some("input".to_string()),
-            ..Default::default()
-            });
+        // 14. Form controls without an associated <label> (one issue per control)
+        let inputs_no_label = self.inputs_without_label(document);
+        if !inputs_no_label.is_empty() {
+            for el in inputs_no_label.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "input_no_label",
+                    "error",
+                    &format!("<{}>", el.value().name()),
+                    "Form control has no associated <label>",
+                    Some("input".to_string()),
+                    Some(el),
+                ));
+            }
         }
 
-        // 15. Empty link text
-        let empty_links = self.count_empty_links(document);
-        if empty_links > 0 {
-            issues.push(SemanticIssue {
-                issue_type: "empty_link_text".to_string(),
-                severity: "warning".to_string(),
-                element: "<a>".to_string(),
-                message: format!("{} link(s) with no text and no aria-label", empty_links),
-                selector: Some("a[href]" .to_string()),
-            ..Default::default()
-            });
+        // 15. Empty link text (one issue per link)
+        let empty_links = self.empty_links(document);
+        if !empty_links.is_empty() {
+            for link in empty_links.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "empty_link_text",
+                    "warning",
+                    "<a>",
+                    "Link has no text and no aria-label",
+                    Some("a[href]".to_string()),
+                    Some(link),
+                ));
+            }
         }
 
-        // 16. Missing ARIA on form controls
-        let missing_aria = self.count_form_controls_without_aria(document);
-        if missing_aria > 0 {
-            issues.push(SemanticIssue {
-                issue_type: "missing_aria".to_string(),
-                severity: "warning".to_string(),
-                element: "<select>/<textarea>".to_string(),
-                message: format!("{} form control(s) missing aria-label or aria-labelledby", missing_aria),
-                selector: Some("select, textarea".to_string()),
-            ..Default::default()
-            });
+        // 16. Missing ARIA on form controls (one issue per control)
+        let missing_aria = self.form_controls_without_aria(document);
+        if !missing_aria.is_empty() {
+            for el in missing_aria.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "missing_aria",
+                    "warning",
+                    &format!("<{}>", el.value().name()),
+                    "Form control is missing aria-label or aria-labelledby",
+                    Some("select, textarea".to_string()),
+                    Some(el),
+                ));
+            }
         }
 
         // 17. Invalid element nesting (flow inside phrasing)
@@ -617,6 +636,13 @@ impl SeoParser {
             Err(_) => return 0,
         };
         document.select(&selector).count()
+    }
+
+    fn iter_elements<'a>(&self, document: &'a Html, selector_str: &str) -> Vec<scraper::ElementRef<'a>> {
+        match Selector::parse(selector_str) {
+            Ok(s) => document.select(&s).collect(),
+            Err(_) => Vec::new(),
+        }
     }
 
     fn check_heading_hierarchy(&self, document: &Html) -> Option<SemanticIssue> {
@@ -652,17 +678,17 @@ impl SeoParser {
         None
     }
 
-    fn count_inputs_without_label(&self, document: &Html) -> usize {
+    fn inputs_without_label<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
         let selector = match Selector::parse("input:not([type='hidden']):not([type='submit']):not([type='button'])") {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(_) => return Vec::new(),
         };
 
         // Rule (equivalent of //input[(@id and not(//label[@for=current()/@id])) or
         // (not(@id) and not(parent::label))]): an input is valid only if it has an id
         // with an associated <label for="id">, or it has no id but its direct parent
         // is a <label>.
-        let mut count = 0;
+        let mut result = Vec::new();
         for input in document.select(&selector) {
             match input.value().attr("id") {
                 Some(input_id) => {
@@ -681,10 +707,10 @@ impl SeoParser {
                     }
                 }
             }
-            count += 1;
+            result.push(input);
         }
 
-        count
+        result
     }
 
     fn is_direct_child_of_label(&self, input: scraper::ElementRef) -> bool {
@@ -695,13 +721,13 @@ impl SeoParser {
             .unwrap_or(false)
     }
 
-    fn count_empty_links(&self, document: &Html) -> usize {
+    fn empty_links<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
         let selector = match Selector::parse("a[href]") {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(_) => return Vec::new(),
         };
 
-        let mut count = 0;
+        let mut result = Vec::new();
         for link in document.select(&selector) {
             let has_aria_label = link.value().attr("aria-label").is_some();
             let has_aria_labelledby = link.value().attr("aria-labelledby").is_some();
@@ -716,20 +742,20 @@ impl SeoParser {
             };
 
             if text.is_empty() && !has_aria_label && !has_aria_labelledby && !has_title && !has_img_alt {
-                count += 1;
+                result.push(link);
             }
         }
 
-        count
+        result
     }
 
-    fn count_form_controls_without_aria(&self, document: &Html) -> usize {
+    fn form_controls_without_aria<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
         let selector = match Selector::parse("select, textarea") {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(_) => return Vec::new(),
         };
 
-        let mut count = 0;
+        let mut result = Vec::new();
         for el in document.select(&selector) {
             let has_aria_label = el.value().attr("aria-label").is_some();
             let has_aria_labelledby = el.value().attr("aria-labelledby").is_some();
@@ -753,10 +779,10 @@ impl SeoParser {
                 }
             }
 
-            count += 1;
+            result.push(el);
         }
 
-        count
+        result
     }
 
     /// Check for invalid element nesting using the static caninclude table.
@@ -1306,15 +1332,21 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let img_issue = issues.iter().find(|i| i.issue_type == "img_no_alt")
-            .expect("img_no_alt issue should exist");
-        let img_count: usize = img_issue.message.split_whitespace().next().unwrap().parse().unwrap();
-        assert_eq!(img_count, 2, "expected 2 imgs without alt: {}", img_issue.message);
+        let img_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "img_no_alt").collect();
+        assert_eq!(img_issues.len(), 2, "expected 2 imgs without alt, got {:#?}", img_issues);
+        for issue in img_issues {
+            assert!(issue.xpath.is_some(), "img_no_alt issue should carry an xpath");
+            assert!(issue.css_selector.is_some(), "img_no_alt issue should carry a css_selector");
+            assert!(issue.snippet.is_some(), "img_no_alt issue should carry a snippet");
+        }
 
-        let label_issue = issues.iter().find(|i| i.issue_type == "input_no_label")
-            .expect("input_no_label issue should exist");
-        let input_count: usize = label_issue.message.split_whitespace().next().unwrap().parse().unwrap();
-        assert_eq!(input_count, 4, "expected 4 invalid inputs: {}", label_issue.message);
+        let label_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "input_no_label").collect();
+        assert_eq!(label_issues.len(), 4, "expected 4 invalid inputs, got {:#?}", label_issues);
+        for issue in label_issues {
+            assert!(issue.xpath.is_some(), "input_no_label issue should carry an xpath");
+            assert!(issue.css_selector.is_some(), "input_no_label issue should carry a css_selector");
+            assert!(issue.snippet.is_some(), "input_no_label issue should carry a snippet");
+        }
     }
 
     #[test]

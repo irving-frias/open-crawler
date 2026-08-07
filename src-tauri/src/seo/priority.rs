@@ -55,6 +55,7 @@ mod tests {
             message: "m".to_string(),
             guidance: "g".to_string(),
             evidence: None,
+            examples: Vec::new(),
         }
     }
 

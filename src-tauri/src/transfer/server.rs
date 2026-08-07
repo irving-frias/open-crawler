@@ -482,6 +482,7 @@ mod tests {
         AppState {
             db: StdMutex::new(conn),
             crawls: Arc::new(RwLock::new(HashMap::new())),
+            seo_audits: Arc::new(RwLock::new(HashMap::new())),
             results_cache: Arc::new(StdMutex::new(cache)),
             transfer_server: StdMutex::new(None),
         }

@@ -3,7 +3,7 @@
   import type { SettingsMap } from '$lib/api/types';
   import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
   import { m } from '$lib/paraglide/messages.js';
-  import { applyTheme as applyAppTheme, applyUiStyle } from '$lib/theme.js';
+  import { applyTheme as applyAppTheme } from '$lib/theme.js';
   import * as Dialog from '$lib/components/ui/dialog/index.js';
   import * as Select from '$lib/components/ui/select/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -22,7 +22,6 @@
 
   let language = $state(getLocale());
   let theme = $state('system');
-  let uiStyle = $state('classic');
   let pageSize = $state('50');
   let maxDepth = $state('10');
   let respectRobots = $state(true);
@@ -31,6 +30,10 @@
   let maxCrawlTime = $state('3600');
   let notificationsEnabled = $state(true);
   let pagespeedApiKey = $state('');
+  let aiEnabled = $state(false);
+  let aiApiKey = $state('');
+  let aiBaseUrl = $state('https://api.openai.com/v1');
+  let aiModel = $state('gpt-4o-mini');
   let saving = $state(false);
 
   $effect(() => {
@@ -42,7 +45,6 @@
       const settings = await getSettings();
       if (settings.language) language = settings.language as Locale;
       if (settings.theme) theme = settings.theme;
-      if (settings.ui_style) uiStyle = settings.ui_style;
       if (settings.page_size) pageSize = settings.page_size;
       if (settings.max_depth) maxDepth = settings.max_depth;
       if (settings.respect_robots) respectRobots = settings.respect_robots === 'true';
@@ -51,6 +53,10 @@
       if (settings.max_crawl_time) maxCrawlTime = settings.max_crawl_time;
       if (settings.notifications_enabled !== undefined) notificationsEnabled = settings.notifications_enabled === 'true';
       if (settings.pagespeed_api_key) pagespeedApiKey = settings.pagespeed_api_key;
+      if (settings.ai_enabled) aiEnabled = settings.ai_enabled === 'true';
+      if (settings.ai_api_key) aiApiKey = settings.ai_api_key;
+      if (settings.ai_base_url) aiBaseUrl = settings.ai_base_url;
+      if (settings.ai_model) aiModel = settings.ai_model;
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -62,7 +68,6 @@
       const settings: SettingsMap = {
         language,
         theme,
-        ui_style: uiStyle,
         page_size: pageSize,
         max_depth: maxDepth,
         respect_robots: respectRobots.toString(),
@@ -71,11 +76,14 @@
         max_crawl_time: maxCrawlTime,
         notifications_enabled: notificationsEnabled.toString(),
         pagespeed_api_key: pagespeedApiKey,
+        ai_enabled: aiEnabled.toString(),
+        ai_api_key: aiApiKey,
+        ai_base_url: aiBaseUrl,
+        ai_model: aiModel,
       };
       await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
-      applyUiStyle(uiStyle);
       onsave?.(settings);
       open = false;
     } catch (e) {
@@ -86,17 +94,6 @@
   }
 
   const languageLabel = $derived(language === 'en' ? m['language.en']() : m['language.es']());
-  const uiStyleLabel = $derived(
-    uiStyle === 'neumorph'
-      ? m['ui_style.neumorph']()
-      : uiStyle === 'clay'
-        ? m['ui_style.clay']()
-        : uiStyle === 'glass'
-          ? m['ui_style.glass']()
-          : uiStyle === 'brutal'
-            ? m['ui_style.brutal']()
-            : m['ui_style.classic']()
-  );
 </script>
 
 <Dialog.Root bind:open>
@@ -138,24 +135,6 @@
       </div>
 
       <div class="grid gap-1.5">
-        <Label for="ui-style">{m['ui_style.label']()}</Label>
-        <Select.Root type="single" bind:value={uiStyle}>
-          <Select.Trigger id="ui-style" class="w-full">
-            <span data-slot="select-value">{uiStyleLabel}</span>
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="classic" label={m['ui_style.classic']()} />
-            <Select.Item value="neumorph" label={m['ui_style.neumorph']()} />
-            <Select.Item value="clay" label={m['ui_style.clay']()} />
-            <Select.Item value="glass" label={m['ui_style.glass']()} />
-            <Select.Item value="brutal" label={m['ui_style.brutal']()} />
-          </Select.Content>
-        </Select.Root>
-      </div>
-
-      <Separator />
-
-      <div class="grid gap-1.5">
         <Label for="page-size">{m['settings.page_size']()}</Label>
         <Select.Root type="single" bind:value={pageSize}>
           <Select.Trigger id="page-size" class="w-full">
@@ -191,6 +170,38 @@
           placeholder={m['settings.pagespeed_api_key_placeholder']()}
         />
         <p class="text-xs text-muted-foreground">{m['settings.pagespeed_api_key_hint']()}</p>
+      </div>
+
+      <Separator />
+
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        {m['settings.ai_assistant']()}
+      </h3>
+      <div class="grid gap-2 pt-1">
+        <div class="flex items-center gap-2">
+          <Checkbox bind:checked={aiEnabled} id="cfg-ai-enabled" />
+          <Label for="cfg-ai-enabled" class="cursor-pointer font-normal">{m['settings.ai_enabled']()}</Label>
+        </div>
+        <p class="text-xs text-muted-foreground">{m['settings.ai_enabled_hint']()}</p>
+      </div>
+      <div class="grid gap-1.5">
+        <Label for="ai-api-key">{m['settings.ai_api_key']()}</Label>
+        <Input
+          id="ai-api-key"
+          type="password"
+          bind:value={aiApiKey}
+          autocomplete="off"
+          placeholder={m['settings.ai_api_key_placeholder']()}
+        />
+        <p class="text-xs text-muted-foreground">{m['settings.ai_api_key_hint']()}</p>
+      </div>
+      <div class="grid gap-1.5">
+        <Label for="ai-base-url">{m['settings.ai_base_url']()}</Label>
+        <Input id="ai-base-url" type="text" bind:value={aiBaseUrl} placeholder={m['settings.ai_base_url_placeholder']()} />
+      </div>
+      <div class="grid gap-1.5">
+        <Label for="ai-model">{m['settings.ai_model']()}</Label>
+        <Input id="ai-model" type="text" bind:value={aiModel} placeholder={m['settings.ai_model_placeholder']()} />
       </div>
 
       <Separator />

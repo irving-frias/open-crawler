@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { getPageDetail, getPagespeedScore, getSeoAudit, runSeoAudit } from '$lib/api';
-  import type { PageLink, PageSpeedData, CrawlResult, SeoAuditResult } from '$lib/api/types';
+  import { getPageDetail, getPagespeedScore, getSeoAudit, runSeoAudit, suggestFix, getSettings } from '$lib/api';
+  import type { PageLink, PageSpeedData, CrawlResult, SeoAuditResult, FixSuggestion } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity } from '$lib/i18n-issues';
+  import { getLocale } from '$lib/paraglide/runtime.js';
+  import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity, translateIssueFix, translateIssueExpected } from '$lib/i18n-issues';
   import { localizeSeoCheck } from '$lib/seo-checks';
-  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown, ScanSearch } from 'lucide-svelte';
+  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown, ScanSearch, Sparkles } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -175,7 +176,43 @@
     try { return JSON.parse(json); } catch { return []; }
   }
 
-  const detailIssues = $derived(parseIssues(detail?.semantic_issues_json).filter((i: any) => i.severity === 'error'));
+  const allIssues = $derived(parseIssues(detail?.semantic_issues_json));
+
+  type IssueFilter = 'all' | 'error' | 'warning' | 'info';
+  let issueFilter = $state<IssueFilter>('error');
+  const detailIssues = $derived(
+    allIssues.filter((i: any) => (issueFilter === 'all' ? true : i.severity === issueFilter))
+  );
+
+  let aiLoading = $state<Record<string, boolean>>({});
+  let aiResults = $state<Record<string, FixSuggestion | null>>({});
+  let aiError = $state<Record<string, string>>({});
+
+  async function suggestAiFix(check: { id: string; message: string; guidance: string; evidence?: string | null; examples?: any[] }) {
+    if (aiLoading[check.id]) return;
+    aiLoading[check.id] = true;
+    aiResults[check.id] = null;
+    aiError[check.id] = '';
+    try {
+      const settings = await getSettings();
+      if (settings.ai_enabled !== 'true') {
+        throw 'AI suggestions are not enabled. Turn them on in Settings → AI Assistant.';
+      }
+      const result = await suggestFix({
+        checkId: check.id,
+        checkMessage: check.message,
+        checkGuidance: check.guidance,
+        elementSnippet: check.examples?.[0]?.snippet ?? check.examples?.[0]?.element ?? null,
+        language: getLocale(),
+      });
+      aiResults[check.id] = result;
+    } catch (e) {
+      aiResults[check.id] = null;
+      aiError[check.id] = String(e);
+    } finally {
+      aiLoading[check.id] = false;
+    }
+  }
 
   let expandedRef = $state<Set<number>>(new Set());
 
@@ -278,6 +315,8 @@
   function localizeFix(fix: { id: string; message: string; guidance: string }): {
     message: string;
     guidance: string;
+    fix?: string;
+    expected?: string;
   } {
     return localizeSeoCheck(fix.id, fix.message, fix.guidance);
   }
@@ -465,10 +504,10 @@
                   </AccordionItem>
                 {/if}
 
-                {#if detailIssues.length > 0}
+                {#if allIssues.length > 0}
                   <AccordionItem value="semantic-issues" class="overview-full">
                     <AccordionHeader>
-                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: detailIssues.length.toString() })}</AccordionTrigger>
+                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: allIssues.length.toString() })}</AccordionTrigger>
                     </AccordionHeader>
                     <AccordionContent>
                       {@render issuesContent()}
@@ -600,6 +639,76 @@
                       <div class="seo-area-item">
                         <span class="seo-area-message">{localized.message}</span>
                         <span class="seo-area-guidance">{localized.guidance}</span>
+                        {#if (localized.fix || localized.expected) && !check.passed}
+                          <div class="seo-fix-block">
+                            {#if localized.fix}
+                              <div class="seo-fix-line">
+                                <span class="seo-fix-label">{m["seo.fix"]()}</span>
+                                <span class="seo-fix-text">{localized.fix}</span>
+                              </div>
+                            {/if}
+                            {#if localized.expected}
+                              <div class="seo-fix-line">
+                                <span class="seo-fix-label">{m["seo.expected"]()}</span>
+                                <pre class="seo-expected-code"><code>{localized.expected}</code></pre>
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
+                        {#if check.examples?.length}
+                          <div class="seo-examples">
+                            {#each check.examples.slice(0, 3) as ex, i (i)}
+                              <div class="seo-example">
+                                {#if ex.element}
+                                  <code class="seo-example-element">{ex.element}</code>
+                                {/if}
+                                {#if ex.snippet}
+                                  <pre class="seo-example-snippet"><code>{ex.snippet}</code></pre>
+                                {/if}
+                                {#if ex.xpath}
+                                  <button
+                                    type="button"
+                                    class="seo-example-xpath"
+                                    onclick={() => copyToClipboard(ex.xpath ?? '', `xpath-${check.id}-${i}`)}
+                                  >
+                                    <Copy class="size-3" />
+                                    <code>{ex.xpath}</code>
+                                  </button>
+                                {/if}
+                              </div>
+                            {/each}
+                          </div>
+                        {/if}
+                        {#if !check.passed}
+                          <div class="seo-ai-row">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              class="gap-1.5"
+                              onclick={() => suggestAiFix(check)}
+                              disabled={aiLoading[check.id]}
+                            >
+                              {#if aiLoading[check.id]}
+                                <Loader2 class="size-3.5 animate-spin" />
+                                {m["seo.suggest_fix_loading"]()}
+                              {:else}
+                                <Sparkles class="size-3.5" />
+                                {m["seo.suggest_fix"]()}
+                              {/if}
+                            </Button>
+                            {#if aiResults[check.id]}
+                              <div class="seo-ai-result">
+                                <div class="seo-ai-suggestion">{aiResults[check.id]!.suggestion}</div>
+                                {#if aiResults[check.id]!.corrected_html}
+                                  <pre class="seo-ai-html"><code>{aiResults[check.id]!.corrected_html}</code></pre>
+                                {/if}
+                              </div>
+                            {/if}
+                            {#if aiError[check.id]}
+                              <span class="seo-ai-error">{aiError[check.id]}</span>
+                            {/if}
+                          </div>
+                        {/if}
                       </div>
                     {/each}
                   </div>
@@ -797,6 +906,17 @@
 {#snippet issuesContent()}
   <Card size="sm">
     <CardContent class="pt-4">
+      <div class="issue-filter-row" role="group" aria-label="Severity filter">
+        {#each (['all', 'error', 'warning', 'info'] as const) as level (level)}
+          <button
+            type="button"
+            class={cn('issue-filter-btn', issueFilter === level && 'active')}
+            onclick={() => (issueFilter = level)}
+          >
+            {level === 'all' ? m['detail.issues.filter_all']() : level === 'error' ? m['detail.issues.filter_errors']() : level === 'warning' ? m['detail.issues.filter_warnings']() : m['detail.issues.filter_info']()}
+          </button>
+        {/each}
+      </div>
       <div class="issue-list">
         {#each detailIssues as issue, i (i)}
           {@const params = parseIssueParams(issue.message, issue.issue_type)}
@@ -1194,6 +1314,157 @@
     gap: 2px;
   }
 
+  .seo-fix-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border, var(--bg-deep));
+  }
+
+  .seo-fix-line {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .seo-fix-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .seo-fix-text {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .seo-expected-code {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--success);
+    background: var(--bg-deep);
+    padding: 6px 8px;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .seo-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .seo-example {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border, var(--bg-deep));
+  }
+
+  .seo-example-element {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--info);
+  }
+
+  .seo-example-snippet {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background: var(--bg-deep);
+    padding: 6px 8px;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .seo-example-xpath {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    color: var(--purple);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    text-align: left;
+    max-width: 100%;
+  }
+  .seo-example-xpath:hover {
+    color: var(--text);
+    background: var(--bg-deep);
+  }
+  .seo-example-xpath code {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .seo-ai-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .seo-ai-result {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--accent, var(--border));
+  }
+
+  .seo-ai-suggestion {
+    font-size: 0.76rem;
+    color: var(--text);
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
+  .seo-ai-html {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--success);
+    background: var(--bg-deep);
+    padding: 6px 8px;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .seo-ai-error {
+    font-size: 0.72rem;
+    color: var(--danger);
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
   .seo-area-message {
     font-size: 0.8rem;
     font-weight: 500;
@@ -1274,6 +1545,34 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .issue-filter-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .issue-filter-btn {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--border, var(--bg-deep));
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  }
+  .issue-filter-btn:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .issue-filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-foreground, #fff);
   }
 
   .issue-card {

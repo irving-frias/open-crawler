@@ -1,6 +1,7 @@
 use rusqlite::OptionalExtension;
 use rusqlite::params;
 
+use crate::crawler::parser::SemanticIssue;
 use crate::error::AppError;
 use crate::models::{
     GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview,
@@ -85,8 +86,10 @@ impl<'a> CrawlRepo<'a> {
             std::collections::BTreeMap::new();
         let mut category_scores: std::collections::BTreeMap<String, (f64, u32)> =
             std::collections::BTreeMap::new();
-        let mut issue_counts: std::collections::BTreeMap<(String, String, String), (u32, String, String)> =
-            std::collections::BTreeMap::new();
+        let mut issue_counts: std::collections::BTreeMap<
+            (String, String, String),
+            (u32, String, String, Vec<SemanticIssue>),
+        > = std::collections::BTreeMap::new();
         let mut total_fixes: u32 = 0;
 
         for (score, json) in &rows {
@@ -111,9 +114,14 @@ impl<'a> CrawlRepo<'a> {
                     let entry = issue_counts
                         .entry((check.category.clone(), check.severity.clone(), check.id.clone()))
                         .or_insert_with(|| {
-                            (0, check.message.clone(), check.guidance.clone())
+                            (0, check.message.clone(), check.guidance.clone(), Vec::new())
                         });
                     entry.0 += 1;
+                    for example in &check.examples {
+                        if entry.3.len() < 3 {
+                            entry.3.push(example.clone());
+                        }
+                    }
                 }
             }
             total_fixes += audit.priority_fixes.len() as u32;
@@ -138,13 +146,14 @@ impl<'a> CrawlRepo<'a> {
 
         let mut top_issues: Vec<SeoIssueCount> = issue_counts
             .into_iter()
-            .map(|((category, severity, id), (occurrences, message, guidance))| SeoIssueCount {
+            .map(|((category, severity, id), (occurrences, message, guidance, examples))| SeoIssueCount {
                 id,
                 category,
                 severity,
                 occurrences,
                 message,
                 guidance,
+                examples,
             })
             .collect();
         top_issues.sort_by_key(|b| std::cmp::Reverse(b.occurrences));

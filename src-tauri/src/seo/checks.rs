@@ -1,7 +1,7 @@
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::crawler::parser::SeoData;
+use crate::crawler::parser::{SeoData, SemanticIssue};
 
 use super::audit::{AuditContext, CheckResult};
 
@@ -222,6 +222,7 @@ fn check(
         message: message.into(),
         guidance: guidance.into(),
         evidence,
+        examples: Vec::new(),
     }
 }
 
@@ -966,5 +967,59 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
+    attach_examples(&mut out, seo);
+
     out
+}
+
+/// Maps a failed check to the semantic issue types that can explain it.
+/// Order matters: the first mapped type wins when a check covers several.
+const SEMANTIC_CHECK_MAP: &[(&str, &[&str])] = &[
+    ("h1_count", &["multiple_h1"]),
+    ("heading_hierarchy", &["heading_skip"]),
+    ("img_alt", &["img_no_alt"]),
+    ("form_labels", &["input_no_label"]),
+    ("input_ids", &["input_no_id"]),
+    ("aria_controls", &["missing_aria"]),
+    ("empty_link_text", &["empty_link_text"]),
+    ("nesting_valid", &["invalid_nesting", "context_nesting"]),
+    ("main_landmark", &["missing_main"]),
+    ("header_landmark", &["missing_header"]),
+    ("footer_landmark", &["missing_footer"]),
+    ("nav_landmark", &["missing_nav"]),
+    ("semantic_html", &["missing_main", "missing_header", "missing_footer", "missing_nav"]),
+];
+
+/// Attach up to 5 concrete offending elements to failed checks so the UI can
+/// point at the exact elements that must be fixed (xpath, css_selector, snippet).
+fn attach_examples(out: &mut [CheckResult], seo: &SeoData) {
+    for check in out.iter_mut() {
+        if check.passed {
+            continue;
+        }
+        let Some(issue_types) = SEMANTIC_CHECK_MAP
+            .iter()
+            .find(|(id, _)| *id == check.id)
+            .map(|(_, types)| *types)
+        else {
+            continue;
+        };
+        let mut examples: Vec<SemanticIssue> = seo
+            .semantic_issues
+            .iter()
+            .filter(|i| issue_types.contains(&i.issue_type.as_str()) && i.xpath.is_some())
+            .cloned()
+            .collect();
+        examples.sort_by_key(|e| severity_rank(&e.severity));
+        examples.truncate(5);
+        check.examples = examples;
+    }
+}
+
+fn severity_rank(severity: &str) -> u8 {
+    match severity {
+        "error" => 0,
+        "warning" => 1,
+        _ => 2,
+    }
 }

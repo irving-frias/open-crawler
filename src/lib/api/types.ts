@@ -20,6 +20,7 @@ export interface SemanticIssue {
   severity: string;
   element?: string | null;
   message?: string | null;
+  selector?: string | null;
   css_selector?: string | null;
   xpath?: string | null;
   snippet?: string | null;
@@ -282,6 +283,7 @@ export interface SeoCheckResult {
   message: string;
   guidance: string;
   evidence?: string | null;
+  examples?: SemanticIssue[];
 }
 
 export interface SeoCategoryResult {
@@ -328,6 +330,7 @@ export interface SeoIssueCount {
   occurrences: number;
   message: string;
   guidance: string;
+  examples?: SemanticIssue[];
 }
 
 export interface SeoOverview {
@@ -342,8 +345,14 @@ export interface SeoOverview {
 }
 
 export interface SeoAuditProgress {
+  project_id: string;
   processed: number;
   total: number;
   errors: number;
   percent: number;
+}
+
+export interface FixSuggestion {
+  suggestion: string;
+  corrected_html?: string | null;
 }

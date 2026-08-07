@@ -677,9 +677,280 @@ const READABILITY_NO_TEXT = {
   },
 } as const;
 
+interface CheckFixEntry {
+  en: { fix: string; expected: string };
+  es: { fix: string; expected: string };
+}
+
+/**
+ * Offline fix + expected-markup catalog for every audit check. Shown next to a
+ * failing check so the user always sees how to make the error disappear,
+ * without needing an AI call.
+ */
+const CHECK_FIXES: Record<string, CheckFixEntry> = {
+  title_present: {
+    en: { fix: 'Add a unique, descriptive <title> inside the <head>.', expected: '<head>\n  <title>Unique descriptive title</title>\n</head>' },
+    es: { fix: 'Añade un <title> único y descriptivo dentro del <head>.', expected: '<head>\n  <title>Título único y descriptivo</title>\n</head>' },
+  },
+  title_length: {
+    en: { fix: 'Shorten or lengthen the title to 30-65 characters so it renders fully in results.', expected: '<title>Between 30 and 65 characters</title>' },
+    es: { fix: 'Acorta o alarga el título hasta 30-65 caracteres para que se muestre completo en los resultados.', expected: '<title>Entre 30 y 65 caracteres</title>' },
+  },
+  meta_description_present: {
+    en: { fix: 'Add a meta description of 50-160 characters that summarizes the page.', expected: '<meta name="description" content="A 50-160 character summary of the page.">' },
+    es: { fix: 'Añade una meta description de 50-160 caracteres que resuma la página.', expected: '<meta name="description" content="Un resumen de 50-160 caracteres de la página.">' },
+  },
+  meta_description_length: {
+    en: { fix: 'Adjust the meta description to 50-160 characters.', expected: '<meta name="description" content="A correctly sized description.">' },
+    es: { fix: 'Ajusta la meta description a 50-160 caracteres.', expected: '<meta name="description" content="Una descripción con el tamaño correcto.">' },
+  },
+  h1_present: {
+    en: { fix: 'Add exactly one <h1> that summarizes the page topic.', expected: '<h1>Main topic of the page</h1>' },
+    es: { fix: 'Añade exactamente un <h1> que resuma el tema de la página.', expected: '<h1>Tema principal de la página</h1>' },
+  },
+  h1_count: {
+    en: { fix: 'Use a single <h1>; convert extra <h1> elements to <h2>-<h6>.', expected: '<h1>Main title</h1>\n<h2>Section</h2>' },
+    es: { fix: 'Usa un único <h1>; convierte los <h1> sobrantes en <h2>-<h6>.', expected: '<h1>Título principal</h1>\n<h2>Sección</h2>' },
+  },
+  heading_hierarchy: {
+    en: { fix: 'Restore a sequential outline (h1 → h2 → h3) without skipped levels.', expected: '<h2>Section</h2>\n<h3>Subsection</h3>' },
+    es: { fix: 'Restaura un esquema secuencial (h1 → h2 → h3) sin saltos de nivel.', expected: '<h2>Sección</h2>\n<h3>Subsección</h3>' },
+  },
+  h1_title_match: {
+    en: { fix: 'Align the <title> and <h1> so both mention the main topic.', expected: '<title>Best Running Shoes</title>\n<h1>Best Running Shoes</h1>' },
+    es: { fix: 'Alinea el <title> y el <h1> para que ambos mencionen el tema principal.', expected: '<title>Las mejores zapatillas</title>\n<h1>Las mejores zapatillas</h1>' },
+  },
+  word_count: {
+    en: { fix: 'Expand thin content to at least 300 words.', expected: 'Add substantive paragraphs covering the topic in depth.' },
+    es: { fix: 'Amplía el contenido escaso a al menos 300 palabras.', expected: 'Añade párrafos sustanciales que cubran el tema en profundidad.' },
+  },
+  keyword_density: {
+    en: { fix: 'Use the main keyword naturally 0.5-5% of the time; avoid stuffing.', expected: 'Mention the keyword a few times in headings, intro and body.' },
+    es: { fix: 'Usa la palabra clave principal de forma natural entre 0.5-5%; evita el relleno.', expected: 'Menciona la palabra clave unas pocas veces en encabezados, introducción y cuerpo.' },
+  },
+  internal_links: {
+    en: { fix: 'Add a link to another page of the same site.', expected: '<a href="/related-page">Related content</a>' },
+    es: { fix: 'Añade un enlace a otra página del mismo sitio.', expected: '<a href="/pagina-relacionada">Contenido relacionado</a>' },
+  },
+  outbound_links: {
+    en: { fix: 'Add a link to a relevant external source.', expected: '<a href="https://example.com" rel="nofollow noopener">Source</a>' },
+    es: { fix: 'Añade un enlace a una fuente externa relevante.', expected: '<a href="https://example.com" rel="nofollow noopener">Fuente</a>' },
+  },
+  https_used: {
+    en: { fix: 'Serve the site over HTTPS with a valid certificate.', expected: 'Redirect http:// to https:// and update the canonical URL.' },
+    es: { fix: 'Sirve el sitio a través de HTTPS con un certificado válido.', expected: 'Redirige http:// a https:// y actualiza la URL canónica.' },
+  },
+  status_ok: {
+    en: { fix: 'Make the page return 200 instead of an error status.', expected: 'Fix the resource, the route or the redirect that is failing.' },
+    es: { fix: 'Haz que la página devuelva 200 en lugar de un estado de error.', expected: 'Corrige el recurso, la ruta o la redirección que está fallando.' },
+  },
+  viewport: {
+    en: { fix: 'Add the viewport meta tag in the <head>.', expected: '<meta name="viewport" content="width=device-width, initial-scale=1">' },
+    es: { fix: 'Añade la etiqueta meta viewport en el <head>.', expected: '<meta name="viewport" content="width=device-width, initial-scale=1">' },
+  },
+  favicon: {
+    en: { fix: 'Add a favicon link in the <head>.', expected: '<link rel="icon" href="/favicon.ico" type="image/x-icon">' },
+    es: { fix: 'Añade un enlace de favicon en el <head>.', expected: '<link rel="icon" href="/favicon.ico" type="image/x-icon">' },
+  },
+  charset: {
+    en: { fix: 'Declare the UTF-8 charset in the <head>.', expected: '<meta charset="utf-8">' },
+    es: { fix: 'Declara el charset UTF-8 en el <head>.', expected: '<meta charset="utf-8">' },
+  },
+  doctype: {
+    en: { fix: 'Start the document with the HTML5 doctype.', expected: '<!DOCTYPE html>\n<html lang="en">' },
+    es: { fix: 'Empieza el documento con el doctype HTML5.', expected: '<!DOCTYPE html>\n<html lang="es">' },
+  },
+  canonical_present: {
+    en: { fix: 'Add a canonical tag pointing to the preferred URL.', expected: '<link rel="canonical" href="https://example.com/preferred-url">' },
+    es: { fix: 'Añade una etiqueta canonical que apunte a la URL preferida.', expected: '<link rel="canonical" href="https://example.com/url-preferida">' },
+  },
+  indexable: {
+    en: { fix: 'Remove the noindex directive so the page can be indexed.', expected: '<meta name="robots" content="index, follow">' },
+    es: { fix: 'Elimina la directiva noindex para que la página se pueda indexar.', expected: '<meta name="robots" content="index, follow">' },
+  },
+  html_lang: {
+    en: { fix: 'Set the lang attribute on the <html> element.', expected: '<html lang="en">' },
+    es: { fix: 'Define el atributo lang en el elemento <html>.', expected: '<html lang="es">' },
+  },
+  url_length: {
+    en: { fix: 'Shorten deeply nested or over-long URLs.', expected: '/products/shoes → shorter, keyword-based slugs' },
+    es: { fix: 'Acorta las URL largas o muy anidadas.', expected: '/productos/zapatos → slugs cortos basados en palabras clave' },
+  },
+  url_underscores: {
+    en: { fix: 'Use hyphens instead of underscores in URL paths.', expected: '/best-shoes → /best-shoes (hyphens, not underscores)' },
+    es: { fix: 'Usa guiones en lugar de guiones bajos en las rutas.', expected: '/mejores-zapatos → /mejores-zapatos (guiones, no guiones bajos)' },
+  },
+  og_title: {
+    en: { fix: 'Add og:title matching the page title.', expected: '<meta property="og:title" content="Page title">' },
+    es: { fix: 'Añade og:title acorde con el título de la página.', expected: '<meta property="og:title" content="Título de la página">' },
+  },
+  og_description: {
+    en: { fix: 'Add a concise og:description.', expected: '<meta property="og:description" content="Short summary">' },
+    es: { fix: 'Añade un og:description conciso.', expected: '<meta property="og:description" content="Resumen breve">' },
+  },
+  og_image: {
+    en: { fix: 'Add an og:image (1200×630 recommended).', expected: '<meta property="og:image" content="https://example.com/og-image.jpg">' },
+    es: { fix: 'Añade un og:image (1200×630 recomendado).', expected: '<meta property="og:image" content="https://example.com/og-image.jpg">' },
+  },
+  og_image_alt: {
+    en: { fix: 'Describe the Open Graph image.', expected: '<meta property="og:image:alt" content="Description of the image">' },
+    es: { fix: 'Describe la imagen de Open Graph.', expected: '<meta property="og:image:alt" content="Descripción de la imagen">' },
+  },
+  og_url: {
+    en: { fix: 'Add og:url pointing to the canonical URL.', expected: '<meta property="og:url" content="https://example.com/preferred-url">' },
+    es: { fix: 'Añade og:url que apunte a la URL canónica.', expected: '<meta property="og:url" content="https://example.com/url-preferida">' },
+  },
+  og_type: {
+    en: { fix: 'Add the og:type meta tag.', expected: '<meta property="og:type" content="website">' },
+    es: { fix: 'Añade la etiqueta meta og:type.', expected: '<meta property="og:type" content="website">' },
+  },
+  og_site_name: {
+    en: { fix: 'Add og:site_name with your brand name.', expected: '<meta property="og:site_name" content="Your Brand">' },
+    es: { fix: 'Añade og:site_name con el nombre de tu marca.', expected: '<meta property="og:site_name" content="Tu Marca">' },
+  },
+  twitter_card: {
+    en: { fix: 'Add the twitter:card meta tag.', expected: '<meta name="twitter:card" content="summary_large_image">' },
+    es: { fix: 'Añade la etiqueta meta twitter:card.', expected: '<meta name="twitter:card" content="summary_large_image">' },
+  },
+  twitter_title: {
+    en: { fix: 'Add a twitter:title meta tag.', expected: '<meta name="twitter:title" content="Page title">' },
+    es: { fix: 'Añade una etiqueta meta twitter:title.', expected: '<meta name="twitter:title" content="Título de la página">' },
+  },
+  twitter_description: {
+    en: { fix: 'Add a twitter:description meta tag.', expected: '<meta name="twitter:description" content="Short summary">' },
+    es: { fix: 'Añade una etiqueta meta twitter:description.', expected: '<meta name="twitter:description" content="Resumen breve">' },
+  },
+  twitter_image: {
+    en: { fix: 'Add a twitter:image meta tag.', expected: '<meta name="twitter:image" content="https://example.com/og-image.jpg">' },
+    es: { fix: 'Añade una etiqueta meta twitter:image.', expected: '<meta name="twitter:image" content="https://example.com/og-image.jpg">' },
+  },
+  img_alt: {
+    en: { fix: 'Add a descriptive alt to every image (alt="" for decorative ones).', expected: '<img src="photo.jpg" alt="Person walking on the beach at sunset">' },
+    es: { fix: 'Añade un alt descriptivo a cada imagen (alt="" para las decorativas).', expected: '<img src="foto.jpg" alt="Persona caminando por la playa al atardecer">' },
+  },
+  img_dimensions: {
+    en: { fix: 'Add width and height to images to avoid layout shift.', expected: '<img src="photo.jpg" alt="…" width="800" height="600">' },
+    es: { fix: 'Añade width y height a las imágenes para evitar saltos de layout.', expected: '<img src="foto.jpg" alt="…" width="800" height="600">' },
+  },
+  form_labels: {
+    en: { fix: 'Associate every control with a <label> via for/id.', expected: '<label for="email">Email</label>\n<input type="email" id="email">' },
+    es: { fix: 'Asocia cada control con un <label> mediante for/id.', expected: '<label for="email">Correo</label>\n<input type="email" id="email">' },
+  },
+  input_ids: {
+    en: { fix: 'Give each form control a unique id.', expected: '<input type="text" id="name">' },
+    es: { fix: 'Asigna un id único a cada control de formulario.', expected: '<input type="text" id="nombre">' },
+  },
+  aria_controls: {
+    en: { fix: 'Add aria-label/aria-labelledby to controls without a label.', expected: '<select aria-label="Country">\n  <option>…</option>\n</select>' },
+    es: { fix: 'Añade aria-label/aria-labelledby a los controles sin etiqueta.', expected: '<select aria-label="País">\n  <option>…</option>\n</select>' },
+  },
+  empty_link_text: {
+    en: { fix: 'Give every link visible text or an aria-label.', expected: '<a href="/products">View products</a>\n<a href="/search" aria-label="Search"><svg>…</svg></a>' },
+    es: { fix: 'Da a cada enlace texto visible o un aria-label.', expected: '<a href="/productos">Ver productos</a>\n<a href="/buscar" aria-label="Buscar"><svg>…</svg></a>' },
+  },
+  main_landmark: {
+    en: { fix: 'Wrap the primary content in a <main> element.', expected: '<main>Primary content</main>' },
+    es: { fix: 'Envuelve el contenido principal en un elemento <main>.', expected: '<main>Contenido principal</main>' },
+  },
+  header_landmark: {
+    en: { fix: 'Add a <header> element for the page banner.', expected: '<header>Site banner</header>' },
+    es: { fix: 'Añade un elemento <header> para el banner de la página.', expected: '<header>Banner del sitio</header>' },
+  },
+  footer_landmark: {
+    en: { fix: 'Add a <footer> element.', expected: '<footer>Copyright and links</footer>' },
+    es: { fix: 'Añade un elemento <footer>.', expected: '<footer>Copyright y enlaces</footer>' },
+  },
+  nav_landmark: {
+    en: { fix: 'Wrap navigation links in a <nav> element.', expected: '<nav><ul><li><a href="/">Home</a></li></ul></nav>' },
+    es: { fix: 'Envuelve los enlaces de navegación en un elemento <nav>.', expected: '<nav><ul><li><a href="/">Inicio</a></li></ul></nav>' },
+  },
+  nesting_valid: {
+    en: { fix: 'Move nested elements into valid parents per the HTML spec.', expected: '<div>\n  <span>Inline</span>\n  <p>Block</p>\n</div>' },
+    es: { fix: 'Mueve los elementos anidados a padres válidos según la especificación HTML.', expected: '<div>\n  <span>En línea</span>\n  <p>Bloque</p>\n</div>' },
+  },
+  page_weight: {
+    en: { fix: 'Reduce page weight by minifying HTML/CSS and removing inline assets.', expected: 'Target < 1.5 MB total transferred.' },
+    es: { fix: 'Reduce el peso de la página minificando HTML/CSS y eliminando recursos en línea.', expected: 'Objetivo: < 1.5 MB transferidos.' },
+  },
+  load_time: {
+    en: { fix: 'Improve server response time (target < 2.5 s).', expected: 'Use caching, CDN or faster hosting.' },
+    es: { fix: 'Mejora el tiempo de respuesta del servidor (objetivo < 2.5 s).', expected: 'Usa caché, CDN u hosting más rápido.' },
+  },
+  image_optimization: {
+    en: { fix: 'Add width/height to images so browsers reserve space.', expected: '<img src="photo.jpg" alt="…" width="800" height="600">' },
+    es: { fix: 'Añade width/height a las imágenes para que el navegador reserve el espacio.', expected: '<img src="foto.jpg" alt="…" width="800" height="600">' },
+  },
+  resource_hints: {
+    en: { fix: 'Preconnect to critical origins and preload key resources.', expected: '<link rel="preconnect" href="https://api.example.com">\n<link rel="preload" as="style" href="/app.css">' },
+    es: { fix: 'Conecta con preconnect a orígenes críticos y precarga recursos clave.', expected: '<link rel="preconnect" href="https://api.example.com">\n<link rel="preload" as="style" href="/app.css">' },
+  },
+  pagespeed: {
+    en: { fix: 'Follow the Lighthouse performance audits to raise the score above 50.', expected: 'Optimize images, lazy-load below-the-fold content, avoid long tasks.' },
+    es: { fix: 'Sigue las auditorías de rendimiento de Lighthouse para superar 50 puntos.', expected: 'Optimiza imágenes, carga diferida bajo el pliegue y evita tareas largas.' },
+  },
+  readability_score: {
+    en: { fix: 'Simplify language and shorten sentences to reach ≥ 50.', expected: 'Short sentences, common words, clear structure.' },
+    es: { fix: 'Simplifica el lenguaje y acorta las frases para alcanzar ≥ 50.', expected: 'Frases cortas, palabras comunes y estructura clara.' },
+  },
+  flesch_kincaid_grade: {
+    en: { fix: 'Target a reading grade level ≤ 12.', expected: 'Use plain language most of your audience understands.' },
+    es: { fix: 'Apunta a un nivel de lectura ≤ 12.', expected: 'Usa un lenguaje sencillo que entienda la mayor parte de tu audiencia.' },
+  },
+  sentence_length: {
+    en: { fix: 'Break long sentences into shorter, single-idea sentences.', expected: 'Average sentence length ≤ 25 words.' },
+    es: { fix: 'Divide las frases largas en frases cortas con una sola idea.', expected: 'Longitud media de frase ≤ 25 palabras.' },
+  },
+  paragraph_structure: {
+    en: { fix: 'Structure the content into short paragraphs and subheadings.', expected: 'At least 3 paragraphs, each with one main idea.' },
+    es: { fix: 'Estructura el contenido en párrafos cortos y subtítulos.', expected: 'Al menos 3 párrafos, cada uno con una idea principal.' },
+  },
+  semantic_html: {
+    en: { fix: 'Use semantic landmarks (main/header/footer/nav).', expected: '<header>…</header>\n<nav>…</nav>\n<main>…</main>\n<footer>…</footer>' },
+    es: { fix: 'Usa landmarks semánticos (main/header/footer/nav).', expected: '<header>…</header>\n<nav>…</nav>\n<main>…</main>\n<footer>…</footer>' },
+  },
+  content_present: {
+    en: { fix: 'Add substantive text content to the page.', expected: 'Write original paragraphs, not just keywords or images.' },
+    es: { fix: 'Añade contenido de texto sustancial a la página.', expected: 'Escribe párrafos originales, no solo palabras clave o imágenes.' },
+  },
+  structured_data: {
+    en: { fix: 'Add JSON-LD structured data describing the content.', expected: '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage"}</script>' },
+    es: { fix: 'Añade datos estructurados JSON-LD que describan el contenido.', expected: '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage"}</script>' },
+  },
+  faq_schema: {
+    en: { fix: 'Mark up questions and answers with FAQPage schema.', expected: '<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"…","acceptedAnswer":{"@type":"Answer","text":"…"}}]}</script>' },
+    es: { fix: 'Marca las preguntas y respuestas con el esquema FAQPage.', expected: '<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"…","acceptedAnswer":{"@type":"Answer","text":"…"}}]}</script>' },
+  },
+  howto_schema: {
+    en: { fix: 'Mark up step-by-step instructions with HowTo schema.', expected: '<script type="application/ld+json">{"@type":"HowTo","step":[{"@type":"HowToStep","text":"…"}]}</script>' },
+    es: { fix: 'Marca las instrucciones paso a paso con el esquema HowTo.', expected: '<script type="application/ld+json">{"@type":"HowTo","step":[{"@type":"HowToStep","text":"…"}]}</script>' },
+  },
+  breadcrumb_schema: {
+    en: { fix: 'Add BreadcrumbList schema for navigation paths.', expected: '<script type="application/ld+json">{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"item":{"@id":"/","name":"Home"}}]}</script>' },
+    es: { fix: 'Añade el esquema BreadcrumbList para las rutas de navegación.', expected: '<script type="application/ld+json">{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"item":{"@id":"/","name":"Inicio"}}]}</script>' },
+  },
+  article_schema: {
+    en: { fix: 'Mark up articles with Article/NewsArticle/BlogPosting schema.', expected: '<script type="application/ld+json">{"@type":"Article","headline":"…","author":{"@type":"Person","name":"…"}}</script>' },
+    es: { fix: 'Marca los artículos con el esquema Article/NewsArticle/BlogPosting.', expected: '<script type="application/ld+json">{"@type":"Article","headline":"…","author":{"@type":"Person","name":"…"}}</script>' },
+  },
+  organization_schema: {
+    en: { fix: 'Add Organization or WebSite schema to define entity and brand.', expected: '<script type="application/ld+json">{"@type":"Organization","name":"Your Brand","url":"https://example.com"}</script>' },
+    es: { fix: 'Añade el esquema Organization o WebSite para definir la entidad y la marca.', expected: '<script type="application/ld+json">{"@type":"Organization","name":"Tu Marca","url":"https://example.com"}</script>' },
+  },
+  question_headings: {
+    en: { fix: 'Use headings phrased as questions users actually ask.', expected: '<h2>How does this feature work?</h2>' },
+    es: { fix: 'Usa encabezados formulados como preguntas que los usuarios hacen.', expected: '<h2>¿Cómo funciona esta función?</h2>' },
+  },
+  direct_answer: {
+    en: { fix: 'Lead with a direct, concise answer to the main question.', expected: 'Answer in the first sentence, then expand with details.' },
+    es: { fix: 'Comienza con una respuesta directa y concisa a la pregunta principal.', expected: 'Responde en la primera frase y luego amplía con detalles.' },
+  },
+};
+
 export interface LocalizedCheck {
   message: string;
   guidance: string;
+  fix?: string;
+  expected?: string;
 }
 
 function applyParams(template: string, params: string[]): string {
@@ -702,13 +973,22 @@ export function localizeSeoCheck(
   if (id === 'readability_score' && !/Flesch reading ease/i.test(message)) {
     const noText = READABILITY_NO_TEXT;
     const tr = getLocale().startsWith('es') ? noText.es : noText.en;
-    return { message: tr.message, guidance: tr.guidance };
+    const fixEntry = CHECK_FIXES[id];
+    const fixTr = fixEntry ? (getLocale().startsWith('es') ? fixEntry.es : fixEntry.en) : null;
+    return {
+      message: tr.message,
+      guidance: tr.guidance,
+      ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
+    };
   }
   if (!entry) return { message, guidance };
   const tr = getLocale().startsWith('es') ? entry.es : entry.en;
   const params = extractParams(message, evidence);
+  const fixEntry = CHECK_FIXES[id];
+  const fixTr = fixEntry ? (getLocale().startsWith('es') ? fixEntry.es : fixEntry.en) : null;
   return {
     message: applyParams(tr.message, params),
     guidance: applyParams(tr.guidance, params),
+    ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
   };
 }

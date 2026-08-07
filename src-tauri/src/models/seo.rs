@@ -42,4 +42,8 @@ pub struct SeoIssueCount {
     pub occurrences: u32,
     pub message: String,
     pub guidance: String,
+    /// Concrete offending elements (up to 3) sampled from failing pages, so the
+    /// overview can point at real markup instead of a bare check name.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<crate::crawler::parser::SemanticIssue>,
 }

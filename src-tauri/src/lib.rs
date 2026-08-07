@@ -40,11 +40,19 @@ pub struct CrawlState {
     pub progress: CrawlProgress,
 }
 
+/// Tracks a running project-wide SEO re-audit so it can be polled and stopped
+/// independently per project (parallel windows).
+pub struct SeoAuditState {
+    pub cancellation: tokio_util::sync::CancellationToken,
+    pub progress: crate::features::seo::commands::SeoAuditProgress,
+}
+
 type ResultsCacheArc = std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>>;
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub crawls: Arc<RwLock<HashMap<String, CrawlState>>>,
+    pub seo_audits: Arc<RwLock<HashMap<String, SeoAuditState>>>,
     pub results_cache: ResultsCacheArc,
     pub transfer_server: std::sync::Mutex<Option<crate::transfer::server::TransferServerState>>,
 }
@@ -145,6 +153,7 @@ pub fn run() {
             let state = AppState {
                 db: Mutex::new(conn),
                 crawls: Arc::new(RwLock::new(HashMap::new())),
+                seo_audits: Arc::new(RwLock::new(HashMap::new())),
                 results_cache: Arc::new(Mutex::new(lru::LruCache::new(NonZeroUsize::new(512).unwrap()))),
                 transfer_server: std::sync::Mutex::new(None),
             };
@@ -205,6 +214,9 @@ pub fn run() {
             crate::commands::run_seo_audit,
             crate::commands::get_seo_overview,
             crate::commands::run_seo_audit_all,
+            crate::commands::get_seo_audit_status,
+            crate::commands::stop_seo_audit,
+            crate::commands::suggest_fix,
             // settings
             crate::commands::get_settings,
             crate::commands::save_settings,

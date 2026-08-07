@@ -38,6 +38,10 @@ pub struct CheckResult {
     /// Optional supporting detail (snippet, measured value, …).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+    /// Concrete offending elements (up to 5) that explain why the check failed.
+    /// Empty for checks without per-element detail.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<crate::crawler::parser::SemanticIssue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
