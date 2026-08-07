@@ -346,6 +346,14 @@ pub fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         )?;
     }
 
+    // Migration v12: scan_type column on crawl_config for local vs web scans
+    if !column_exists(conn, "crawl_config", "scan_type") {
+        info!("Adding scan_type column to crawl_config");
+        conn.execute_batch(
+            "ALTER TABLE crawl_config ADD COLUMN scan_type TEXT DEFAULT 'web';",
+        )?;
+    }
+
     // Ensure default project exists
     conn.execute(
         "INSERT OR IGNORE INTO projects (id, name, created_at, updated_at)

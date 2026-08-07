@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { RefreshCw, Download, ChevronDown, FileSpreadsheet, FileText, Send } from 'lucide-svelte';
+  import { RefreshCw, Download, ChevronDown, FileSpreadsheet, FileText, Send, Globe, Server } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -25,6 +25,8 @@
     respectRobots = $bindable(),
     checkSitemap = $bindable(),
     checkSemantics = $bindable(),
+    scanType = $bindable(),
+    localUrls = $bindable(),
     onStart,
     onStop,
     onRefresh,
@@ -47,6 +49,8 @@
     respectRobots: boolean;
     checkSitemap: boolean;
     checkSemantics: boolean;
+    scanType: 'web' | 'local';
+    localUrls: string;
     onStart: () => void;
     onStop: () => void;
     onRefresh: () => void;
@@ -108,6 +112,47 @@
       <p class="field-error">{m['config.seed_url_invalid']()}</p>
     {/if}
   </div>
+
+  <div class="form-group">
+    <Label>{m['config.scan_type']()}</Label>
+    <div class="scan-type-toggle">
+      <Button
+        type="button"
+        variant={scanType === 'web' ? 'default' : 'outline'}
+        class="scan-type-btn"
+        onclick={() => (scanType = 'web')}
+        disabled={status === 'running'}
+      >
+        <Globe class="size-4" />
+        {m['config.scan_web']()}
+      </Button>
+      <Button
+        type="button"
+        variant={scanType === 'local' ? 'default' : 'outline'}
+        class="scan-type-btn"
+        onclick={() => (scanType = 'local')}
+        disabled={status === 'running'}
+      >
+        <Server class="size-4" />
+        {m['config.scan_local']()}
+      </Button>
+    </div>
+  </div>
+
+  {#if scanType === 'local'}
+    <div class="form-group">
+      <Label for="localUrls">{m['config.local_urls']()}</Label>
+      <textarea
+        id="localUrls"
+        class="local-urls-input"
+        rows="4"
+        bind:value={localUrls}
+        placeholder={m['config.local_urls_placeholder']()}
+        disabled={status === 'running'}
+      ></textarea>
+      <p class="field-hint">{m['config.local_urls_hint']()}</p>
+    </div>
+  {/if}
 
   <div class="form-row">
     <div class="form-group">
@@ -399,6 +444,41 @@
     margin-top: 6px;
     font-size: 0.82rem;
     color: var(--destructive);
+  }
+
+  .scan-type-toggle {
+    display: flex;
+    gap: 8px;
+  }
+
+  .local-urls-input {
+    width: 100%;
+    min-width: 0;
+    border-radius: var(--radius-lg);
+    border: none;
+    background: var(--bg-background);
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text);
+    resize: vertical;
+    outline: none;
+    box-shadow: var(--neu-pressed);
+    transition: box-shadow 0.15s ease;
+  }
+
+  .local-urls-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .local-urls-input:focus {
+    box-shadow: var(--neu-focus);
+  }
+
+  .local-urls-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .actions {

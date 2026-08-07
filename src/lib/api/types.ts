@@ -226,6 +226,8 @@ export interface CrawlConfig {
   site_auth?: SiteAuth | null;
   request_timeout_ms?: number;
   proxy?: ProxyConfig | null;
+  scan_type?: 'web' | 'local';
+  local_urls?: string[];
 }
 
 export interface ResumableCrawlInfo {

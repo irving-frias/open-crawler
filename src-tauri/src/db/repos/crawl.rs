@@ -66,10 +66,11 @@ impl<'a> CrawlRepo<'a> {
         let id = config.id.as_deref().unwrap_or("default");
         let project_id = config.project_id.as_deref().unwrap_or("default");
         let seed_urls = serde_json::to_string(&config.seed_urls)?;
+        let scan_type = serde_json::to_string(&config.scan_type)?;
 
         self.conn.execute(
-            "INSERT OR REPLACE INTO crawl_config (id, project_id, seed_urls, max_pages, max_depth, user_agent, respect_robots, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))",
+            "INSERT OR REPLACE INTO crawl_config (id, project_id, seed_urls, max_pages, max_depth, user_agent, respect_robots, scan_type, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))",
             params![
                 id,
                 project_id,
@@ -78,6 +79,7 @@ impl<'a> CrawlRepo<'a> {
                 config.max_depth as i32,
                 config.user_agent(),
                 config.respect_robots as i32,
+                scan_type,
             ],
         )?;
 

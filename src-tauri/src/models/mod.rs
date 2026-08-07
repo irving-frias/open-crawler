@@ -4,7 +4,7 @@ pub mod project;
 pub mod schedule;
 pub mod seo;
 
-pub use crawl_config::{CrawlConfig, ProxyConfig, SiteAuth};
+pub use crawl_config::{CrawlConfig, ProxyConfig, ScanType, SiteAuth};
 pub use crawl_result::{
     ChangedUrl, CompareResult, CrawlProgress, CrawlResult, CrawlSnapshot, DashboardStats,
     DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, PageDetail, PageLink,

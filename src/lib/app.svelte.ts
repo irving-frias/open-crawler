@@ -66,6 +66,8 @@ export interface CrawlFormConfig {
   cookies: string;
   siteUser: string;
   sitePass: string;
+  scanType: 'web' | 'local';
+  localUrls: string;
 }
 
 export interface AppFields {
@@ -127,6 +129,8 @@ export interface AppFields {
   deletePendingId: string | null;
   deleteDialogOpen: boolean;
   initialized: boolean;
+  scanType: 'web' | 'local';
+  localUrls: string;
 }
 
 export type ProjectsStore = ReturnType<typeof useOptimistic<Project, OptimisticAction<Project>>>;
@@ -254,6 +258,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     deletePendingId: null as string | null,
     deleteDialogOpen: false,
     initialized: false,
+    scanType: 'web' as 'web' | 'local',
+    localUrls: '',
   }) as AppShell;
 
   state.projects = projects;
@@ -558,6 +564,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       cookies: state.cookies,
       siteUser: state.siteUser,
       sitePass: state.sitePass,
+      scanType: state.scanType,
+      localUrls: state.localUrls,
     };
   }
 
@@ -573,6 +581,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     state.cookies = cfg.cookies ?? '';
     state.siteUser = cfg.siteUser ?? '';
     state.sitePass = cfg.sitePass ?? '';
+    state.scanType = cfg.scanType ?? 'web';
+    state.localUrls = cfg.localUrls ?? '';
   }
 
   // Restores the last crawl's settings from the backend when there is no local
@@ -596,6 +606,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
           cookies: cfg.cookies?.join('\n') ?? '',
           siteUser: cfg.site_auth?.username ?? '',
           sitePass: cfg.site_auth?.password ?? '',
+          scanType: cfg.scan_type ?? 'web',
+          localUrls: cfg.local_urls?.join('\n') ?? '',
         };
         state.configByProject[id] = restored;
         if (state.selectedProjectId === id) {
@@ -797,6 +809,11 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         check_sitemap: state.checkSitemap,
         check_semantics: state.checkSemantics,
         max_crawl_time_secs: state.maxCrawlTime,
+        scan_type: state.scanType,
+        local_urls: state.localUrls
+          .split('\n')
+          .map((u) => u.trim())
+          .filter((u) => u.length > 0),
         cookies: state.cookies
           .split('\n')
           .map((c) => c.trim())
