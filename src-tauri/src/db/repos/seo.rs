@@ -142,7 +142,7 @@ impl<'a> CrawlRepo<'a> {
                 occurrences,
             })
             .collect();
-        top_issues.sort_by(|a, b| b.occurrences.cmp(&a.occurrences));
+        top_issues.sort_by_key(|b| std::cmp::Reverse(b.occurrences));
         top_issues.truncate(15);
 
         Ok(SeoOverview {
