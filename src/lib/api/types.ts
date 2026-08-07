@@ -332,6 +332,7 @@ export interface SeoIssueCount {
   occurrences: number;
   message: string;
   guidance: string;
+  evidence?: string | null;
   examples?: SemanticIssue[];
 }
 

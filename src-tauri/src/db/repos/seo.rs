@@ -88,7 +88,7 @@ impl<'a> CrawlRepo<'a> {
             std::collections::BTreeMap::new();
         type IssueCountMap = std::collections::BTreeMap<
             (String, String, String),
-            (u32, String, String, Vec<SemanticIssue>),
+            (u32, String, String, Option<String>, Vec<SemanticIssue>),
         >;
         let mut issue_counts: IssueCountMap = IssueCountMap::new();
         let mut total_fixes: u32 = 0;
@@ -115,12 +115,12 @@ impl<'a> CrawlRepo<'a> {
                     let entry = issue_counts
                         .entry((check.category.clone(), check.severity.clone(), check.id.clone()))
                         .or_insert_with(|| {
-                            (0, check.message.clone(), check.guidance.clone(), Vec::new())
+                            (0, check.message.clone(), check.guidance.clone(), check.evidence.clone(), Vec::new())
                         });
                     entry.0 += 1;
                     for example in &check.examples {
-                        if entry.3.len() < 3 {
-                            entry.3.push(example.clone());
+                        if entry.4.len() < 3 {
+                            entry.4.push(example.clone());
                         }
                     }
                 }
@@ -147,13 +147,14 @@ impl<'a> CrawlRepo<'a> {
 
         let mut top_issues: Vec<SeoIssueCount> = issue_counts
             .into_iter()
-            .map(|((category, severity, id), (occurrences, message, guidance, examples))| SeoIssueCount {
+            .map(|((category, severity, id), (occurrences, message, guidance, evidence, examples))| SeoIssueCount {
                 id,
                 category,
                 severity,
                 occurrences,
                 message,
                 guidance,
+                evidence,
                 examples,
             })
             .collect();

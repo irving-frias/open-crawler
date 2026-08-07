@@ -326,7 +326,7 @@
               <h4 class="seo-site-title">{m['seo.site.top_issues']()}</h4>
               <div class="seo-site-issues">
                 {#each overview.top_issues as issue (issue.id)}
-                  {@const localized = localizeSeoCheck(issue.id, issue.message, issue.guidance)}
+                  {@const localized = localizeSeoCheck(issue.id, issue.message, issue.guidance, issue.evidence)}
                   {@const open = expandedIssues.has(issue.id)}
                   <div class="seo-site-issue">
                     <Badge variant={severityVariant(issue.severity)}>
@@ -351,7 +351,7 @@
                       </button>
                       {#if open}
                         <div class="seo-site-issue-detail">
-                          {#if (localized.fix || localized.expected) && issue.severity !== 'info'}
+                          {#if (localized.fix || localized.expected)}
                             <div class="seo-fix-block">
                               {#if localized.fix}
                                 <div class="seo-fix-line">
