@@ -106,7 +106,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -115,7 +115,7 @@ jobs:
           # TAURI_PRIVATE_KEY: ${{ secrets.WINDOWS_CERTIFICATE }}
           # TAURI_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name || inputs.tag }}
           args: --target ${{ matrix.target }}
 
       - name: Upload build artifacts (fallback)
