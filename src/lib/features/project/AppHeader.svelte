@@ -12,6 +12,9 @@
     onSelect,
     onCreate,
     onOpenSettings,
+    onOpenLauncher,
+    compact = false,
+    showSettings = true,
   }: {
     projects: ProjectsStore;
     selectedProjectId: string;
@@ -19,62 +22,74 @@
     onSelect: (id: string) => void;
     onCreate: () => void;
     onOpenSettings: () => void;
+    onOpenLauncher?: () => void;
+    compact?: boolean;
+    showSettings?: boolean;
   } = $props();
 </script>
 
-<header class="app-header">
+<header class="app-header" class:compact>
   <div class="header-left">
-    <h1 class="logo">{m['app.title']()}</h1>
-    <Button
-      variant="ghost"
-      size="xs"
-      class="btn-settings"
-      onclick={onOpenSettings}
-      aria-label={m['settings.title']()}
-      title={m['settings.title']()}
-    >
-      <Settings class="size-4" />
-    </Button>
-  </div>
-
-  <div class="header-center">
-    <div class="project-create">
-      <Input
-        type="text"
-        bind:value={newProjectName}
-        placeholder={m['sidebar.new_project_placeholder']()}
-        onkeydown={(e) => e.key === 'Enter' && onCreate()}
-      />
-      <Button
-        size="icon"
-        onclick={onCreate}
-        disabled={!newProjectName.trim()}
-        aria-label={m['sidebar.new_project_placeholder']()}
-        title={m['sidebar.new_project_placeholder']()}
-      >
-        <Plus class="size-4" />
-      </Button>
-    </div>
-  </div>
-
-  <nav class="project-list-header">
-    {#each projects.optimistic as project (project.id)}
-      <div
-        class="project-chip"
-        class:selected={project.id === selectedProjectId}
-        role="button"
-        tabindex="0"
-        onclick={() => onSelect(project.id)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(project.id); }}
-      >
-        <span class="project-avatar">{project.name.trim().charAt(0).toUpperCase() || '?'}</span>
-        <span class="project-name">{project.name}</span>
-      </div>
-    {/each}
-    {#if projects.optimistic.length === 0}
-      <div class="empty-projects">{m['sidebar.no_projects']()}</div>
+    <button type="button" class="logo-btn" onclick={onOpenLauncher} title={m['app.all_projects']()} aria-label={m['app.all_projects']()}>
+      <h1 class="logo">{m['app.title']()}</h1>
+    </button>
+    {#if compact}
+      <span class="header-project-name">{projects.optimistic.find((p) => p.id === selectedProjectId)?.name ?? ''}</span>
     {/if}
-  </nav>
+    {#if showSettings}
+      <Button
+        variant="ghost"
+        size="xs"
+        class="btn-settings"
+        onclick={onOpenSettings}
+        aria-label={m['settings.title']()}
+        title={m['settings.title']()}
+      >
+        <Settings class="size-4" />
+      </Button>
+    {/if}
+  </div>
+
+  {#if !compact}
+    <div class="header-center">
+      <div class="project-create">
+        <Input
+          type="text"
+          bind:value={newProjectName}
+          placeholder={m['sidebar.new_project_placeholder']()}
+          onkeydown={(e) => e.key === 'Enter' && onCreate()}
+        />
+        <Button
+          size="icon"
+          onclick={onCreate}
+          disabled={!newProjectName.trim()}
+          aria-label={m['sidebar.new_project_placeholder']()}
+          title={m['sidebar.new_project_placeholder']()}
+        >
+          <Plus class="size-4" />
+        </Button>
+      </div>
+    </div>
+
+    <nav class="project-list-header">
+      {#each projects.optimistic as project (project.id)}
+        <div
+          class="project-chip"
+          class:selected={project.id === selectedProjectId}
+          role="button"
+          tabindex="0"
+          onclick={() => onSelect(project.id)}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(project.id); }}
+        >
+          <span class="project-avatar">{project.name.trim().charAt(0).toUpperCase() || '?'}</span>
+          <span class="project-name">{project.name}</span>
+        </div>
+      {/each}
+      {#if projects.optimistic.length === 0}
+        <div class="empty-projects">{m['sidebar.no_projects']()}</div>
+      {/if}
+    </nav>
+  {/if}
 </header>
 
 <style>
@@ -221,6 +236,35 @@
     -webkit-text-fill-color: transparent;
     margin: 0;
     white-space: nowrap;
+  }
+
+  .logo-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-sm);
+  }
+
+  .logo-btn:hover .logo {
+    filter: brightness(1.1);
+  }
+
+  .header-project-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+  }
+
+  .app-header.compact {
+    gap: 12px;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
   }
 
   /* ==========================================

@@ -53,7 +53,7 @@ export function watchTheme(callback: () => void): () => void {
   const observer = new MutationObserver(() => callback());
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['data-theme', 'data-style', 'class'],
+    attributeFilter: ['data-theme', 'class'],
   });
   return () => observer.disconnect();
 }

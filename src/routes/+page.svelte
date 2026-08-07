@@ -2,7 +2,9 @@
   import { m } from '$lib/paraglide/messages.js';
   import { SearchX, Pencil, Trash2, Loader2 } from 'lucide-svelte';
   import { setAppShell } from '$lib/app.svelte';
+  import * as api from '$lib/api';
   import AppHeader from '$lib/features/project/AppHeader.svelte';
+  import ProjectLauncher from '$lib/features/project/ProjectLauncher.svelte';
   import DeleteProjectDialog from '$lib/features/project/DeleteProjectDialog.svelte';
   import CrawlControls from '$lib/features/crawl-controls/CrawlControls.svelte';
   import CrawlProgress from '$lib/features/crawl-controls/CrawlProgress.svelte';
@@ -14,7 +16,16 @@
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
 
-  const app = setAppShell();
+  // The main window is the launcher on desktop (no `?project`); a dedicated
+  // project window loads `index.html?project={id}` and is pinned to that
+  // project. Mobile keeps the single-window app with the project switcher.
+  const projectId =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('project') : null;
+  const mobileUA =
+    typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isLauncher = !projectId && !mobileUA;
+
+  const app = setAppShell(projectId, isLauncher);
 
   let PageDetailPanel = $state<typeof import('$lib/features/page-detail/PageDetailPanel.svelte').default | null>(null);
   let SettingsModal = $state<typeof import('$lib/features/settings/SettingsModal.svelte').default | null>(null);
@@ -63,162 +74,204 @@
       import('$lib/features/settings/SettingsModal.svelte').then((m) => (SettingsModal = m.default));
     }
   });
+
+  // When the project pinned to a dedicated window is deleted, close that window.
+  $effect(() => {
+    if (projectId && app.initialized && !app.selectedProjectId) {
+      api.windows.closeProjectWindow(projectId).catch(() => {});
+    }
+  });
+
+  function openProject(id: string, name: string) {
+    if (mobileUA) {
+      app.selectProject(id);
+      return;
+    }
+    api.windows.openProjectWindow(id, name).catch((e) => console.error('[Launcher] Failed to open window:', e));
+  }
+
+  async function handleLauncherCreate() {
+    await app.createProject();
+    const id = app.selectedProjectId;
+    const name = app.getSelectedProject()?.name ?? '';
+    if (id) openProject(id, name);
+  }
+
+  function onBackToLauncher() {
+    if (projectId) {
+      api.windows.closeProjectWindow(projectId).catch(() => {});
+    }
+  }
 </script>
 
-<div class="app-layout">
-  {#if !splashGone}
-    <Splash visible={splashVisible} />
-  {/if}
-  <AppHeader
-    projects={app.projects}
-    selectedProjectId={app.selectedProjectId}
+{#if isLauncher}
+  <ProjectLauncher
+    projects={app.projects.optimistic}
     bind:newProjectName={app.newProjectName}
-    onSelect={app.selectProject}
-    onCreate={app.createProject}
+    onCreate={handleLauncherCreate}
+    onOpenProject={openProject}
     onOpenSettings={() => (app.settingsModalOpen = true)}
+    onDeleteProject={app.requestDelete}
   />
-
-  <!-- Main content -->
-  <main class="main-content">
-    {#if !app.initialized}
-      <div class="boot-state">
-        <Loader2 class="boot-spinner" />
-        <span>{m['app.loading']()}</span>
-      </div>
-    {:else if !app.selectedProjectId}
-      <div class="no-project">
-        <SearchX class="no-project-icon" />
-        <h2>{m['app.select_project']()}</h2>
-        <p>{m['app.select_project_hint']()}</p>
-      </div>
-    {:else}
-      <div class="project-header">
-        {#if app.renamingProjectId === app.selectedProjectId}
-          <Input
-            type="text"
-            bind:value={app.renamingName}
-            onkeydown={(e) => {
-              if (e.key === 'Enter') app.confirmRename();
-              if (e.key === 'Escape') app.cancelRename();
-            }}
-            onblur={app.confirmRename}
-            class="h-9 max-w-xs text-base"
-            placeholder={m['sidebar.new_project_placeholder']()}
-          />
-        {:else}
-          <h2 class="project-title">
-            {#if app.siteFavicon}
-              <img src={app.siteFavicon} alt="" class="site-favicon" />
-            {/if}
-            <span>{app.getSelectedProject()?.name}</span>
-          </h2>
-          <div class="project-actions">
-            <Button
-              variant="ghost"
-              size="sm"
-              class="btn-project-action"
-              title={m['sidebar.rename']()}
-              aria-label={m['sidebar.rename']()}
-              onclick={() => {
-                const p = app.getSelectedProject();
-                if (p) app.startRename(p.id, p.name);
-              }}
-            >
-              <Pencil class="size-4" />
-              <span>{m['sidebar.rename']()}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="btn-project-action hover:bg-destructive hover:text-white"
-              title={m['sidebar.delete']()}
-              aria-label={m['sidebar.delete']()}
-              onclick={() => app.requestDelete(app.selectedProjectId)}
-            >
-              <Trash2 class="size-4" />
-              <span>{m['sidebar.delete']()}</span>
-            </Button>
-          </div>
-        {/if}
-      </div>
-
-      {#if app.error}
-        <div class="error">{app.error}</div>
-      {/if}
-
-      <ResumeDialog
-        bind:open={app.showResumeDialog}
-        resumableInfo={app.resumableInfo}
-        elapsedLabel={app.formatDuration(app.resumableInfo?.elapsed_secs ?? 0)}
-        onFreshStart={() => {
-          app.showResumeDialog = false;
-          app.startCrawl(false);
-        }}
-        onResume={() => app.startCrawl(true)}
-      />
-
-      <CrawlControls
-        status={app.status}
-        resumableInfo={app.resumableInfo}
-        hasResults={app.results.items.length > 0}
-        exporting={app.exportProgress.running}
-        bind:seedUrl={app.seedUrl}
-        bind:maxDepth={app.maxDepth}
-        bind:maxCrawlTime={app.maxCrawlTime}
-        bind:proxyUrl={app.proxyUrl}
-        bind:proxyUser={app.proxyUser}
-        bind:proxyPass={app.proxyPass}
-        bind:cookies={app.cookies}
-        bind:siteUser={app.siteUser}
-        bind:sitePass={app.sitePass}
-        bind:respectRobots={app.respectRobots}
-        bind:checkSitemap={app.checkSitemap}
-        bind:checkSemantics={app.checkSemantics}
-        onStart={app.handleStartCrawl}
-        onStop={app.stopCrawl}
-        onRefresh={() => app.loadResults(app.currentPage)}
-        onExport={app.exportFull}
-        onTransfer={() => (app.transferDialogOpen = true)}
-      />
-
-      {#if app.status === 'running'}
-        <CrawlProgress
-          progress={app.progress}
-          streamedCount={app.streamedCount}
-        />
-      {/if}
-
-      {#if app.sitemapInfo}
-        <div class="sitemap-info">{app.sitemapInfo}</div>
-      {/if}
-
-      {#if resultsActive}
-        <ResultsView
-          bind:activeTab={app.activeTab}
-          results={app.results}
-          resultsLoading={app.resultsLoading}
-          currentPage={app.currentPage}
-          pageSize={app.pageSize}
-          bind:pageSizeSelect={app.pageSizeSelect}
-          filters={app.activeFilters}
-          debouncedSearch={app.debouncedSearch}
-          bind:expandedIssueUrl={app.expandedIssueUrl}
-          selectedProjectId={app.selectedProjectId}
-          onPageSizeChange={app.changePageSize}
-          onGoToPage={app.goToPage}
-          onOpenDetail={app.openDetail}
-          onSearch={app.onSearchInput}
-          onFilterChange={app.handleFilterChange}
-          onFilterIssueType={app.handleFilterIssueType}
-          onClearFilter={() => app.handleFilterIssueType(null)}
-        />
-      {/if}
+{:else}
+  <div class="app-layout">
+    {#if !splashGone}
+      <Splash visible={splashVisible} />
     {/if}
-  </main>
-</div>
+    <AppHeader
+      projects={app.projects}
+      selectedProjectId={app.selectedProjectId}
+      bind:newProjectName={app.newProjectName}
+      onSelect={app.selectProject}
+      onCreate={app.createProject}
+      onOpenSettings={() => (app.settingsModalOpen = true)}
+      onOpenLauncher={projectId ? onBackToLauncher : undefined}
+      compact={!!projectId}
+      showSettings={!projectId}
+    />
 
-{#if PageDetailPanel}
-  <PageDetailPanel bind:pageId={app.detailPageId} onClose={() => (app.detailPageId = '')} />
+    <!-- Main content -->
+    <main class="main-content">
+      {#if !app.initialized}
+        <div class="boot-state">
+          <Loader2 class="boot-spinner" />
+          <span>{m['app.loading']()}</span>
+        </div>
+      {:else if !app.selectedProjectId}
+        <div class="no-project">
+          <SearchX class="no-project-icon" />
+          <h2>{m['app.select_project']()}</h2>
+          <p>{m['app.select_project_hint']()}</p>
+        </div>
+      {:else}
+        <div class="project-header">
+          {#if app.renamingProjectId === app.selectedProjectId}
+            <Input
+              type="text"
+              bind:value={app.renamingName}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') app.confirmRename();
+                if (e.key === 'Escape') app.cancelRename();
+              }}
+              onblur={app.confirmRename}
+              class="h-9 max-w-xs text-base"
+              placeholder={m['sidebar.new_project_placeholder']()}
+            />
+          {:else}
+            <h2 class="project-title">
+              {#if app.siteFavicon}
+                <img src={app.siteFavicon} alt="" class="site-favicon" />
+              {/if}
+              <span>{app.getSelectedProject()?.name}</span>
+            </h2>
+            <div class="project-actions">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="btn-project-action"
+                title={m['sidebar.rename']()}
+                aria-label={m['sidebar.rename']()}
+                onclick={() => {
+                  const p = app.getSelectedProject();
+                  if (p) app.startRename(p.id, p.name);
+                }}
+              >
+                <Pencil class="size-4" />
+                <span>{m['sidebar.rename']()}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="btn-project-action hover:bg-destructive hover:text-white"
+                title={m['sidebar.delete']()}
+                aria-label={m['sidebar.delete']()}
+                onclick={() => app.requestDelete(app.selectedProjectId)}
+              >
+                <Trash2 class="size-4" />
+                <span>{m['sidebar.delete']()}</span>
+              </Button>
+            </div>
+          {/if}
+        </div>
+
+        {#if app.error}
+          <div class="error">{app.error}</div>
+        {/if}
+
+        <ResumeDialog
+          bind:open={app.showResumeDialog}
+          resumableInfo={app.resumableInfo}
+          elapsedLabel={app.formatDuration(app.resumableInfo?.elapsed_secs ?? 0)}
+          onFreshStart={() => {
+            app.showResumeDialog = false;
+            app.startCrawl(false);
+          }}
+          onResume={() => app.startCrawl(true)}
+        />
+
+        <CrawlControls
+          status={app.status}
+          resumableInfo={app.resumableInfo}
+          hasResults={app.results.items.length > 0}
+          exporting={app.exportProgress.running}
+          bind:seedUrl={app.seedUrl}
+          bind:maxDepth={app.maxDepth}
+          bind:maxCrawlTime={app.maxCrawlTime}
+          bind:proxyUrl={app.proxyUrl}
+          bind:proxyUser={app.proxyUser}
+          bind:proxyPass={app.proxyPass}
+          bind:cookies={app.cookies}
+          bind:siteUser={app.siteUser}
+          bind:sitePass={app.sitePass}
+          bind:respectRobots={app.respectRobots}
+          bind:checkSitemap={app.checkSitemap}
+          bind:checkSemantics={app.checkSemantics}
+          onStart={app.handleStartCrawl}
+          onStop={app.stopCrawl}
+          onRefresh={() => app.loadResults(app.currentPage)}
+          onExport={app.exportFull}
+          onTransfer={() => (app.transferDialogOpen = true)}
+        />
+
+        {#if app.status === 'running'}
+          <CrawlProgress
+            progress={app.progress}
+            streamedCount={app.streamedCount}
+          />
+        {/if}
+
+        {#if app.sitemapInfo}
+          <div class="sitemap-info">{app.sitemapInfo}</div>
+        {/if}
+
+        {#if resultsActive}
+          <ResultsView
+            bind:activeTab={app.activeTab}
+            results={app.results}
+            resultsLoading={app.resultsLoading}
+            currentPage={app.currentPage}
+            pageSize={app.pageSize}
+            bind:pageSizeSelect={app.pageSizeSelect}
+            filters={app.activeFilters}
+            debouncedSearch={app.debouncedSearch}
+            bind:expandedIssueUrl={app.expandedIssueUrl}
+            selectedProjectId={app.selectedProjectId}
+            onPageSizeChange={app.changePageSize}
+            onGoToPage={app.goToPage}
+            onOpenDetail={app.openDetail}
+            onSearch={app.onSearchInput}
+            onFilterChange={app.handleFilterChange}
+            onFilterIssueType={app.handleFilterIssueType}
+            onClearFilter={() => app.handleFilterIssueType(null)}
+          />
+        {/if}
+      {/if}
+    </main>
+  </div>
+
+  {#if PageDetailPanel}
+    <PageDetailPanel bind:pageId={app.detailPageId} onClose={() => (app.detailPageId = '')} />
+  {/if}
 {/if}
 
 {#if SettingsModal}

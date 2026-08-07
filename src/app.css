@@ -53,12 +53,3 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
-
-/* Glass: give the translucent surfaces a backdrop to blur */
-[data-style="glass"] body {
-  background: linear-gradient(160deg, #2a2e3a 0%, #1b1e24 55%, #23202e 100%);
-}
-
-[data-theme="light"][data-style="glass"] body {
-  background: linear-gradient(160deg, #eef1f8 0%, #dfe3e8 55%, #e4defa 100%);
-}

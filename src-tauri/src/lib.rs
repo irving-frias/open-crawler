@@ -176,6 +176,10 @@ pub fn run() {
             crate::commands::is_mobile,
             crate::commands::get_platform,
             crate::commands::get_favicon,
+            crate::commands::open_project_window,
+            crate::commands::close_project_window,
+            crate::commands::list_open_project_windows,
+            crate::commands::is_project_window,
             // projects
             crate::commands::create_project,
             crate::commands::list_projects,

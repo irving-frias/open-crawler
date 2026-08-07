@@ -9,7 +9,7 @@ import type {
   TransferProgress,
 } from '$lib/api/transfer';
 import type { Project } from '$lib/api/types';
-import { applyTheme, applyUiStyle } from '$lib/theme.js';
+import { applyTheme } from '$lib/theme.js';
 import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
 import { m } from '$lib/paraglide/messages.js';
 import { notify } from '$lib/utils';
@@ -178,7 +178,7 @@ export function formatDuration(secs: number): string {
   return `${s}s`;
 }
 
-export function createAppShell(): AppShell {
+export function createAppShell(projectId: string | null = null, isLauncher = false): AppShell {
   let projectsBase = $state<Project[]>([]);
   let p2pSender: ReturnType<typeof startP2PSender> | null = null;
   const projects = useOptimistic<Project, OptimisticAction<Project>>(
@@ -260,7 +260,15 @@ export function createAppShell(): AppShell {
 
   // ==================== PERSISTENCE ====================
 
-  const PERSIST_KEY = 'open-crawler:ui-state-v1';
+  // State is scoped per window: each project gets its own window (desktop),
+  // so the UI state (seed URL, crawl config, active tab, results…) is stored
+  // under a per-project key. The launcher uses its own key, and mobile (no
+  // project windows) keeps the original shared key.
+  const PERSIST_KEY = projectId
+    ? `open-crawler:ui-state-v1:${projectId}`
+    : isLauncher
+      ? 'open-crawler:ui-state-v1:launcher'
+      : 'open-crawler:ui-state-v1';
 
   function readPersisted(): Record<string, unknown> {
     try {
@@ -272,7 +280,10 @@ export function createAppShell(): AppShell {
   }
 
   const persisted = readPersisted();
-  if (typeof persisted.selectedProjectId === 'string' && persisted.selectedProjectId) {
+  if (projectId) {
+    // A dedicated project window is pinned to its project.
+    state.selectedProjectId = projectId;
+  } else if (typeof persisted.selectedProjectId === 'string' && persisted.selectedProjectId) {
     state.selectedProjectId = persisted.selectedProjectId;
   }
   if (persisted.seedUrlsByProject && typeof persisted.seedUrlsByProject === 'object') {
@@ -385,6 +396,12 @@ export function createAppShell(): AppShell {
       checkIncomingShare();
     }));
 
+    // Any window that creates, renames or deletes a project broadcasts this, so
+    // the launcher and the per-project windows always show the same list.
+    register(listen<any>('projects-changed', () => {
+      refreshProjects();
+    }));
+
     register(listen<any>('crawl-started', (event) => {
       console.log('[Crawler] crawl-started:', event.payload);
       if (state.notificationsEnabled) {
@@ -443,6 +460,7 @@ export function createAppShell(): AppShell {
 
     register(listen<any>('sitemap-discovered', (event) => {
       const p = event.payload;
+      if (p.project_id && p.project_id !== state.selectedProjectId) return;
       state.sitemapInfo = p.fallback
         ? m['sitemap.fallback']()
         : m['sitemap.found']({
@@ -454,11 +472,15 @@ export function createAppShell(): AppShell {
 
   // ==================== PROJECTS ====================
 
+  // Launcher (main window, no pinned project): only lists projects so cards can
+  // be opened in their own windows. No project is auto-selected.
   async function loadProjects() {
     try {
       const data = await api.projects.listProjects();
       projectsBase = data;
-      if (data.length > 0) {
+      if (isLauncher) {
+        state.selectedProjectId = '';
+      } else if (data.length > 0) {
         const id =
           state.selectedProjectId && data.some((p) => p.id === state.selectedProjectId)
             ? state.selectedProjectId
@@ -488,6 +510,23 @@ export function createAppShell(): AppShell {
     }
   }
 
+  // Lightweight list refresh after a change made in another window. Unlike
+  // `loadProjects`, it does not touch selection/results, so the launcher grid
+  // and each project header (renames) update without disturbing open state.
+  async function refreshProjects() {
+    try {
+      const data = await api.projects.listProjects();
+      projectsBase = data;
+      // If the project pinned to this window was deleted elsewhere, the
+      // backend closes the window; keep a safe fallback just in case.
+      if (!isLauncher && projectId && !data.some((p) => p.id === projectId)) {
+        state.selectedProjectId = '';
+      }
+    } catch (e) {
+      console.error('[Projects] Refresh failed:', e);
+    }
+  }
+
   async function loadSettings() {
     try {
       const settings = await api.settings.getSettings();
@@ -499,9 +538,6 @@ export function createAppShell(): AppShell {
       }
       if (settings.theme) {
         applyTheme(settings.theme);
-      }
-      if (settings.ui_style) {
-        applyUiStyle(settings.ui_style);
       }
     } catch (e) {
       // Settings may not exist yet, use defaults
@@ -1414,8 +1450,8 @@ export function createAppShell(): AppShell {
   return state;
 }
 
-export function setAppShell() {
-  return setContext(APP_SHELL_KEY, createAppShell());
+export function setAppShell(projectId: string | null = null, isLauncher = false) {
+  return setContext(APP_SHELL_KEY, createAppShell(projectId, isLauncher));
 }
 
 export function getAppShell() {

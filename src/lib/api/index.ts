@@ -10,6 +10,8 @@ export * as seo from './seo';
 export * as settings from './settings';
 export * as exportApi from './export';
 export * as transferApi from './transfer';
+export * as windows from './windows';
+export * from './types';
 export * from './projects';
 export * from './crawl';
 export * from './results';

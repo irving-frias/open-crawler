@@ -244,6 +244,7 @@ impl CrawlEngine {
                 let _ = app.emit(
                     "sitemap-discovered",
                     serde_json::json!({
+                        "project_id": project_id,
                         "origin": origin,
                         "urls_found": result.urls.len(),
                         "sitemaps_checked": result.sitemaps_checked.len(),
