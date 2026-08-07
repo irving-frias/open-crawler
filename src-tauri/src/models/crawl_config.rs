@@ -1,16 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScanType {
+    #[default]
     Web,
     Local,
-}
-
-impl Default for ScanType {
-    fn default() -> Self {
-        ScanType::Web
-    }
 }
 
 pub const IMPLICIT_USER_AGENT: &str =
