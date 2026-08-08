@@ -1,7 +1,19 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
-  import { Search, X, ChevronDown, CircleX, TriangleAlert, Info, SearchX, Database, ExternalLink, BookOpenText, Gauge } from 'lucide-svelte';
+  import {
+    Search,
+    X,
+    ChevronDown,
+    CircleX,
+    TriangleAlert,
+    Info,
+    SearchX,
+    Database,
+    ExternalLink,
+    BookOpenText,
+    Gauge,
+  } from 'lucide-svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
@@ -21,6 +33,7 @@
     onSearch?: (query: string) => void;
   } = $props();
 
+  // eslint-disable-next-line svelte/prefer-writable-derived -- localSearch is user-editable, searchQuery prop is not bindable
   let localSearch = $state('');
   // Highlighting runs on every row; debounce it so rapid keystrokes don't
   // re-render every title with <mark> tags.
@@ -47,12 +60,27 @@
   }
 
   const highlightRegex = $derived(
-    highlightSearch ? new RegExp(`(${highlightSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi') : null
+    highlightSearch
+      ? new RegExp(`(${highlightSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+      : null
   );
 
+  function escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function applyHighlight(text: string | null): string {
-    if (!highlightRegex || !text) return text ?? '';
-    return text.replace(highlightRegex, '<mark>$1</mark>');
+    if (!text) return '';
+    // Escape first (the title comes from a crawled, attacker-controlled page),
+    // then wrap matches in <mark> so the injected markup is never raw HTML.
+    const escaped = escapeHtml(text);
+    if (!highlightRegex) return escaped;
+    return escaped.replace(highlightRegex, '<mark>$1</mark>');
   }
 
   function toggleIssues(url: string) {
@@ -140,7 +168,10 @@
           variant="ghost"
           size="icon-xs"
           class="absolute right-1.5 top-1/2 -translate-y-1/2"
-          onclick={() => { localSearch = ''; onSearch?.(''); }}
+          onclick={() => {
+            localSearch = '';
+            onSearch?.('');
+          }}
           aria-label={m['results.clear_search']()}
           title={m['results.clear_search']()}
         >
@@ -203,7 +234,12 @@
               <span class="url-text">{row.page.url}</span>
               <ExternalLink class="url-external size-3.5" />
             </a>
-            <button class="btn-title" onclick={() => onDetail?.(row.page.id)} title={m['results.view_details']()}>
+            <button
+              class="btn-title"
+              onclick={() => onDetail?.(row.page.id)}
+              title={m['results.view_details']()}
+            >
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
               {@html row.titleHtml}
             </button>
           </div>
@@ -265,10 +301,11 @@
               </span>
             {/if}
           </div>
-        </div>        {#if isExpanded}
+        </div>
+        {#if isExpanded}
           <div class="table-row detail-row">
             <div class="issue-detail">
-              {#each row.issues as issue}
+              {#each row.issues as issue, i (i)}
                 {@const params = parseIssueParams(issue.message, issue.issue_type)}
                 <div class="issue-item issue-{issue.severity}">
                   <span class="issue-icon">
@@ -281,7 +318,9 @@
                     {/if}
                   </span>
                   <span class="issue-element">{issue.element}</span>
-                  <span class="issue-message">{translateIssueMessage(issue.issue_type, params)}</span>
+                  <span class="issue-message"
+                    >{translateIssueMessage(issue.issue_type, params)}</span
+                  >
                   {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
                     <code class="issue-selector">{issue.xpath}</code>
                   {:else if issue.xpath}
@@ -419,8 +458,14 @@
   }
 
   @keyframes detail-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .col-url {
@@ -507,12 +552,30 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .status-2xx { background: var(--bg-status-2xx); color: var(--success); }
-  .status-3xx { background: var(--bg-status-3xx); color: var(--warning); }
-  .status-4xx { background: var(--bg-status-4xx); color: var(--orange); }
-  .status-5xx { background: var(--bg-status-5xx); color: var(--danger); }
-  .status-0xx { background: var(--bg-hover); color: var(--text-muted); }
-  .status-blocked { background: var(--bg-status-4xx); color: var(--warning); }
+  .status-2xx {
+    background: var(--bg-status-2xx);
+    color: var(--success);
+  }
+  .status-3xx {
+    background: var(--bg-status-3xx);
+    color: var(--warning);
+  }
+  .status-4xx {
+    background: var(--bg-status-4xx);
+    color: var(--orange);
+  }
+  .status-5xx {
+    background: var(--bg-status-5xx);
+    color: var(--danger);
+  }
+  .status-0xx {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+  }
+  .status-blocked {
+    background: var(--bg-status-4xx);
+    color: var(--warning);
+  }
 
   .col-issues {
     display: flex;
@@ -602,18 +665,30 @@
     font-size: 0.85rem;
   }
 
-  .issue-item.issue-error { background: var(--bg-issue-error); }
-  .issue-item.issue-warning { background: var(--bg-issue-warning); }
-  .issue-item.issue-info { background: var(--bg-issue-info); }
+  .issue-item.issue-error {
+    background: var(--bg-issue-error);
+  }
+  .issue-item.issue-warning {
+    background: var(--bg-issue-warning);
+  }
+  .issue-item.issue-info {
+    background: var(--bg-issue-info);
+  }
 
   .issue-icon {
     display: inline-flex;
     flex-shrink: 0;
     color: var(--text-muted);
   }
-  .issue-item.issue-error .issue-icon { color: var(--danger); }
-  .issue-item.issue-warning .issue-icon { color: var(--warning); }
-  .issue-item.issue-info .issue-icon { color: var(--info); }
+  .issue-item.issue-error .issue-icon {
+    color: var(--danger);
+  }
+  .issue-item.issue-warning .issue-icon {
+    color: var(--warning);
+  }
+  .issue-item.issue-info .issue-icon {
+    color: var(--info);
+  }
 
   .issue-element {
     font-weight: 600;
@@ -648,14 +723,18 @@
     color: var(--accent);
     text-decoration: none;
   }
-  a:hover { text-decoration: underline; }
+  a:hover {
+    text-decoration: underline;
+  }
 
   /* ==========================================
      RESPONSIVE — Mobile First
      ========================================== */
 
   /* Mobile base (<= 767px): card layout */
-  .header-row { display: none; }
+  .header-row {
+    display: none;
+  }
 
   .table-row {
     display: flex;

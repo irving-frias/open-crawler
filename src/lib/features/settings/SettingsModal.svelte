@@ -51,7 +51,8 @@
       if (settings.check_sitemap) checkSitemap = settings.check_sitemap === 'true';
       if (settings.check_semantics) checkSemantics = settings.check_semantics === 'true';
       if (settings.max_crawl_time) maxCrawlTime = settings.max_crawl_time;
-      if (settings.notifications_enabled !== undefined) notificationsEnabled = settings.notifications_enabled === 'true';
+      if (settings.notifications_enabled !== undefined)
+        notificationsEnabled = settings.notifications_enabled === 'true';
       if (settings.pagespeed_api_key) pagespeedApiKey = settings.pagespeed_api_key;
       if (settings.ai_enabled) aiEnabled = settings.ai_enabled === 'true';
       if (settings.ai_api_key) aiApiKey = settings.ai_api_key;
@@ -97,9 +98,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content
-    class="max-h-[90dvh] overflow-y-auto sm:max-h-[min(90dvh,640px)] sm:max-w-lg"
-  >
+  <Dialog.Content class="max-h-[90dvh] overflow-y-auto sm:max-h-[min(90dvh,640px)] sm:max-w-lg">
     <Dialog.Header>
       <Dialog.Title>{m['settings.title']()}</Dialog.Title>
     </Dialog.Header>
@@ -123,7 +122,11 @@
         <Select.Root type="single" bind:value={theme}>
           <Select.Trigger id="theme" class="w-full">
             <span data-slot="select-value">
-              {theme === 'light' ? m['theme.light']() : theme === 'dark' ? m['theme.dark']() : m['theme.system']()}
+              {theme === 'light'
+                ? m['theme.light']()
+                : theme === 'dark'
+                  ? m['theme.dark']()
+                  : m['theme.system']()}
             </span>
           </Select.Trigger>
           <Select.Content>
@@ -154,7 +157,9 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={notificationsEnabled} id="cfg-notifications" />
-          <Label for="cfg-notifications" class="cursor-pointer font-normal">{m['settings.notifications']()}</Label>
+          <Label for="cfg-notifications" class="cursor-pointer font-normal"
+            >{m['settings.notifications']()}</Label
+          >
         </div>
       </div>
 
@@ -180,7 +185,9 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={aiEnabled} id="cfg-ai-enabled" />
-          <Label for="cfg-ai-enabled" class="cursor-pointer font-normal">{m['settings.ai_enabled']()}</Label>
+          <Label for="cfg-ai-enabled" class="cursor-pointer font-normal"
+            >{m['settings.ai_enabled']()}</Label
+          >
         </div>
         <p class="text-xs text-muted-foreground">{m['settings.ai_enabled_hint']()}</p>
       </div>
@@ -197,11 +204,21 @@
       </div>
       <div class="grid gap-1.5">
         <Label for="ai-base-url">{m['settings.ai_base_url']()}</Label>
-        <Input id="ai-base-url" type="text" bind:value={aiBaseUrl} placeholder={m['settings.ai_base_url_placeholder']()} />
+        <Input
+          id="ai-base-url"
+          type="text"
+          bind:value={aiBaseUrl}
+          placeholder={m['settings.ai_base_url_placeholder']()}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="ai-model">{m['settings.ai_model']()}</Label>
-        <Input id="ai-model" type="text" bind:value={aiModel} placeholder={m['settings.ai_model_placeholder']()} />
+        <Input
+          id="ai-model"
+          type="text"
+          bind:value={aiModel}
+          placeholder={m['settings.ai_model_placeholder']()}
+        />
       </div>
 
       <Separator />
@@ -222,15 +239,21 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={respectRobots} id="cfg-respect-robots" />
-          <Label for="cfg-respect-robots" class="cursor-pointer font-normal">{m['config.respect_robots']()}</Label>
+          <Label for="cfg-respect-robots" class="cursor-pointer font-normal"
+            >{m['config.respect_robots']()}</Label
+          >
         </div>
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={checkSitemap} id="cfg-check-sitemap" />
-          <Label for="cfg-check-sitemap" class="cursor-pointer font-normal">{m['config.check_sitemap']()}</Label>
+          <Label for="cfg-check-sitemap" class="cursor-pointer font-normal"
+            >{m['config.check_sitemap']()}</Label
+          >
         </div>
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={checkSemantics} id="cfg-check-semantics" />
-          <Label for="cfg-check-semantics" class="cursor-pointer font-normal">{m['config.check_semantics']()}</Label>
+          <Label for="cfg-check-semantics" class="cursor-pointer font-normal"
+            >{m['config.check_semantics']()}</Label
+          >
         </div>
       </div>
     </div>

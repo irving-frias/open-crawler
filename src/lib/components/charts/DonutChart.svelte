@@ -26,10 +26,7 @@
   });
 
   $effect(() => {
-    segments;
-    centerLabel;
-    centerValue;
-    themeTick;
+    void themeTick;
     if (!canvas) return;
     const theme = getChartTheme();
     const cutout = ((size - 2 * thickness) / size) * 100;
@@ -45,12 +42,20 @@
         ctx.fillStyle = theme.text;
         if (centerValue) {
           ctx.font = `700 ${Math.round(size / 8.5)}px ${fontFamily()}`;
-          ctx.fillText(centerValue, (chartArea.left + chartArea.right) / 2, chartArea.top + chartArea.height * 0.38);
+          ctx.fillText(
+            centerValue,
+            (chartArea.left + chartArea.right) / 2,
+            chartArea.top + chartArea.height * 0.38
+          );
         }
         if (centerLabel) {
           ctx.fillStyle = theme.textMuted;
           ctx.font = `400 ${Math.round(size / 16)}px ${fontFamily()}`;
-          ctx.fillText(centerLabel, (chartArea.left + chartArea.right) / 2, chartArea.top + chartArea.height * 0.62);
+          ctx.fillText(
+            centerLabel,
+            (chartArea.left + chartArea.right) / 2,
+            chartArea.top + chartArea.height * 0.62
+          );
         }
         ctx.restore();
       },

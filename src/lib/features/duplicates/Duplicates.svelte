@@ -55,8 +55,12 @@
         document.body.removeChild(ta);
       }
       copiedUrl = url;
-      setTimeout(() => { if (copiedUrl === url) copiedUrl = ''; }, 1500);
-    } catch {}
+      setTimeout(() => {
+        if (copiedUrl === url) copiedUrl = '';
+      }, 1500);
+    } catch {
+      copiedUrl = '';
+    }
   }
 </script>
 
@@ -64,7 +68,7 @@
   <div class="duplicates-head">
     <div class="flex items-center gap-2 text-sm font-semibold">
       <Files class="size-4" />
-      {m["duplicates.title"]()}
+      {m['duplicates.title']()}
       {#if groups.length > 0}
         <Badge variant="warning" class="ml-1">{groups.length}</Badge>
       {/if}
@@ -73,7 +77,7 @@
       {#if groups.length > 0}
         <Button variant="outline" size="sm" class="gap-1.5" onclick={loadGroups}>
           <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
-          {m["config.refresh"]()}
+          {m['config.refresh']()}
         </Button>
       {/if}
     </div>
@@ -90,15 +94,17 @@
       {error}
     </div>
   {:else if groups.length === 0}
-    <div class="p-4 text-sm text-muted-foreground">{m["duplicates.empty"]()}</div>
+    <div class="p-4 text-sm text-muted-foreground">{m['duplicates.empty']()}</div>
   {:else}
     <div class="groups-list">
       {#each groups as group (group.id)}
         <Card>
           <CardHeader class="pb-2">
             <CardTitle class="flex items-center gap-2 text-sm">
-              <Badge variant="warning">{m["duplicates.group"]()}</Badge>
-              <span class="text-muted-foreground font-normal">{group.size} {m["duplicates.pages"]()}</span>
+              <Badge variant="warning">{m['duplicates.group']()}</Badge>
+              <span class="text-muted-foreground font-normal"
+                >{group.size} {m['duplicates.pages']()}</span
+              >
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -116,7 +122,7 @@
                     variant="ghost"
                     size="icon-xs"
                     class="shrink-0"
-                    title={m["duplicates.copy"]()}
+                    title={m['duplicates.copy']()}
                     onclick={() => copyUrl(u.url)}
                   >
                     {#if copiedUrl === u.url}

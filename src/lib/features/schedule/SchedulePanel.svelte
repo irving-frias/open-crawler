@@ -230,12 +230,7 @@
           </div>
           <div class="presets">
             {#each PRESETS as p (p.id)}
-              <Button
-                variant="outline"
-                size="xs"
-                class="h-7"
-                onclick={() => (newCron = p.expr)}
-              >
+              <Button variant="outline" size="xs" class="h-7" onclick={() => (newCron = p.expr)}>
                 {p.label}
               </Button>
             {/each}

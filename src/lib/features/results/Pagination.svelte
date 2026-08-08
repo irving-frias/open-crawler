@@ -67,7 +67,7 @@
     >
       <ChevronLeft class="size-4" />
     </Button>
-    {#each getPageNumbers() as pageNum}
+    {#each getPageNumbers() as pageNum (pageNum)}
       {#if pageNum === '...'}
         <span class="page-ellipsis">&hellip;</span>
       {:else}

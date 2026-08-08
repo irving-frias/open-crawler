@@ -1,6 +1,15 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { RefreshCw, Download, ChevronDown, FileSpreadsheet, FileText, Send, Globe, Server } from 'lucide-svelte';
+  import {
+    RefreshCw,
+    Download,
+    ChevronDown,
+    FileSpreadsheet,
+    FileText,
+    Send,
+    Globe,
+    Server,
+  } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -148,8 +157,7 @@
         rows="4"
         bind:value={localUrls}
         placeholder={m['config.local_urls_placeholder']()}
-        disabled={status === 'running'}
-      ></textarea>
+        disabled={status === 'running'}></textarea>
       <p class="field-hint">{m['config.local_urls_hint']()}</p>
     </div>
   {/if}
@@ -157,11 +165,25 @@
   <div class="form-row">
     <div class="form-group">
       <Label for="maxDepth">{m['config.max_depth']()}</Label>
-      <Input id="maxDepth" type="number" bind:value={maxDepth} min="1" max="100" disabled={status === 'running'} />
+      <Input
+        id="maxDepth"
+        type="number"
+        bind:value={maxDepth}
+        min="1"
+        max="100"
+        disabled={status === 'running'}
+      />
     </div>
     <div class="form-group">
       <Label for="maxTime">{m['config.time_limit']()}</Label>
-      <Input id="maxTime" type="number" bind:value={maxCrawlTime} min="0" max="86400" disabled={status === 'running'} />
+      <Input
+        id="maxTime"
+        type="number"
+        bind:value={maxCrawlTime}
+        min="0"
+        max="86400"
+        disabled={status === 'running'}
+      />
       <p class="field-hint">{m['config.time_limit_hint']()}</p>
     </div>
   </div>
@@ -186,11 +208,23 @@
         <div class="form-row">
           <div class="form-group">
             <Label for="proxyUser">{m['config.proxy_user']()}</Label>
-            <Input id="proxyUser" type="text" bind:value={proxyUser} autocomplete="off" disabled={status === 'running'} />
+            <Input
+              id="proxyUser"
+              type="text"
+              bind:value={proxyUser}
+              autocomplete="off"
+              disabled={status === 'running'}
+            />
           </div>
           <div class="form-group">
             <Label for="proxyPass">{m['config.proxy_pass']()}</Label>
-            <Input id="proxyPass" type="password" bind:value={proxyPass} autocomplete="off" disabled={status === 'running'} />
+            <Input
+              id="proxyPass"
+              type="password"
+              bind:value={proxyPass}
+              autocomplete="off"
+              disabled={status === 'running'}
+            />
           </div>
         </div>
       {/if}
@@ -229,8 +263,7 @@
           placeholder={m['config.cookies_placeholder']()}
           autocomplete="off"
           spellcheck="false"
-          disabled={status === 'running'}
-        ></textarea>
+          disabled={status === 'running'}></textarea>
         <p class="field-hint">{m['config.cookies_hint']()}</p>
       </div>
     </div>
@@ -254,7 +287,11 @@
   <div class="actions">
     {#if status === 'idle' || status === 'completed' || status === 'error'}
       <Button onclick={handleStart} disabled={!seedUrl}>
-        {resumableInfo ? m['config.resume']() : hasResults ? m['config.rescan']() : m['config.start']()}
+        {resumableInfo
+          ? m['config.resume']()
+          : hasResults
+            ? m['config.rescan']()
+            : m['config.start']()}
       </Button>
     {:else if status === 'running'}
       <Button variant="destructive" onclick={onStop}>{m['config.stop']()}</Button>
@@ -273,12 +310,7 @@
       <Popover.Root>
         <Popover.Trigger>
           {#snippet child({ props })}
-            <Button
-              variant="outline"
-              class="gap-1.5"
-              {...props}
-              disabled={exporting}
-            >
+            <Button variant="outline" class="gap-1.5" {...props} disabled={exporting}>
               <Download class="size-4" />
               {m['settings.export']()}
               <ChevronDown class="size-3.5" />
@@ -311,7 +343,10 @@
 
   {#if resumableInfo && status === 'idle'}
     <div class="resume-hint">
-      {m['resume.hint']({ pages: resumableInfo.pages_crawled, urls: resumableInfo.queue_remaining })}
+      {m['resume.hint']({
+        pages: resumableInfo.pages_crawled,
+        urls: resumableInfo.queue_remaining,
+      })}
     </div>
   {/if}
 </section>

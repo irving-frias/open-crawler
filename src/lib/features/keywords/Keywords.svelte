@@ -3,7 +3,6 @@
   import type { KeywordAggregate } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { RefreshCw, TriangleAlert, Search } from 'lucide-svelte';
-  import { Card, CardContent } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -48,7 +47,7 @@
   <div class="keywords-head">
     <div class="flex items-center gap-2 text-sm font-semibold">
       <Search class="size-4" />
-      {m["keywords.title"]()}
+      {m['keywords.title']()}
       {#if keywords.length > 0}
         <Badge variant="secondary" class="ml-1">{keywords.length}</Badge>
       {/if}
@@ -58,8 +57,8 @@
       size="icon"
       class="size-7"
       onclick={loadKeywords}
-      aria-label={m["config.refresh"]()}
-      title={m["config.refresh"]()}
+      aria-label={m['config.refresh']()}
+      title={m['config.refresh']()}
       disabled={loading}
     >
       <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
@@ -78,20 +77,17 @@
       {error}
     </div>
   {:else if keywords.length === 0}
-    <div class="p-4 text-sm text-muted-foreground">{m["keywords.empty"]()}</div>
+    <div class="p-4 text-sm text-muted-foreground">{m['keywords.empty']()}</div>
   {:else}
     <div class="keywords-grid">
       {#each keywords as kw (kw.keyword)}
         <div class="kw-row">
           <span class="kw-name" title={kw.keyword}>{kw.keyword}</span>
           <div class="kw-bar-track">
-            <div
-              class="kw-bar"
-              style="width: {Math.max(4, (kw.count / maxCount) * 100)}%"
-            ></div>
+            <div class="kw-bar" style="width: {Math.max(4, (kw.count / maxCount) * 100)}%"></div>
           </div>
           <span class="kw-count">{kw.count}</span>
-          <span class="kw-pages" title={m["keywords.pages"]()}>{kw.pages}</span>
+          <span class="kw-pages" title={m['keywords.pages']()}>{kw.pages}</span>
         </div>
       {/each}
     </div>

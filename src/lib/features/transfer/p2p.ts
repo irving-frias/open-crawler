@@ -117,7 +117,11 @@ export function startP2PSender(
               const chunk = buf.slice(off, Math.min(off + P2P_CHUNK_SIZE, buf.length));
               await pacedSend(conn, chunk);
               sent += chunk.byteLength;
-              onProgress({ transferred: sent, total: buf.length, percent: (sent / buf.length) * 100 });
+              onProgress({
+                transferred: sent,
+                total: buf.length,
+                percent: (sent / buf.length) * 100,
+              });
             }
             conn.send({ type: 'done' });
             onStatus('complete');
@@ -181,39 +185,40 @@ export function receiveP2P(
       });
 
       conn.on('data', (data) => {
-        chain = chain.then(async () => {
-          if (settled) return;
-          if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-            if (!file) throw new Error('received data before header');
-            const buf =
-              data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
-            await file.write(buf);
-            received += buf.byteLength;
-            onProgress({
-              transferred: received,
-              total: header?.size ?? 0,
-              percent: header && header.size > 0 ? (received / header.size) * 100 : 0,
-            });
-            return;
-          }
-          const msg = data as { type?: string; name?: string; size?: number; message?: string };
-          if (msg && typeof msg === 'object' && msg.type === 'header') {
-            header = { name: String(msg.name ?? 'package.ocproj'), size: Number(msg.size ?? 0) };
-            file = await open(destPath, { write: true, create: true, truncate: true });
-            conn!.send({ type: 'ack' });
-            onStatus('receiving');
-            onProgress({ transferred: 0, total: header.size, percent: 0 });
-          } else if (msg && typeof msg === 'object' && msg.type === 'done') {
-            await file?.close();
-            file = null;
-            settled = true;
-            onStatus('complete');
-            peer.destroy();
-            resolve({ name: header?.name ?? 'package.ocproj', size: received });
-          } else if (msg && typeof msg === 'object' && msg.type === 'error') {
-            throw new Error(String(msg.message ?? 'transfer error'));
-          }
-        }).catch(fail);
+        chain = chain
+          .then(async () => {
+            if (settled) return;
+            if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+              if (!file) throw new Error('received data before header');
+              const buf = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
+              await file.write(buf);
+              received += buf.byteLength;
+              onProgress({
+                transferred: received,
+                total: header?.size ?? 0,
+                percent: header && header.size > 0 ? (received / header.size) * 100 : 0,
+              });
+              return;
+            }
+            const msg = data as { type?: string; name?: string; size?: number; message?: string };
+            if (msg && typeof msg === 'object' && msg.type === 'header') {
+              header = { name: String(msg.name ?? 'package.ocproj'), size: Number(msg.size ?? 0) };
+              file = await open(destPath, { write: true, create: true, truncate: true });
+              conn!.send({ type: 'ack' });
+              onStatus('receiving');
+              onProgress({ transferred: 0, total: header.size, percent: 0 });
+            } else if (msg && typeof msg === 'object' && msg.type === 'done') {
+              await file?.close();
+              file = null;
+              settled = true;
+              onStatus('complete');
+              peer.destroy();
+              resolve({ name: header?.name ?? 'package.ocproj', size: received });
+            } else if (msg && typeof msg === 'object' && msg.type === 'error') {
+              throw new Error(String(msg.message ?? 'transfer error'));
+            }
+          })
+          .catch(fail);
       });
 
       conn.send({ type: 'request' });

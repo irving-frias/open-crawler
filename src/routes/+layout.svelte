@@ -12,7 +12,10 @@
     document.documentElement.lang = getLocale();
 
     function apply() {
-      document.documentElement.setAttribute('data-theme', resolveTheme(localStorage.getItem('theme') || 'system'));
+      document.documentElement.setAttribute(
+        'data-theme',
+        resolveTheme(localStorage.getItem('theme') || 'system')
+      );
     }
 
     apply();
@@ -57,7 +60,9 @@
     touch-action: manipulation;
   }
 
-  :global(input), :global(textarea), :global(select) {
+  :global(input),
+  :global(textarea),
+  :global(select) {
     font-family: inherit;
     font-size: inherit;
   }

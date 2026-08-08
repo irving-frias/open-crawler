@@ -54,8 +54,16 @@ export function getSemanticIssueCounts(projectId: string): Promise<IssueCount[]>
   return invoke<IssueCount[]>('get_semantic_issue_counts', { projectId });
 }
 
-export function getSiteTree(projectId: string, url?: string | null, limit?: number | null): Promise<SiteTreeNode[]> {
-  return invoke<SiteTreeNode[]>('get_site_tree', { projectId, url: url ?? null, limit: limit ?? null });
+export function getSiteTree(
+  projectId: string,
+  url?: string | null,
+  limit?: number | null
+): Promise<SiteTreeNode[]> {
+  return invoke<SiteTreeNode[]>('get_site_tree', {
+    projectId,
+    url: url ?? null,
+    limit: limit ?? null,
+  });
 }
 
 export function getSiteTreeFull(projectId: string): Promise<SiteTreeFullNode[]> {

@@ -10,12 +10,10 @@
 
   let {
     items,
-    totalResults,
     filters,
     onFilter,
   }: {
     items: any[];
-    totalResults: number;
     filters: FilterState;
     onFilter: (filters: FilterState) => void;
   } = $props();
@@ -76,13 +74,13 @@
 
   const activeFilterCount = $derived(
     selectedStatuses.length +
-    selectedSeverities.length +
-    (maxDepth !== undefined ? 1 : 0) +
-    (missingTitle ? 1 : 0) +
-    (duplicateTitle ? 1 : 0) +
-    (noindexOnly ? 1 : 0) +
-    (is404 ? 1 : 0) +
-    (issueType ? 1 : 0)
+      selectedSeverities.length +
+      (maxDepth !== undefined ? 1 : 0) +
+      (missingTitle ? 1 : 0) +
+      (duplicateTitle ? 1 : 0) +
+      (noindexOnly ? 1 : 0) +
+      (is404 ? 1 : 0) +
+      (issueType ? 1 : 0)
   );
 
   const sliderPct = $derived(((maxDepth ?? 10) / 10) * 100);
@@ -122,25 +120,25 @@
   const seoChips = $derived([
     {
       key: 'missingTitle',
-      label: m["filter.missing_title"](),
+      label: m['filter.missing_title'](),
       state: missingTitle,
       toggle: () => onFilter({ ...filters, missingTitle: !missingTitle }),
     },
     {
       key: 'duplicateTitle',
-      label: m["filter.duplicate_title"](),
+      label: m['filter.duplicate_title'](),
       state: duplicateTitle,
       toggle: () => onFilter({ ...filters, duplicateTitle: !duplicateTitle }),
     },
     {
       key: 'noindexOnly',
-      label: m["filter.noindex"](),
+      label: m['filter.noindex'](),
       state: noindexOnly,
       toggle: () => onFilter({ ...filters, noindexOnly: !noindexOnly }),
     },
     {
       key: 'is404',
-      label: m["filter.is_404"](),
+      label: m['filter.is_404'](),
       state: is404,
       toggle: () => onFilter({ ...filters, is404: !is404 }),
     },
@@ -149,7 +147,7 @@
 
 <div class="filter-bar">
   <div class="quick-chips">
-    {#each seoChips as chip}
+    {#each seoChips as chip (chip.label)}
       <Button
         variant="ghost"
         size="sm"
@@ -170,9 +168,11 @@
       {#snippet child({ props })}
         <Button variant="outline" size="sm" class="gap-1.5" {...props}>
           <SlidersHorizontal class="size-4" />
-          {m["filter.filters"]()}
+          {m['filter.filters']()}
           {#if activeFilterCount > 0}
-            <Badge variant="default" class="size-5 justify-center rounded-full px-1">{activeFilterCount}</Badge>
+            <Badge variant="default" class="size-5 justify-center rounded-full px-1"
+              >{activeFilterCount}</Badge
+            >
           {/if}
           <ChevronDown class="size-3.5 opacity-60" />
         </Button>
@@ -182,9 +182,11 @@
     <Popover.Content class="w-96 max-w-[calc(100vw-2rem)]" align="start">
       <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.status"]()}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {m['filter.status']()}
+          </div>
           <div class="flex flex-wrap gap-1.5">
-            {#each AVAILABLE_STATUSES as code}
+            {#each AVAILABLE_STATUSES as code (code)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -200,15 +202,17 @@
               </Button>
             {/each}
             {#if AVAILABLE_STATUSES.length === 0}
-              <span class="text-xs text-muted-foreground">{m["filter.no_options"]()}</span>
+              <span class="text-xs text-muted-foreground">{m['filter.no_options']()}</span>
             {/if}
           </div>
         </div>
 
         <div class="flex flex-col gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.severity"]()}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {m['filter.severity']()}
+          </div>
           <div class="flex flex-wrap gap-1.5">
-            {#each availableSeverities as severity}
+            {#each availableSeverities as severity (severity)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -231,15 +235,17 @@
               </Button>
             {/each}
             {#if availableSeverities.length === 0}
-              <span class="text-xs text-muted-foreground">{m["filter.no_options"]()}</span>
+              <span class="text-xs text-muted-foreground">{m['filter.no_options']()}</span>
             {/if}
           </div>
         </div>
 
         <div class="flex flex-col gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.issue_type"]()}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {m['filter.issue_type']()}
+          </div>
           <div class="flex flex-wrap gap-1.5">
-            {#each availableIssueTypes as type}
+            {#each availableIssueTypes as type (type)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -255,13 +261,15 @@
               </Button>
             {/each}
             {#if availableIssueTypes.length === 0}
-              <span class="text-xs text-muted-foreground">{m["filter.no_options"]()}</span>
+              <span class="text-xs text-muted-foreground">{m['filter.no_options']()}</span>
             {/if}
           </div>
         </div>
 
         <div class="flex flex-col gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{m["filter.depth"]()}</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {m['filter.depth']()}
+          </div>
           <div class="depth-slider">
             <input
               type="range"
@@ -277,7 +285,7 @@
 
         {#if activeFilterCount > 0}
           <Button variant="destructive" size="sm" class="w-fit" onclick={clearAll}>
-            {m["filter.clear_all"]()} ({activeFilterCount})
+            {m['filter.clear_all']()} ({activeFilterCount})
           </Button>
         {/if}
       </div>
@@ -323,7 +331,7 @@
     gap: 10px;
   }
 
-  .depth-slider input[type="range"] {
+  .depth-slider input[type='range'] {
     flex: 1;
     height: 6px;
     -webkit-appearance: none;
@@ -334,7 +342,7 @@
     cursor: pointer;
   }
 
-  .depth-slider input[type="range"]::-webkit-slider-thumb {
+  .depth-slider input[type='range']::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 16px;
@@ -347,11 +355,11 @@
     transition: transform var(--transition-fast);
   }
 
-  .depth-slider input[type="range"]::-webkit-slider-thumb:hover {
+  .depth-slider input[type='range']::-webkit-slider-thumb:hover {
     transform: scale(1.15);
   }
 
-  .depth-slider input[type="range"]::-moz-range-thumb {
+  .depth-slider input[type='range']::-moz-range-thumb {
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -361,7 +369,7 @@
     cursor: pointer;
   }
 
-  .depth-slider input[type="range"]:focus-visible {
+  .depth-slider input[type='range']:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }

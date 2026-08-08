@@ -34,8 +34,7 @@
   });
 
   $effect(() => {
-    items;
-    themeTick;
+    void themeTick;
     if (!canvas || items.length === 0) return;
     const theme = getChartTheme();
     const fallback = resolveColor(defaultColor) || theme.accent;

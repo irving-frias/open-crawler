@@ -35,7 +35,9 @@
     { value: 'copy', label: m['transfer.import.copy']() },
     { value: 'overwrite', label: m['transfer.import.overwrite']() },
   ]);
-  const conflictLabel = $derived(conflictOptions.find((o) => o.value === conflictMode)?.label ?? '');
+  const conflictLabel = $derived(
+    conflictOptions.find((o) => o.value === conflictMode)?.label ?? ''
+  );
 
   async function handlePickImport() {
     if (importing) return;
@@ -105,7 +107,9 @@
         {#each projects as project (project.id)}
           <div class="launcher-card">
             <div class="launcher-card-head">
-              <span class="launcher-avatar">{project.name.trim().charAt(0).toUpperCase() || '?'}</span>
+              <span class="launcher-avatar"
+                >{project.name.trim().charAt(0).toUpperCase() || '?'}</span
+              >
               <span class="launcher-card-name" title={project.name}>{project.name}</span>
               <Button
                 variant="ghost"
@@ -144,7 +148,7 @@
               <span data-slot="select-value">{conflictLabel}</span>
             </Select.Trigger>
             <Select.Content>
-              {#each conflictOptions as opt}
+              {#each conflictOptions as opt (opt.value)}
                 <Select.Item value={opt.value} label={opt.label} />
               {/each}
             </Select.Content>
@@ -263,7 +267,9 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     box-shadow: var(--neu-raised-sm);
-    transition: box-shadow var(--transition-base), transform var(--transition-fast);
+    transition:
+      box-shadow var(--transition-base),
+      transform var(--transition-fast);
   }
 
   .launcher-card:hover {

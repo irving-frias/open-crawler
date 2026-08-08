@@ -16,7 +16,12 @@
   } = $props();
 </script>
 
-<AlertDialog.Root bind:open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+<AlertDialog.Root
+  bind:open
+  onOpenChange={(o) => {
+    if (!o) onClose();
+  }}
+>
   <AlertDialog.Content class="max-w-md">
     <AlertDialog.Header>
       <AlertDialog.Title>{m['dialog.delete_title']()}</AlertDialog.Title>

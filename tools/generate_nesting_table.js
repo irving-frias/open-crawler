@@ -139,7 +139,7 @@ mod tests {
   console.log(`  File size: ${Math.round(rs.length / 1024)} KB`);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Error:', err);
   process.exit(1);
 });

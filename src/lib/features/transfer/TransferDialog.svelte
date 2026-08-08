@@ -33,7 +33,9 @@
     { value: 'copy', label: m['transfer.import.copy']() },
     { value: 'overwrite', label: m['transfer.import.overwrite']() },
   ]);
-  const conflictLabel = $derived(conflictOptions.find((o) => o.value === conflictMode)?.label ?? '');
+  const conflictLabel = $derived(
+    conflictOptions.find((o) => o.value === conflictMode)?.label ?? ''
+  );
 
   function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -43,7 +45,10 @@
   }
 
   $effect(() => {
-    api.crawl.isMobile().then((v) => (isMobile = v)).catch(() => {});
+    api.crawl
+      .isMobile()
+      .then((v) => (isMobile = v))
+      .catch(() => {});
   });
 
   async function handleExport(shareAfter = false) {
@@ -137,7 +142,11 @@
             {m['transfer.export.btn']()}
           </Button>
           {#if isMobile}
-            <Button variant="outline" onclick={() => handleExport(true)} disabled={app.transferBusy}>
+            <Button
+              variant="outline"
+              onclick={() => handleExport(true)}
+              disabled={app.transferBusy}
+            >
               <Share2 class="size-4" />
               {m['transfer.export.share_btn']()}
             </Button>
@@ -161,7 +170,7 @@
               <span data-slot="select-value">{conflictLabel}</span>
             </Select.Trigger>
             <Select.Content>
-              {#each conflictOptions as opt}
+              {#each conflictOptions as opt (opt.value)}
                 <Select.Item value={opt.value} label={opt.label} />
               {/each}
             </Select.Content>
@@ -169,7 +178,12 @@
           <p class="text-xs text-muted-foreground">{m['transfer.import.mode_hint']()}</p>
         </div>
 
-        <Button variant="outline" class="w-full" onclick={handlePickImport} disabled={app.transferBusy}>
+        <Button
+          variant="outline"
+          class="w-full"
+          onclick={handlePickImport}
+          disabled={app.transferBusy}
+        >
           <FolderOpen class="size-4" />
           {m['transfer.import.pick']()}
         </Button>
@@ -183,8 +197,16 @@
         <div class="space-y-2">
           <Label for="download-url">{m['transfer.import.url']()}</Label>
           <div class="flex gap-2">
-            <Input id="download-url" type="text" bind:value={downloadUrl} placeholder="http://192.168.1.5:45231/dl/…" />
-            <Button onclick={handleDownloadAndImport} disabled={app.transferBusy || !downloadUrl.trim()}>
+            <Input
+              id="download-url"
+              type="text"
+              bind:value={downloadUrl}
+              placeholder="http://192.168.1.5:45231/dl/…"
+            />
+            <Button
+              onclick={handleDownloadAndImport}
+              disabled={app.transferBusy || !downloadUrl.trim()}
+            >
               {m['transfer.import.download']()}
             </Button>
           </div>

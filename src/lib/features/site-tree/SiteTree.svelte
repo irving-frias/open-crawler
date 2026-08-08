@@ -3,7 +3,6 @@
   import type { SiteTreeFullNode as TreeNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { ChevronRight, ChevronDown, FileText, TriangleAlert, RefreshCw } from 'lucide-svelte';
-  import { Card, CardContent } from '$lib/components/ui/card/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -84,7 +83,9 @@
 
   const totalHeight = $derived(visibleNodes.length * ROW_HEIGHT);
   const startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 10));
-  const endIndex = $derived(Math.min(visibleNodes.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 10));
+  const endIndex = $derived(
+    Math.min(visibleNodes.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 10)
+  );
   const windowRows = $derived(visibleNodes.slice(startIndex, endIndex));
 
   function onScroll(e: Event) {
@@ -117,7 +118,7 @@
   <div class="tree-head">
     <div class="flex items-center gap-2 text-sm font-semibold">
       <FileText class="size-4" />
-      {m["tree.title"]()}
+      {m['tree.title']()}
     </div>
     <div class="tree-tools">
       <Select.Root
@@ -128,12 +129,16 @@
         }}
       >
         <Select.Trigger class="h-7 w-40 justify-between text-xs">
-          {issueFilter === 'all' ? m["tree.filter_all"]() : issueFilter === 'issues' ? m["tree.filter_issues"]() : m["tree.filter_clean"]()}
+          {issueFilter === 'all'
+            ? m['tree.filter_all']()
+            : issueFilter === 'issues'
+              ? m['tree.filter_issues']()
+              : m['tree.filter_clean']()}
         </Select.Trigger>
         <Select.Content>
-          <Select.Item value="all">{m["tree.filter_all"]()}</Select.Item>
-          <Select.Item value="issues">{m["tree.filter_issues"]()}</Select.Item>
-          <Select.Item value="clean">{m["tree.filter_clean"]()}</Select.Item>
+          <Select.Item value="all">{m['tree.filter_all']()}</Select.Item>
+          <Select.Item value="issues">{m['tree.filter_issues']()}</Select.Item>
+          <Select.Item value="clean">{m['tree.filter_clean']()}</Select.Item>
         </Select.Content>
       </Select.Root>
       <Button
@@ -141,8 +146,8 @@
         size="icon"
         class="size-7"
         onclick={() => loadTree()}
-        aria-label={m["config.refresh"]()}
-        title={m["config.refresh"]()}
+        aria-label={m['config.refresh']()}
+        title={m['config.refresh']()}
         disabled={loading}
       >
         <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
@@ -159,21 +164,18 @@
   {:else if error}
     <div class="flex items-center gap-2 p-3 text-sm text-destructive">
       <TriangleAlert class="size-4" />
-      {m["tree.error"]()}: {error}
+      {m['tree.error']()}: {error}
     </div>
   {:else if visibleNodes.length === 0}
-    <div class="p-3 text-sm text-muted-foreground">{m["tree.empty"]()}</div>
+    <div class="p-3 text-sm text-muted-foreground">{m['tree.empty']()}</div>
   {:else}
-    <div
-      class="tree-list"
-      bind:this={listEl}
-      onscroll={onScroll}
-    >
+    <div class="tree-list" bind:this={listEl} onscroll={onScroll}>
       <div class="tree-spacer" style="height: {totalHeight}px">
         {#each windowRows as row, i (row.ns.node.url)}
           <div
             class="tree-row"
-            style="--tree-depth: {row.level}; transform: translateY({(startIndex + i) * ROW_HEIGHT}px)"
+            style="--tree-depth: {row.level}; transform: translateY({(startIndex + i) *
+              ROW_HEIGHT}px)"
             class:expanded={row.ns.expanded}
             class:leaf={!row.ns.node.has_children}
           >
@@ -184,7 +186,7 @@
                 class="tree-toggle size-5"
                 onclick={() => toggleNode(row.ns)}
                 aria-expanded={row.ns.expanded}
-                aria-label={row.ns.expanded ? m["tree.collapse"]() : m["tree.expand"]()}
+                aria-label={row.ns.expanded ? m['tree.collapse']() : m['tree.expand']()}
               >
                 {#if row.ns.expanded}
                   <ChevronDown class="size-3.5" />
@@ -206,7 +208,11 @@
             <span class="tree-url" title={row.ns.node.url}>{row.ns.node.url}</span>
 
             {#if row.ns.node.issue_count > 0}
-              <Badge variant="destructive" class="gap-1 shrink-0" title={`${row.ns.node.issue_count} issues`}>
+              <Badge
+                variant="destructive"
+                class="gap-1 shrink-0"
+                title={`${row.ns.node.issue_count} issues`}
+              >
                 <TriangleAlert class="size-3" />
                 {row.ns.node.issue_count}
               </Badge>

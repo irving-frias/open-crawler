@@ -1,20 +1,53 @@
 <script lang="ts">
-  import { getPageDetail, getPagespeedScore, getSeoAudit, runSeoAudit, suggestFix, getSettings } from '$lib/api';
-  import type { PageLink, PageSpeedData, CrawlResult, SeoAuditResult, FixSuggestion } from '$lib/api/types';
+  import { getPageDetail, getPagespeedScore, runSeoAudit, suggestFix, getSettings } from '$lib/api';
+  import type {
+    PageLink,
+    PageSpeedData,
+    CrawlResult,
+    SeoAuditResult,
+    FixSuggestion,
+  } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { getLocale } from '$lib/paraglide/runtime.js';
-  import { translateIssueName, translateIssueMessage, parseIssueParams, translateSeverity, translateIssueFix, translateIssueExpected } from '$lib/i18n-issues';
+  import {
+    translateIssueName,
+    translateIssueMessage,
+    parseIssueParams,
+    translateSeverity,
+  } from '$lib/i18n-issues';
   import { localizeSeoCheck } from '$lib/seo-checks';
-  import { ArrowLeft, X, Copy, Check, Gauge, Loader2, RotateCw, Share2, ChevronDown, ScanSearch, Sparkles } from 'lucide-svelte';
+  import {
+    ArrowLeft,
+    X,
+    Copy,
+    Check,
+    Gauge,
+    Loader2,
+    RotateCw,
+    Share2,
+    ChevronDown,
+    ScanSearch,
+    Sparkles,
+  } from 'lucide-svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+  import { Card, CardContent, CardHeader } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-  import { Separator } from '$lib/components/ui/separator/index.js';
-  import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '$lib/components/ui/tooltip/index.js';
-  import { Accordion, AccordionItem, AccordionHeader, AccordionTrigger, AccordionContent } from '$lib/components/ui/accordion/index.js';
+  import {
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    TooltipProvider,
+  } from '$lib/components/ui/tooltip/index.js';
+  import {
+    Accordion,
+    AccordionItem,
+    AccordionHeader,
+    AccordionTrigger,
+    AccordionContent,
+  } from '$lib/components/ui/accordion/index.js';
   import { Alert } from '$lib/components/ui/alert/index.js';
   import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
   import { Progress } from '$lib/components/ui/progress/index.js';
@@ -47,7 +80,15 @@
 
   $effect(() => {
     if (pageId) loadDetail();
-    else { detail = null; links = []; activeTab = 'overview'; pagespeed = null; pagespeedError = ''; seoAudit = null; seoError = ''; }
+    else {
+      detail = null;
+      links = [];
+      activeTab = 'overview';
+      pagespeed = null;
+      pagespeedError = '';
+      seoAudit = null;
+      seoError = '';
+    }
   });
 
   async function loadDetail() {
@@ -74,23 +115,10 @@
   }
 
   function parseSeoAudit(json: string): SeoAuditResult | null {
-    try { return JSON.parse(json); } catch { return null; }
-  }
-
-  async function loadSeoAudit() {
-    if (!detail?.url) return;
-    seoLoading = true;
-    seoError = '';
     try {
-      seoAudit = await getSeoAudit(detail.project_id, detail.url);
-      if (seoAudit) {
-        detail.seo_score = seoAudit.score;
-        detail.seo_audit_json = JSON.stringify(seoAudit);
-      }
-    } catch (e) {
-      seoError = String(e);
-    } finally {
-      seoLoading = false;
+      return JSON.parse(json);
+    } catch {
+      return null;
     }
   }
 
@@ -113,7 +141,11 @@
 
   function parsePagespeed(json: string | null): any | null {
     if (!json) return null;
-    try { return JSON.parse(json); } catch { return null; }
+    try {
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
   }
 
   async function runPagespeedAudit() {
@@ -140,9 +172,9 @@
   }
 
   function readabilityLabel(score: number): string {
-    if (score >= 70) return m["dashboard.readability.easy"]();
-    if (score >= 40) return m["dashboard.readability.medium"]();
-    return m["dashboard.readability.hard"]();
+    if (score >= 70) return m['dashboard.readability.easy']();
+    if (score >= 40) return m['dashboard.readability.medium']();
+    return m['dashboard.readability.hard']();
   }
 
   function readabilityColor(score: number): string {
@@ -167,13 +199,21 @@
         document.body.removeChild(ta);
       }
       copiedField = field;
-      setTimeout(() => { if (copiedField === field) copiedField = ''; }, 1500);
-    } catch {}
+      setTimeout(() => {
+        if (copiedField === field) copiedField = '';
+      }, 1500);
+    } catch {
+      copiedField = '';
+    }
   }
 
   function parseIssues(json: string | null): any[] {
     if (!json) return [];
-    try { return JSON.parse(json); } catch { return []; }
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
   }
 
   const allIssues = $derived(parseIssues(detail?.semantic_issues_json));
@@ -188,7 +228,13 @@
   let aiResults = $state<Record<string, FixSuggestion | null>>({});
   let aiError = $state<Record<string, string>>({});
 
-  async function suggestAiFix(check: { id: string; message: string; guidance: string; evidence?: string | null; examples?: any[] }) {
+  async function suggestAiFix(check: {
+    id: string;
+    message: string;
+    guidance: string;
+    evidence?: string | null;
+    examples?: any[];
+  }) {
     if (aiLoading[check.id]) return;
     aiLoading[check.id] = true;
     aiResults[check.id] = null;
@@ -238,12 +284,20 @@
 
   function parseHreflang(json: string | null): { lang: string; href: string }[] {
     if (!json) return [];
-    try { return JSON.parse(json); } catch { return []; }
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
   }
 
   function parseOg(json: string | null): any {
     if (!json) return {};
-    try { return JSON.parse(json); } catch { return {}; }
+    try {
+      return JSON.parse(json);
+    } catch {
+      return {};
+    }
   }
 
   function ogFields(og: any): { key: string; value: string }[] {
@@ -338,7 +392,7 @@
       <div class="header-left">
         <Button variant="outline" size="sm" class="flex-shrink-0 gap-1.5" onclick={onClose}>
           <ArrowLeft class="size-4" />
-          {m["detail.back"]()}
+          {m['detail.back']()}
         </Button>
         {#if detail}
           <TooltipProvider>
@@ -358,31 +412,29 @@
       <div class="header-right">
         {#if detail}
           <Badge variant={statusBadgeVariant(detail.status_code)}>{statusText(detail)}</Badge>
-          <span class="header-meta">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}</span>
+          <span class="header-meta"
+            >{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}</span
+          >
           <span class="header-meta">{detail.load_time_ms ? `${detail.load_time_ms}ms` : ''}</span>
         {/if}
         <Button
           variant="ghost"
           size="icon-sm"
           onclick={onClose}
-          aria-label={m["detail.close"]()}
-          title={m["detail.close"]()}
+          aria-label={m['detail.close']()}
+          title={m['detail.close']()}
         >
           <X class="size-4" />
         </Button>
       </div>
     </header>
 
-    <Tabs.Root
-      bind:value={activeTab}
-      class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
-    >
-      <Tabs.List
-        variant="line"
-        class="flex-shrink-0 rounded-none border-b border-border px-4"
-      >
-        <Tabs.Trigger value="overview">{m["detail.overview"]()}</Tabs.Trigger>
-        <Tabs.Trigger value="links">{m["detail.links"]({ count: links.length.toString() })}</Tabs.Trigger>
+    <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
+      <Tabs.List variant="line" class="flex-shrink-0 rounded-none border-b border-border px-4">
+        <Tabs.Trigger value="overview">{m['detail.overview']()}</Tabs.Trigger>
+        <Tabs.Trigger value="links"
+          >{m['detail.links']({ count: links.length.toString() })}</Tabs.Trigger
+        >
       </Tabs.List>
 
       {#if loading}
@@ -420,7 +472,7 @@
               <Accordion type="single" class="w-full max-w-[1200px] mx-auto">
                 <AccordionItem value="seo-meta">
                   <AccordionHeader>
-                    <AccordionTrigger>{m["detail.seo_meta"]()}</AccordionTrigger>
+                    <AccordionTrigger>{m['detail.seo_meta']()}</AccordionTrigger>
                   </AccordionHeader>
                   <AccordionContent>
                     {@render seoMetaContent()}
@@ -432,7 +484,7 @@
                     <AccordionTrigger>
                       <span class="inline-flex items-center gap-2">
                         <ScanSearch class="size-4" />
-                        {m["seo.label"]()}
+                        {m['seo.label']()}
                         {#if seoAudit}
                           <span class="seo-chip" style="color: {seoScoreColor(seoAudit.score)}">
                             {Math.round(seoAudit.score)} · {seoAudit.grade}
@@ -452,7 +504,7 @@
 
                 <AccordionItem value="crawl-info">
                   <AccordionHeader>
-                    <AccordionTrigger>{m["detail.crawl_info"]()}</AccordionTrigger>
+                    <AccordionTrigger>{m['detail.crawl_info']()}</AccordionTrigger>
                   </AccordionHeader>
                   <AccordionContent>
                     {@render crawlInfoContent()}
@@ -464,9 +516,11 @@
                     <AccordionTrigger>
                       <span class="inline-flex items-center gap-2">
                         <Gauge class="size-4" />
-                        {m["detail.pagespeed"]()}
+                        {m['detail.pagespeed']()}
                         {#if pagespeed?.score != null}
-                          <span class="pagespeed-chip" style="color: {scoreColor(pagespeed.score)}">{pagespeed.score}</span>
+                          <span class="pagespeed-chip" style="color: {scoreColor(pagespeed.score)}"
+                            >{pagespeed.score}</span
+                          >
                         {/if}
                       </span>
                     </AccordionTrigger>
@@ -479,7 +533,7 @@
                 {#if parseHreflang(detail.hreflang_json).length > 0}
                   <AccordionItem value="hreflang">
                     <AccordionHeader>
-                      <AccordionTrigger>{m["detail.hreflang"]()}</AccordionTrigger>
+                      <AccordionTrigger>{m['detail.hreflang']()}</AccordionTrigger>
                     </AccordionHeader>
                     <AccordionContent>
                       {@render hreflangContent()}
@@ -494,7 +548,7 @@
                       <AccordionTrigger>
                         <span class="inline-flex items-center gap-2">
                           <Share2 class="size-4" />
-                          {m["detail.social"]()}
+                          {m['detail.social']()}
                         </span>
                       </AccordionTrigger>
                     </AccordionHeader>
@@ -507,7 +561,11 @@
                 {#if allIssues.length > 0}
                   <AccordionItem value="semantic-issues" class="overview-full">
                     <AccordionHeader>
-                      <AccordionTrigger>{m["detail.semantic_issues"]({ count: allIssues.length.toString() })}</AccordionTrigger>
+                      <AccordionTrigger
+                        >{m['detail.semantic_issues']({
+                          count: allIssues.length.toString(),
+                        })}</AccordionTrigger
+                      >
                     </AccordionHeader>
                     <AccordionContent>
                       {@render issuesContent()}
@@ -520,7 +578,7 @@
         </Tabs.Content>
 
         <Tabs.Content value="links" class="min-h-0 flex-1 overflow-hidden">
-          <LinksSection links={links} />
+          <LinksSection {links} />
         </Tabs.Content>
       {/if}
     </Tabs.Root>
@@ -531,30 +589,36 @@
   <Card size="sm">
     <CardContent class="flex flex-col gap-2 pt-4">
       <div class="field">
-        <span class="field-label">{m["detail.title"]()}</span>
-        <span class="field-value">{detail.title || m["detail.missing"]()}</span>
+        <span class="field-label">{m['detail.title']()}</span>
+        <span class="field-value">{detail.title || m['detail.missing']()}</span>
       </div>
       <div class="field">
-        <span class="field-label">{m["detail.meta_description"]()}</span>
-        <span class="field-value">{detail.meta_description || m["detail.missing"]()}</span>
+        <span class="field-label">{m['detail.meta_description']()}</span>
+        <span class="field-value">{detail.meta_description || m['detail.missing']()}</span>
       </div>
       <div class="field">
-        <span class="field-label">{m["detail.h1"]()}</span>
-        <span class="field-value">{detail.h1 || m["detail.missing"]()}</span>
+        <span class="field-label">{m['detail.h1']()}</span>
+        <span class="field-value">{detail.h1 || m['detail.missing']()}</span>
       </div>
       <div class="field-row">
         <div class="field">
-          <span class="field-label">{m["detail.canonical"]()}</span>
-          <span class="field-value">{detail.canonical || m["detail.none"]()}</span>
+          <span class="field-label">{m['detail.canonical']()}</span>
+          <span class="field-value">{detail.canonical || m['detail.none']()}</span>
         </div>
         <div class="field">
-          <span class="field-label">{m["detail.html_lang"]()}</span>
-          <span class="field-value">{detail.html_lang || m["detail.none"]()}</span>
+          <span class="field-label">{m['detail.html_lang']()}</span>
+          <span class="field-value">{detail.html_lang || m['detail.none']()}</span>
         </div>
       </div>
       <div class="field">
-        <span class="field-label">{m["detail.indexable"]()}</span>
-        <span class="field-value">{detail.is_indexable === true ? m["detail.yes"]() : detail.is_indexable === false ? m["detail.no"]() : m["detail.unknown"]()}</span>
+        <span class="field-label">{m['detail.indexable']()}</span>
+        <span class="field-value"
+          >{detail.is_indexable === true
+            ? m['detail.yes']()
+            : detail.is_indexable === false
+              ? m['detail.no']()
+              : m['detail.unknown']()}</span
+        >
       </div>
     </CardContent>
   </Card>
@@ -566,22 +630,19 @@
       {#if seoLoading}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 class="size-4 animate-spin" />
-          {m["seo.running"]()}
+          {m['seo.running']()}
         </div>
       {:else if seoError}
         <Alert variant="destructive">{seoError}</Alert>
         <div>
           <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit}>
             <RotateCw class="size-3.5" />
-            {m["seo.run"]()}
+            {m['seo.run']()}
           </Button>
         </div>
       {:else if seoAudit}
         <div class="seo-head-row">
-          <div
-            class="seo-score"
-            style="--seo-color: {seoScoreColor(seoAudit.score)}"
-          >
+          <div class="seo-score" style="--seo-color: {seoScoreColor(seoAudit.score)}">
             <span class="seo-score-value">{Math.round(seoAudit.score)}</span>
             <span class="seo-score-grade">{seoAudit.grade}</span>
           </div>
@@ -605,12 +666,18 @@
 
         {#if seoAudit.priority_fixes.length > 0}
           <div>
-            <h4 class="seo-section-title">{m["seo.priority_fixes"]()}</h4>
+            <h4 class="seo-section-title">{m['seo.priority_fixes']()}</h4>
             <div class="seo-fix-list">
               {#each seoAudit.priority_fixes as fix (fix.id)}
                 {@const localized = localizeFix(fix)}
                 <div class="seo-fix seo-fix-{fix.priority}">
-                  <Badge variant={fix.priority === 'critical' ? 'destructive' : fix.priority === 'important' ? 'warning' : 'default'}>
+                  <Badge
+                    variant={fix.priority === 'critical'
+                      ? 'destructive'
+                      : fix.priority === 'important'
+                        ? 'warning'
+                        : 'default'}
+                  >
                     {seoPriorityLabel(fix.priority)}
                   </Badge>
                   <div class="seo-fix-body">
@@ -625,7 +692,7 @@
 
         {#if Object.keys(failedChecksByCategory).length > 0}
           <div>
-            <h4 class="seo-section-title">{m["seo.areas_to_improve"]()}</h4>
+            <h4 class="seo-section-title">{m['seo.areas_to_improve']()}</h4>
             <div class="seo-areas">
               {#each Object.entries(failedChecksByCategory) as [category, checks] (category)}
                 <div class="seo-area-group">
@@ -635,7 +702,12 @@
                   </div>
                   <div class="seo-area-list">
                     {#each checks as check (check.id)}
-                      {@const localized = localizeSeoCheck(check.id, check.message, check.guidance, check.evidence)}
+                      {@const localized = localizeSeoCheck(
+                        check.id,
+                        check.message,
+                        check.guidance,
+                        check.evidence
+                      )}
                       <div class="seo-area-item">
                         <span class="seo-area-message">{localized.message}</span>
                         <span class="seo-area-guidance">{localized.guidance}</span>
@@ -643,14 +715,15 @@
                           <div class="seo-fix-block">
                             {#if localized.fix}
                               <div class="seo-fix-line">
-                                <span class="seo-fix-label">{m["seo.fix"]()}</span>
+                                <span class="seo-fix-label">{m['seo.fix']()}</span>
                                 <span class="seo-fix-text">{localized.fix}</span>
                               </div>
                             {/if}
                             {#if localized.expected}
                               <div class="seo-fix-line">
-                                <span class="seo-fix-label">{m["seo.expected"]()}</span>
-                                <pre class="seo-expected-code"><code>{localized.expected}</code></pre>
+                                <span class="seo-fix-label">{m['seo.expected']()}</span>
+                                <pre class="seo-expected-code"><code>{localized.expected}</code
+                                  ></pre>
                               </div>
                             {/if}
                           </div>
@@ -669,7 +742,8 @@
                                   <button
                                     type="button"
                                     class="seo-example-xpath"
-                                    onclick={() => copyToClipboard(ex.xpath ?? '', `xpath-${check.id}-${i}`)}
+                                    onclick={() =>
+                                      copyToClipboard(ex.xpath ?? '', `xpath-${check.id}-${i}`)}
                                   >
                                     <Copy class="size-3" />
                                     <code>{ex.xpath}</code>
@@ -690,17 +764,21 @@
                             >
                               {#if aiLoading[check.id]}
                                 <Loader2 class="size-3.5 animate-spin" />
-                                {m["seo.suggest_fix_loading"]()}
+                                {m['seo.suggest_fix_loading']()}
                               {:else}
                                 <Sparkles class="size-3.5" />
-                                {m["seo.suggest_fix"]()}
+                                {m['seo.suggest_fix']()}
                               {/if}
                             </Button>
                             {#if aiResults[check.id]}
                               <div class="seo-ai-result">
-                                <div class="seo-ai-suggestion">{aiResults[check.id]!.suggestion}</div>
+                                <div class="seo-ai-suggestion">
+                                  {aiResults[check.id]!.suggestion}
+                                </div>
                                 {#if aiResults[check.id]!.corrected_html}
-                                  <pre class="seo-ai-html"><code>{aiResults[check.id]!.corrected_html}</code></pre>
+                                  <pre class="seo-ai-html"><code
+                                      >{aiResults[check.id]!.corrected_html}</code
+                                    ></pre>
                                 {/if}
                               </div>
                             {/if}
@@ -719,17 +797,29 @@
         {/if}
 
         <div class="flex items-center gap-2">
-          <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit} disabled={seoLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            onclick={reRunSeoAudit}
+            disabled={seoLoading}
+          >
             <RotateCw class="size-3.5" />
-            {m["seo.rerun"]()}
+            {m['seo.rerun']()}
           </Button>
         </div>
       {:else}
-        <p class="text-sm text-muted-foreground">{m["seo.empty"]()}</p>
+        <p class="text-sm text-muted-foreground">{m['seo.empty']()}</p>
         <div>
-          <Button variant="outline" size="sm" class="gap-1.5" onclick={reRunSeoAudit} disabled={seoLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            onclick={reRunSeoAudit}
+            disabled={seoLoading}
+          >
             <ScanSearch class="size-3.5" />
-            {m["seo.run"]()}
+            {m['seo.run']()}
           </Button>
         </div>
       {/if}
@@ -742,25 +832,27 @@
     <CardContent class="flex flex-col gap-2 pt-4">
       <div class="field-row stats-row">
         <div class="field">
-          <span class="field-label">{m["detail.status"]()}</span>
+          <span class="field-label">{m['detail.status']()}</span>
           <Badge variant={statusBadgeVariant(detail.status_code)}>{statusText(detail)}</Badge>
         </div>
         <div class="field">
-          <span class="field-label">{m["detail.depth"]()}</span>
+          <span class="field-label">{m['detail.depth']()}</span>
           <span class="field-value">{detail.depth}</span>
         </div>
         <div class="field">
-          <span class="field-label">{m["detail.size"]()}</span>
-          <span class="field-value">{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}</span>
+          <span class="field-label">{m['detail.size']()}</span>
+          <span class="field-value"
+            >{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}</span
+          >
         </div>
         <div class="field">
-          <span class="field-label">{m["detail.load_time"]()}</span>
+          <span class="field-label">{m['detail.load_time']()}</span>
           <span class="field-value">{detail.load_time_ms ? `${detail.load_time_ms}ms` : '-'}</span>
         </div>
       </div>
       {#if detail.load_time_ms !== undefined}
         <div class="flex items-center gap-2">
-          <span class="field-label">{m["detail.load_time"]()}</span>
+          <span class="field-label">{m['detail.load_time']()}</span>
           <Progress
             value={Math.min(100, (detail.load_time_ms / 10000) * 100)}
             max={100}
@@ -770,20 +862,19 @@
       {/if}
       {#if detail.readability_score != null}
         <div class="flex items-center gap-2">
-          <span class="field-label">{m["dashboard.readability.label"]()}</span>
-          <Progress
-            value={detail.readability_score}
-            max={100}
-            class="flex-1"
-          />
-          <span class="readability-value" style="color: {readabilityColor(detail.readability_score)}">
+          <span class="field-label">{m['dashboard.readability.label']()}</span>
+          <Progress value={detail.readability_score} max={100} class="flex-1" />
+          <span
+            class="readability-value"
+            style="color: {readabilityColor(detail.readability_score)}"
+          >
             {Math.round(detail.readability_score)} · {readabilityLabel(detail.readability_score)}
           </span>
         </div>
       {/if}
       {#if detail.parent_url}
         <div class="field">
-          <span class="field-label">{m["detail.discovered_from"]()}</span>
+          <span class="field-label">{m['detail.discovered_from']()}</span>
           <a href={detail.parent_url} target="_blank" class="field-value">{detail.parent_url}</a>
         </div>
       {/if}
@@ -795,7 +886,7 @@
   <Card size="sm">
     <CardContent class="pt-4">
       <div class="hreflang-list">
-        {#each parseHreflang(detail.hreflang_json) as hl}
+        {#each parseHreflang(detail.hreflang_json) as hl (hl.href)}
           <span class="hreflang-tag">{hl.lang}: {hl.href}</span>
         {/each}
       </div>
@@ -816,7 +907,9 @@
         <div class="field">
           <span class="field-label">{field.key}</span>
           {#if field.key === 'og:image' || field.key === 'og:url' || field.key === 'twitter:image'}
-            <a href={field.value} target="_blank" rel="noreferrer" class="field-value">{field.value}</a>
+            <a href={field.value} target="_blank" rel="noreferrer" class="field-value"
+              >{field.value}</a
+            >
           {:else}
             <span class="field-value">{field.value}</span>
           {/if}
@@ -832,70 +925,79 @@
       {#if pagespeedLoading}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 class="size-4 animate-spin" />
-          {m["detail.pagespeed_running"]()}
+          {m['detail.pagespeed_running']()}
         </div>
       {:else if pagespeedError}
         <Alert variant="destructive">{pagespeedError}</Alert>
         <div>
           <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit}>
             <RotateCw class="size-3.5" />
-            {m["detail.pagespeed_run"]()}
+            {m['detail.pagespeed_run']()}
           </Button>
         </div>
       {:else if pagespeed?.score != null}
         <div class="pagespeed-row">
-          <div
-            class="pagespeed-score"
-            style="--score-color: {scoreColor(pagespeed.score)}"
-          >
+          <div class="pagespeed-score" style="--score-color: {scoreColor(pagespeed.score)}">
             <span class="pagespeed-score-value">{pagespeed.score}</span>
-            <span class="pagespeed-score-label">{m["detail.pagespeed_performance"]()}</span>
+            <span class="pagespeed-score-label">{m['detail.pagespeed_performance']()}</span>
           </div>
           <div class="pagespeed-metrics">
             {#if pagespeed.fcp}
               <div class="field">
-                <span class="field-label">{m["detail.pagespeed_fcp"]()}</span>
+                <span class="field-label">{m['detail.pagespeed_fcp']()}</span>
                 <span class="field-value">{pagespeed.fcp}</span>
               </div>
             {/if}
             {#if pagespeed.lcp}
               <div class="field">
-                <span class="field-label">{m["detail.pagespeed_lcp"]()}</span>
+                <span class="field-label">{m['detail.pagespeed_lcp']()}</span>
                 <span class="field-value">{pagespeed.lcp}</span>
               </div>
             {/if}
             {#if pagespeed.cls}
               <div class="field">
-                <span class="field-label">{m["detail.pagespeed_cls"]()}</span>
+                <span class="field-label">{m['detail.pagespeed_cls']()}</span>
                 <span class="field-value">{pagespeed.cls}</span>
               </div>
             {/if}
             {#if pagespeed.tbt}
               <div class="field">
-                <span class="field-label">{m["detail.pagespeed_tbt"]()}</span>
+                <span class="field-label">{m['detail.pagespeed_tbt']()}</span>
                 <span class="field-value">{pagespeed.tbt}</span>
               </div>
             {/if}
             {#if pagespeed.speed_index}
               <div class="field">
-                <span class="field-label">{m["detail.pagespeed_speed_index"]()}</span>
+                <span class="field-label">{m['detail.pagespeed_speed_index']()}</span>
                 <span class="field-value">{pagespeed.speed_index}</span>
               </div>
             {/if}
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit} disabled={pagespeedLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            onclick={runPagespeedAudit}
+            disabled={pagespeedLoading}
+          >
             <RotateCw class="size-3.5" />
-            {m["detail.pagespeed_rerun"]()}
+            {m['detail.pagespeed_rerun']()}
           </Button>
         </div>
       {:else}
-        <p class="text-sm text-muted-foreground">{m["detail.pagespeed_empty"]()}</p>
+        <p class="text-sm text-muted-foreground">{m['detail.pagespeed_empty']()}</p>
         <div>
-          <Button variant="outline" size="sm" class="gap-1.5" onclick={runPagespeedAudit} disabled={pagespeedLoading}>
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            onclick={runPagespeedAudit}
+            disabled={pagespeedLoading}
+          >
             <Gauge class="size-3.5" />
-            {m["detail.pagespeed_run"]()}
+            {m['detail.pagespeed_run']()}
           </Button>
         </div>
       {/if}
@@ -907,13 +1009,19 @@
   <Card size="sm">
     <CardContent class="pt-4">
       <div class="issue-filter-row" role="group" aria-label="Severity filter">
-        {#each (['all', 'error', 'warning', 'info'] as const) as level (level)}
+        {#each ['all', 'error', 'warning', 'info'] as const as level (level)}
           <button
             type="button"
             class={cn('issue-filter-btn', issueFilter === level && 'active')}
             onclick={() => (issueFilter = level)}
           >
-            {level === 'all' ? m['detail.issues.filter_all']() : level === 'error' ? m['detail.issues.filter_errors']() : level === 'warning' ? m['detail.issues.filter_warnings']() : m['detail.issues.filter_info']()}
+            {level === 'all'
+              ? m['detail.issues.filter_all']()
+              : level === 'error'
+                ? m['detail.issues.filter_errors']()
+                : level === 'warning'
+                  ? m['detail.issues.filter_warnings']()
+                  : m['detail.issues.filter_info']()}
           </button>
         {/each}
       </div>
@@ -923,7 +1031,9 @@
           {@const refInfo = elementReference(issue)}
           <div class="issue-card issue-{issue.severity}">
             <div class="issue-header">
-              <Badge variant={severityBadgeVariant(issue.severity)}>{translateSeverity(issue.severity)}</Badge>
+              <Badge variant={severityBadgeVariant(issue.severity)}
+                >{translateSeverity(issue.severity)}</Badge
+              >
               <span class="issue-type">{translateIssueName(issue.issue_type)}</span>
             </div>
             <div class="issue-message">{translateIssueMessage(issue.issue_type, params)}</div>
@@ -945,17 +1055,19 @@
                     >
                       {#if copiedField === `xpath-${issue.xpath}`}
                         <Check class="size-3.5" />
-                        <span class="copy-text">{m["detail.copied"]()}</span>
+                        <span class="copy-text">{m['detail.copied']()}</span>
                       {:else}
                         <Copy class="size-3.5" />
-                        <span class="copy-text">{m["detail.copy_xpath"]()}</span>
+                        <span class="copy-text">{m['detail.copy_xpath']()}</span>
                       {/if}
                       <code class="copy-value">{issue.xpath}</code>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent class="w-80">
                     <div class="flex flex-col gap-2">
-                      <span class="text-xs font-medium text-muted-foreground">{m["detail.copy_xpath"]()}</span>
+                      <span class="text-xs font-medium text-muted-foreground"
+                        >{m['detail.copy_xpath']()}</span
+                      >
                       <code class="text-xs font-mono break-all">{issue.xpath}</code>
                       <Button
                         variant="outline"
@@ -965,10 +1077,10 @@
                       >
                         {#if copiedField === `xpath-${issue.xpath}`}
                           <Check class="size-3.5" />
-                          {m["detail.copied"]()}
+                          {m['detail.copied']()}
                         {:else}
                           <Copy class="size-3.5" />
-                          {m["detail.copy_xpath"]()}
+                          {m['detail.copy_xpath']()}
                         {/if}
                       </Button>
                     </div>
@@ -984,7 +1096,10 @@
                 aria-expanded={expandedRef.has(i)}
               >
                 <ChevronDown
-                  class={cn('size-3.5 transition-transform duration-200', expandedRef.has(i) && 'rotate-180')}
+                  class={cn(
+                    'size-3.5 transition-transform duration-200',
+                    expandedRef.has(i) && 'rotate-180'
+                  )}
                 />
                 <span>{m['element.reference.title']()}</span>
               </button>
@@ -1012,8 +1127,14 @@
   }
 
   @keyframes slide-in {
-    from { opacity: 0; transform: translateX(24px); }
-    to { opacity: 1; transform: translateX(0); }
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 
   /* Header */
@@ -1107,7 +1228,9 @@
     color: var(--accent);
     text-decoration: none;
   }
-  a.field-value:hover { text-decoration: underline; }
+  a.field-value:hover {
+    text-decoration: underline;
+  }
   a.field-value:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
@@ -1119,7 +1242,10 @@
     gap: 16px;
     flex-wrap: wrap;
   }
-  .field-row .field { flex: 1 1 0; min-width: 140px; }
+  .field-row .field {
+    flex: 1 1 0;
+    min-width: 140px;
+  }
 
   .stats-row {
     align-items: center;
@@ -1252,9 +1378,15 @@
     border-left: 3px solid var(--text-muted);
     box-shadow: var(--neu-pressed-sm);
   }
-  .seo-fix.seo-fix-critical { border-left-color: var(--danger); }
-  .seo-fix.seo-fix-important { border-left-color: var(--warning); }
-  .seo-fix.seo-fix-minor { border-left-color: var(--info); }
+  .seo-fix.seo-fix-critical {
+    border-left-color: var(--danger);
+  }
+  .seo-fix.seo-fix-important {
+    border-left-color: var(--warning);
+  }
+  .seo-fix.seo-fix-minor {
+    border-left-color: var(--info);
+  }
 
   .seo-fix-body {
     display: flex;
@@ -1563,7 +1695,10 @@
     background: var(--bg-card);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast);
   }
   .issue-filter-btn:hover {
     color: var(--text);
@@ -1582,9 +1717,15 @@
     border-left: 3px solid transparent;
     box-shadow: var(--neu-pressed-sm);
   }
-  .issue-card.issue-error { border-left-color: var(--danger); }
-  .issue-card.issue-warning { border-left-color: var(--warning); }
-  .issue-card.issue-info { border-left-color: var(--info); }
+  .issue-card.issue-error {
+    border-left-color: var(--danger);
+  }
+  .issue-card.issue-warning {
+    border-left-color: var(--warning);
+  }
+  .issue-card.issue-info {
+    border-left-color: var(--info);
+  }
 
   .issue-header {
     display: flex;
@@ -1629,7 +1770,9 @@
     cursor: pointer;
     padding: 4px 6px;
     border-radius: 6px;
-    transition: color var(--transition-fast), background var(--transition-fast);
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast);
   }
   .ref-toggle:hover {
     color: var(--accent);

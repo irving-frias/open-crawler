@@ -3,8 +3,20 @@
   import type { PageLink } from '$lib/api/types';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-  import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '$lib/components/ui/tooltip/index.js';
-  import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '$lib/components/ui/table/index.js';
+  import {
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    TooltipProvider,
+  } from '$lib/components/ui/tooltip/index.js';
+  import {
+    Table,
+    TableHeader,
+    TableBody,
+    TableRow,
+    TableHead,
+    TableCell,
+  } from '$lib/components/ui/table/index.js';
 
   let {
     links,
@@ -30,7 +42,7 @@
           </TableRow>
         </TableHeader>
         <TableBody>
-          {#each links as link}
+          {#each links as link (link.to_url)}
             <TableRow>
               <TableCell>
                 <Badge variant="secondary" class="text-xs">{link.link_type}</Badge>
@@ -78,7 +90,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .link-url:hover { color: var(--accent); }
+  .link-url:hover {
+    color: var(--accent);
+  }
   .link-url:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;

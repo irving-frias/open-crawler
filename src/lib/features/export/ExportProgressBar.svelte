@@ -26,7 +26,7 @@
         {:else if exportProgress.stage === 'links'}
           {m['export.stage.links']()}
         {:else}
-          {'…'}
+          …
         {/if}
       </span>
     </div>

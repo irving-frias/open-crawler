@@ -54,7 +54,6 @@
 
   const totalPages = $derived(Math.ceil(results.total / pageSize));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const components = $state<Partial<Record<LazyTabId, any>>>({});
 
   function tabLabel(id: TabValue, count: string): string {
@@ -137,12 +136,7 @@
       {/if}
     </div>
 
-    <FilterBar
-      items={results.items}
-      totalResults={results.total}
-      filters={filters}
-      onFilter={onFilterChange}
-    />
+    <FilterBar items={results.items} {filters} onFilter={onFilterChange} />
 
     {#if resultsLoading}
       <div class="results-skeleton">
@@ -158,17 +152,11 @@
         items={results.items}
         onDetail={onOpenDetail}
         searchQuery={debouncedSearch}
-        onSearch={onSearch}
+        {onSearch}
       />
 
       {#if totalPages > 1}
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          total={results.total}
-          pageSize={pageSize}
-          onGoToPage={onGoToPage}
-        />
+        <Pagination {currentPage} {totalPages} total={results.total} {pageSize} {onGoToPage} />
       {/if}
     {/if}
   {/if}
@@ -186,7 +174,7 @@
       {@const IssuesDashboard = components.dashboard}
       <IssuesDashboard
         projectId={selectedProjectId}
-        onFilterIssueType={onFilterIssueType}
+        {onFilterIssueType}
         activeFilter={filters.issueType}
       />
     {/if}

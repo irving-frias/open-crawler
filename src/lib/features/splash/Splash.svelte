@@ -28,7 +28,9 @@
     display: grid;
     place-items: center;
     background: var(--bg-deep);
-    transition: opacity 0.45s ease, visibility 0.45s ease;
+    transition:
+      opacity 0.45s ease,
+      visibility 0.45s ease;
   }
 
   .splash.exit {
@@ -109,7 +111,8 @@
   }
 
   @keyframes splash-breathe {
-    0%, 100% {
+    0%,
+    100% {
       transform: scale(1);
       box-shadow: var(--neu-raised-lg);
     }
@@ -140,7 +143,8 @@
   }
 
   @keyframes splash-dot {
-    0%, 100% {
+    0%,
+    100% {
       transform: translateY(0);
       opacity: 0.5;
     }

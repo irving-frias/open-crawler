@@ -60,4 +60,9 @@
   </script>
 </svelte:head>
 
-<PageDetailPanel bind:pageId onClose={() => { pageId = ''; }} />
+<PageDetailPanel
+  bind:pageId
+  onClose={() => {
+    pageId = '';
+  }}
+/>

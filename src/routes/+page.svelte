@@ -20,15 +20,21 @@
   // project window loads `index.html?project={id}` and is pinned to that
   // project. Mobile keeps the single-window app with the project switcher.
   const projectId =
-    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('project') : null;
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('project')
+      : null;
   const mobileUA =
     typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isLauncher = !projectId && !mobileUA;
 
   const app = setAppShell(projectId, isLauncher);
 
-  let PageDetailPanel = $state<typeof import('$lib/features/page-detail/PageDetailPanel.svelte').default | null>(null);
-  let SettingsModal = $state<typeof import('$lib/features/settings/SettingsModal.svelte').default | null>(null);
+  let PageDetailPanel = $state<
+    typeof import('$lib/features/page-detail/PageDetailPanel.svelte').default | null
+  >(null);
+  let SettingsModal = $state<
+    typeof import('$lib/features/settings/SettingsModal.svelte').default | null
+  >(null);
 
   const splashMountTime = Date.now();
   let splashVisible = $state(true);
@@ -65,13 +71,17 @@
 
   $effect(() => {
     if (app.detailPageId && !PageDetailPanel) {
-      import('$lib/features/page-detail/PageDetailPanel.svelte').then((m) => (PageDetailPanel = m.default));
+      import('$lib/features/page-detail/PageDetailPanel.svelte').then(
+        (m) => (PageDetailPanel = m.default)
+      );
     }
   });
 
   $effect(() => {
     if (app.settingsModalOpen && !SettingsModal) {
-      import('$lib/features/settings/SettingsModal.svelte').then((m) => (SettingsModal = m.default));
+      import('$lib/features/settings/SettingsModal.svelte').then(
+        (m) => (SettingsModal = m.default)
+      );
     }
   });
 
@@ -87,7 +97,9 @@
       app.selectProject(id);
       return;
     }
-    api.windows.openProjectWindow(id, name).catch((e) => console.error('[Launcher] Failed to open window:', e));
+    api.windows
+      .openProjectWindow(id, name)
+      .catch((e) => console.error('[Launcher] Failed to open window:', e));
   }
 
   async function handleLauncherCreate() {
@@ -236,10 +248,7 @@
         />
 
         {#if app.status === 'running'}
-          <CrawlProgress
-            progress={app.progress}
-            streamedCount={app.streamedCount}
-          />
+          <CrawlProgress progress={app.progress} streamedCount={app.streamedCount} />
         {/if}
 
         {#if app.sitemapInfo}

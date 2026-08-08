@@ -7,7 +7,6 @@
   import * as Select from '$lib/components/ui/select/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
 
   let {
     projectId,
@@ -96,7 +95,14 @@
     return field.replace(/_/g, ' ');
   }
 
-  function formatStat(stat: any): { pages: string; indexable: string; broken: string; load: string; size: string; readability: string } {
+  function formatStat(stat: any): {
+    pages: string;
+    indexable: string;
+    broken: string;
+    load: string;
+    size: string;
+    readability: string;
+  } {
     return {
       pages: stat.total_pages.toLocaleString(),
       indexable: stat.indexed_pages.toLocaleString(),
@@ -177,7 +183,10 @@
           </Select.Content>
         </Select.Root>
       </div>
-      <Button onclick={runCompare} disabled={!snapshotA || !snapshotB || snapshotA === snapshotB || comparing}>
+      <Button
+        onclick={runCompare}
+        disabled={!snapshotA || !snapshotB || snapshotA === snapshotB || comparing}
+      >
         {comparing ? '…' : m['comparator.compare_btn']()}
       </Button>
     </div>
@@ -188,19 +197,25 @@
           <CardContent>
             <div class="comp-summary-grid">
               <div class="comp-summary-item comp-new">
-                <span class="comp-summary-value">{comparison.new_urls.length.toLocaleString()}</span>
+                <span class="comp-summary-value">{comparison.new_urls.length.toLocaleString()}</span
+                >
                 <span class="comp-summary-label">{m['comparator.new']()}</span>
               </div>
               <div class="comp-summary-item comp-removed">
-                <span class="comp-summary-value">{comparison.removed_urls.length.toLocaleString()}</span>
+                <span class="comp-summary-value"
+                  >{comparison.removed_urls.length.toLocaleString()}</span
+                >
                 <span class="comp-summary-label">{m['comparator.removed']()}</span>
               </div>
               <div class="comp-summary-item comp-changed">
-                <span class="comp-summary-value">{comparison.changed_urls.length.toLocaleString()}</span>
+                <span class="comp-summary-value"
+                  >{comparison.changed_urls.length.toLocaleString()}</span
+                >
                 <span class="comp-summary-label">{m['comparator.changed']()}</span>
               </div>
               <div class="comp-summary-item">
-                <span class="comp-summary-value">{comparison.unchanged_count.toLocaleString()}</span>
+                <span class="comp-summary-value">{comparison.unchanged_count.toLocaleString()}</span
+                >
                 <span class="comp-summary-label">{m['comparator.unchanged']()}</span>
               </div>
             </div>
@@ -251,12 +266,17 @@
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each visibleNewUrls as url}
+                {#each visibleNewUrls as url (url)}
                   <li class="comp-url-new">{url}</li>
                 {/each}
               </ul>
               {#if comparison.new_urls.length > newUrlsLimit}
-                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (newUrlsLimit += LIST_PAGE_SIZE)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="mt-2"
+                  onclick={() => (newUrlsLimit += LIST_PAGE_SIZE)}
+                >
                   {m['comparator.show_more']()}
                 </Button>
               {/if}
@@ -271,12 +291,17 @@
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each visibleRemovedUrls as url}
+                {#each visibleRemovedUrls as url (url)}
                   <li class="comp-url-removed">{url}</li>
                 {/each}
               </ul>
               {#if comparison.removed_urls.length > removedUrlsLimit}
-                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (removedUrlsLimit += LIST_PAGE_SIZE)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="mt-2"
+                  onclick={() => (removedUrlsLimit += LIST_PAGE_SIZE)}
+                >
                   {m['comparator.show_more']()}
                 </Button>
               {/if}
@@ -308,7 +333,12 @@
                 {/each}
               </ul>
               {#if comparison.changed_urls.length > changedUrlsLimit}
-                <Button variant="ghost" size="sm" class="mt-2" onclick={() => (changedUrlsLimit += LIST_PAGE_SIZE)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="mt-2"
+                  onclick={() => (changedUrlsLimit += LIST_PAGE_SIZE)}
+                >
                   {m['comparator.show_more']()}
                 </Button>
               {/if}
@@ -366,9 +396,15 @@
     color: var(--text-muted);
   }
 
-  .comp-new .comp-summary-value { color: var(--success); }
-  .comp-removed .comp-summary-value { color: var(--danger); }
-  .comp-changed .comp-summary-value { color: var(--warning); }
+  .comp-new .comp-summary-value {
+    color: var(--success);
+  }
+  .comp-removed .comp-summary-value {
+    color: var(--danger);
+  }
+  .comp-changed .comp-summary-value {
+    color: var(--warning);
+  }
 
   .comp-stats {
     display: grid;
@@ -417,8 +453,13 @@
     padding: 4px 0;
   }
 
-  .comp-url-new { color: var(--success); }
-  .comp-url-removed { color: var(--danger); text-decoration: line-through; }
+  .comp-url-new {
+    color: var(--success);
+  }
+  .comp-url-removed {
+    color: var(--danger);
+    text-decoration: line-through;
+  }
 
   .comp-change-list {
     display: flex;

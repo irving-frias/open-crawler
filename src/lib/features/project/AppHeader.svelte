@@ -30,11 +30,19 @@
 
 <header class="app-header" class:compact>
   <div class="header-left">
-    <button type="button" class="logo-btn" onclick={onOpenLauncher} title={m['app.all_projects']()} aria-label={m['app.all_projects']()}>
+    <button
+      type="button"
+      class="logo-btn"
+      onclick={onOpenLauncher}
+      title={m['app.all_projects']()}
+      aria-label={m['app.all_projects']()}
+    >
       <h1 class="logo">{m['app.title']()}</h1>
     </button>
     {#if compact}
-      <span class="header-project-name">{projects.optimistic.find((p) => p.id === selectedProjectId)?.name ?? ''}</span>
+      <span class="header-project-name"
+        >{projects.optimistic.find((p) => p.id === selectedProjectId)?.name ?? ''}</span
+      >
     {/if}
     {#if showSettings}
       <Button
@@ -79,7 +87,9 @@
           role="button"
           tabindex="0"
           onclick={() => onSelect(project.id)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(project.id); }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') onSelect(project.id);
+          }}
         >
           <span class="project-avatar">{project.name.trim().charAt(0).toUpperCase() || '?'}</span>
           <span class="project-name">{project.name}</span>
@@ -163,7 +173,11 @@
     min-height: 44px;
     border-radius: var(--radius-xl);
     cursor: pointer;
-    transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast), box-shadow var(--transition-base);
+    transition:
+      background var(--transition-base),
+      border-color var(--transition-base),
+      transform var(--transition-fast),
+      box-shadow var(--transition-base);
     border-left: 4px solid transparent;
     background: var(--bg-card);
     border: none;

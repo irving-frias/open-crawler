@@ -2,7 +2,7 @@
   import { getDashboardStats } from '$lib/api/analytics';
   import type { DashboardStats as DashboardStatsT } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { translateIssueName, translateSeverity } from '$lib/i18n-issues';
+  import { translateIssueName } from '$lib/i18n-issues';
   import DonutChart from '$lib/components/charts/DonutChart.svelte';
   import BarChart from '$lib/components/charts/BarChart.svelte';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
@@ -60,7 +60,9 @@
 
   let issueItems = $derived(
     (stats?.top_issues ?? [])
-      .filter((i: { issue_type: string; severity: string; count: number }) => i.severity === 'error')
+      .filter(
+        (i: { issue_type: string; severity: string; count: number }) => i.severity === 'error'
+      )
       .slice(0, 10)
       .map((i: { issue_type: string; severity: string; count: number }) => ({
         label: translateIssueName(i.issue_type),
@@ -124,7 +126,9 @@
       </div>
       <div class="stat-card">
         <span class="stat-label">{m['dashboard.avg_load']()}</span>
-        <span class="stat-value">{Math.round(stats.avg_load_ms).toLocaleString()}{m['dashboard.unit_ms']()}</span>
+        <span class="stat-value"
+          >{Math.round(stats.avg_load_ms).toLocaleString()}{m['dashboard.unit_ms']()}</span
+        >
       </div>
       <div class="stat-card">
         <span class="stat-label">{m['dashboard.avg_size']()}</span>
@@ -139,7 +143,9 @@
       <div class="stat-card stat-seo">
         <span class="stat-label">{m['seo.label']()}</span>
         <span class="stat-value">
-          {stats.avg_seo_score != null ? `${Math.round(stats.avg_seo_score)} · ${seoGrade(stats.avg_seo_score)}` : '—'}
+          {stats.avg_seo_score != null
+            ? `${Math.round(stats.avg_seo_score)} · ${seoGrade(stats.avg_seo_score)}`
+            : '—'}
         </span>
       </div>
     </div>
@@ -158,7 +164,7 @@
             />
             {#if statusSegments.length > 0}
               <ul class="legend">
-                {#each statusSegments as seg}
+                {#each statusSegments as seg (seg.label)}
                   <li>
                     <span class="legend-dot" style={`background: ${seg.color}`}></span>
                     <span>{seg.label}</span>

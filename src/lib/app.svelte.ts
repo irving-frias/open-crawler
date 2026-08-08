@@ -25,7 +25,16 @@ import {
 const APP_SHELL_KEY = Symbol('open-crawler-app-shell');
 
 export type CrawlStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
-export type TabValue = 'results' | 'overview' | 'dashboard' | 'site_tree' | 'comparator' | 'duplicates' | 'keywords' | 'schedule' | 'seo';
+export type TabValue =
+  | 'results'
+  | 'overview'
+  | 'dashboard'
+  | 'site_tree'
+  | 'comparator'
+  | 'duplicates'
+  | 'keywords'
+  | 'schedule'
+  | 'seo';
 
 export interface CrawlProgressState {
   crawled: number;
@@ -159,8 +168,16 @@ export interface AppShell extends AppFields {
   openDetail(pageId: string): void;
   onSearchInput(query: string): void;
   exportFull(format: 'xlsx' | 'csv'): Promise<void>;
-  exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean): Promise<ExportPackageInfo | null>;
-  exportAndStartWifi(includeCredentials: boolean, lightweight: boolean, minutes?: number): Promise<void>;
+  exportPackage(
+    includeCredentials: boolean,
+    lightweight: boolean,
+    shareAfter: boolean
+  ): Promise<ExportPackageInfo | null>;
+  exportAndStartWifi(
+    includeCredentials: boolean,
+    lightweight: boolean,
+    minutes?: number
+  ): Promise<void>;
   exportAndShare(includeCredentials: boolean, lightweight: boolean): Promise<void>;
   exportAndStartP2P(includeCredentials: boolean, lightweight: boolean): Promise<void>;
   stopP2P(): void;
@@ -298,18 +315,22 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   if (persisted.configByProject && typeof persisted.configByProject === 'object') {
     state.configByProject = { ...(persisted.configByProject as Record<string, CrawlFormConfig>) };
   }
-  state.seedUrl = state.seedUrlsByProject[state.selectedProjectId] ?? (typeof persisted.seedUrl === 'string' ? persisted.seedUrl : '');
+  state.seedUrl =
+    state.seedUrlsByProject[state.selectedProjectId] ??
+    (typeof persisted.seedUrl === 'string' ? persisted.seedUrl : '');
   const initialConfig = state.configByProject[state.selectedProjectId];
   if (initialConfig) {
     applyFormConfig(initialConfig);
     state.seedUrl = initialConfig.seedUrl;
   }
-  if (typeof persisted.pageSize === 'number' && persisted.pageSize > 0) state.pageSize = persisted.pageSize;
+  if (typeof persisted.pageSize === 'number' && persisted.pageSize > 0)
+    state.pageSize = persisted.pageSize;
   if (typeof persisted.maxDepth === 'number') state.maxDepth = persisted.maxDepth;
   if (typeof persisted.maxCrawlTime === 'number') state.maxCrawlTime = persisted.maxCrawlTime;
   if (typeof persisted.respectRobots === 'boolean') state.respectRobots = persisted.respectRobots;
   if (typeof persisted.checkSitemap === 'boolean') state.checkSitemap = persisted.checkSitemap;
-  if (typeof persisted.checkSemantics === 'boolean') state.checkSemantics = persisted.checkSemantics;
+  if (typeof persisted.checkSemantics === 'boolean')
+    state.checkSemantics = persisted.checkSemantics;
   if (persisted.activeTab) state.activeTab = persisted.activeTab as TabValue;
   if (persisted.lastPackage && typeof persisted.lastPackage === 'object') {
     state.lastPackage = persisted.lastPackage as ExportPackageInfo;
@@ -398,82 +419,100 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
     // On Android, packages shared into the app are only available once the
     // webview is focused again — drain the share-target queue each time.
-    register(listen<any>('tauri://focus', () => {
-      checkIncomingShare();
-    }));
+    register(
+      listen<any>('tauri://focus', () => {
+        checkIncomingShare();
+      })
+    );
 
     // Any window that creates, renames or deletes a project broadcasts this, so
     // the launcher and the per-project windows always show the same list.
-    register(listen<any>('projects-changed', () => {
-      refreshProjects();
-    }));
+    register(
+      listen<any>('projects-changed', () => {
+        refreshProjects();
+      })
+    );
 
-    register(listen<any>('crawl-started', (event) => {
-      console.log('[Crawler] crawl-started:', event.payload);
-      if (state.notificationsEnabled) {
-        notify(m['notifications.crawl_started'](), m['notifications.crawl_started_desc']());
-      }
-    }));
+    register(
+      listen<any>('crawl-started', (event) => {
+        console.log('[Crawler] crawl-started:', event.payload);
+        if (state.notificationsEnabled) {
+          notify(m['notifications.crawl_started'](), m['notifications.crawl_started_desc']());
+        }
+      })
+    );
 
-    register(listen<any>('crawl-progress', (event) => {
-      const p = event.payload;
-      if (p.project_id !== state.selectedProjectId) return;
-      state.progress.crawled = p.urls_crawled;
-      state.progress.queued = p.urls_queued;
-      state.progress.current = p.current_url;
-      state.progress.errors = p.errors;
-    }));
+    register(
+      listen<any>('crawl-progress', (event) => {
+        const p = event.payload;
+        if (p.project_id !== state.selectedProjectId) return;
+        state.progress.crawled = p.urls_crawled;
+        state.progress.queued = p.urls_queued;
+        state.progress.current = p.current_url;
+        state.progress.errors = p.errors;
+      })
+    );
 
-    register(listen<any>('crawl-batch', (event) => {
-      const p = event.payload;
-      if (p.project_id !== state.selectedProjectId) return;
-      if (p.count) state.streamedCount += p.count;
-      scheduleResultsRefresh();
-    }));
+    register(
+      listen<any>('crawl-batch', (event) => {
+        const p = event.payload;
+        if (p.project_id !== state.selectedProjectId) return;
+        if (p.count) state.streamedCount += p.count;
+        scheduleResultsRefresh();
+      })
+    );
 
-    register(listen<any>('crawl-complete', (event) => {
-      const p = event.payload;
-      if (p.project_id !== state.selectedProjectId) return;
-      state.status = 'completed';
-      state.resumableInfo = null;
-      state.streamedCount = 0;
-      loadResults(1);
-      if (state.notificationsEnabled) {
-        notify(m['notifications.crawl_complete'](), m['notifications.crawl_complete_desc']());
-      }
-    }));
+    register(
+      listen<any>('crawl-complete', (event) => {
+        const p = event.payload;
+        if (p.project_id !== state.selectedProjectId) return;
+        state.status = 'completed';
+        state.resumableInfo = null;
+        state.streamedCount = 0;
+        loadResults(1);
+        if (state.notificationsEnabled) {
+          notify(m['notifications.crawl_complete'](), m['notifications.crawl_complete_desc']());
+        }
+      })
+    );
 
-    register(listen<any>('crawl-error', (event) => {
-      const p = event.payload;
-      if (p.project_id !== state.selectedProjectId) return;
-      state.status = 'error';
-      state.error = p.error || String(p);
-      if (state.notificationsEnabled) {
-        notify(m['notifications.crawl_error'](), p.error || String(p));
-      }
-    }));
+    register(
+      listen<any>('crawl-error', (event) => {
+        const p = event.payload;
+        if (p.project_id !== state.selectedProjectId) return;
+        state.status = 'error';
+        state.error = p.error || String(p);
+        if (state.notificationsEnabled) {
+          notify(m['notifications.crawl_error'](), p.error || String(p));
+        }
+      })
+    );
 
-    register(listen<any>('crawl-stopped', (event) => {
-      const p = event.payload;
-      if (p.project_id !== state.selectedProjectId) return;
-      state.status = 'idle';
-      state.streamedCount = 0;
-      checkResumable();
-      if (state.notificationsEnabled) {
-        notify(m['notifications.crawl_stopped'](), m['notifications.crawl_stopped_desc']());
-      }
-    }));
+    register(
+      listen<any>('crawl-stopped', (event) => {
+        const p = event.payload;
+        if (p.project_id !== state.selectedProjectId) return;
+        state.status = 'idle';
+        state.streamedCount = 0;
+        checkResumable();
+        if (state.notificationsEnabled) {
+          notify(m['notifications.crawl_stopped'](), m['notifications.crawl_stopped_desc']());
+        }
+      })
+    );
 
-    register(listen<any>('sitemap-discovered', (event) => {
-      const p = event.payload;
-      if (p.project_id && p.project_id !== state.selectedProjectId) return;
-      state.sitemapInfo = p.fallback
-        ? m['sitemap.fallback']()
-        : m['sitemap.found']({
-            count: String(p.urls_found),
-            sitemaps: String(p.sitemaps_checked),
-          });
-    }));
+    register(
+      listen<any>('sitemap-discovered', (event) => {
+        const p = event.payload;
+        if (p.project_id && p.project_id !== state.selectedProjectId) return;
+        state.sitemapInfo = p.fallback
+          ? m['sitemap.fallback']()
+          : m['sitemap.found']({
+              count: String(p.urls_found),
+              sitemaps: String(p.sitemaps_checked),
+            });
+      })
+    );
   }
 
   // ==================== PROJECTS ====================
@@ -545,7 +584,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       if (settings.theme) {
         applyTheme(settings.theme);
       }
-    } catch (e) {
+    } catch {
       // Settings may not exist yet, use defaults
     }
   }
@@ -785,7 +824,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
   // ==================== CRAWL ====================
 
-  async function startCrawl(resume: boolean = false) {
+  async function startCrawl(_resume: boolean = false) {
     if (!state.selectedProjectId) return;
     state.configByProject[state.selectedProjectId] = captureFormConfig();
     state.seedUrlsByProject[state.selectedProjectId] = state.seedUrl;
@@ -797,11 +836,14 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       state.streamedCount = 0;
       state.currentPage = 1;
       state.results = { items: [], total: 0, page: 1, page_size: state.pageSize };
-      api.crawl.getFavicon(state.seedUrl.trim()).then((icon) => {
-        if (icon) state.siteFavicon = icon;
-      }).catch(() => {
-        state.siteFavicon = '';
-      });
+      api.crawl
+        .getFavicon(state.seedUrl.trim())
+        .then((icon) => {
+          if (icon) state.siteFavicon = icon;
+        })
+        .catch(() => {
+          state.siteFavicon = '';
+        });
       await api.crawl.startCrawl(state.selectedProjectId, {
         seed_urls: [state.seedUrl],
         max_depth: state.maxDepth,
@@ -906,8 +948,10 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         pageSize: state.pageSize,
         semanticIssueType: state.activeFilters.issueType || null,
         search: state.debouncedSearch || null,
-        statusFilter: state.activeFilters.statusCodes.length > 0 ? state.activeFilters.statusCodes : null,
-        severityFilter: state.activeFilters.severities.length > 0 ? state.activeFilters.severities : null,
+        statusFilter:
+          state.activeFilters.statusCodes.length > 0 ? state.activeFilters.statusCodes : null,
+        severityFilter:
+          state.activeFilters.severities.length > 0 ? state.activeFilters.severities : null,
         depthFilter: state.activeFilters.depth,
         missingTitle: state.activeFilters.missingTitle || null,
         duplicateTitle: state.activeFilters.duplicateTitle || null,
@@ -1010,13 +1054,16 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       const path = mobile || picked.toLowerCase().endsWith(`.${ext}`) ? picked : `${picked}.${ext}`;
 
       state.exportProgress = { running: true, percent: 0, stage: '' };
-      const unlisten = await listen<{ stage: string; percent: number }>('export-progress', (event) => {
-        state.exportProgress = {
-          running: true,
-          percent: Math.min(event.payload.percent, 100),
-          stage: event.payload.stage,
-        };
-      });
+      const unlisten = await listen<{ stage: string; percent: number }>(
+        'export-progress',
+        (event) => {
+          state.exportProgress = {
+            running: true,
+            percent: Math.min(event.payload.percent, 100),
+            stage: event.payload.stage,
+          };
+        }
+      );
 
       try {
         await api.exportApi.exportFull(state.selectedProjectId, path, format);
@@ -1041,7 +1088,11 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
   // ==================== TRANSFER (package export / import / WiFi) ====================
 
-  async function exportPackage(includeCredentials: boolean, lightweight: boolean, shareAfter: boolean) {
+  async function exportPackage(
+    includeCredentials: boolean,
+    lightweight: boolean,
+    shareAfter: boolean
+  ) {
     if (!state.selectedProjectId || state.transferBusy) return null;
     state.transferBusy = true;
     try {
@@ -1084,7 +1135,11 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
   // Direct share: export to a managed transfers dir (no save dialog / share
   // sheet) and immediately start the LAN WiFi server so it can be scanned.
-  async function exportAndStartWifi(includeCredentials: boolean, lightweight: boolean, minutes?: number) {
+  async function exportAndStartWifi(
+    includeCredentials: boolean,
+    lightweight: boolean,
+    minutes?: number
+  ) {
     if (!state.selectedProjectId || state.transferBusy) return;
     state.transferBusy = true;
     try {

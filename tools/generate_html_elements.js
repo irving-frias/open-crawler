@@ -4,7 +4,14 @@ import path from 'path';
 const DATA_DIR = path.resolve(import.meta.dirname, '..', 'src-tauri', 'data');
 const INDEX_FILE = path.join(DATA_DIR, 'caninclude-index.json');
 const DICT_FILE = path.resolve(import.meta.dirname, 'spec-es.json');
-const OUTPUT_FILE = path.resolve(import.meta.dirname, '..', 'src', 'lib', 'data', 'html-elements.ts');
+const OUTPUT_FILE = path.resolve(
+  import.meta.dirname,
+  '..',
+  'src',
+  'lib',
+  'data',
+  'html-elements.ts'
+);
 
 const normalize = (s) => s.replace(/\s+/g, ' ').trim();
 
@@ -38,8 +45,12 @@ async function main() {
           const { tag: _tag, ...reference } = child;
           reference.categories_es = reference.categories.map((s) => translate('categories', s));
           reference.contexts_es = reference.contexts.map((s) => translate('contexts', s));
-          reference.contentModel_es = reference.contentModel.map((s) => translate('contentModel', s));
-          reference.params_es = reference.params.map((s) => translate('params', typeof s === 'string' ? s : s.text));
+          reference.contentModel_es = reference.contentModel.map((s) =>
+            translate('contentModel', s)
+          );
+          reference.params_es = reference.params.map((s) =>
+            translate('params', typeof s === 'string' ? s : s.text)
+          );
           byTag.set(child.tag, reference);
         }
       }

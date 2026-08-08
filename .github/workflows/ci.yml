@@ -44,7 +44,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache Rust build
         uses: actions/cache@v5
@@ -56,6 +56,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: cargo fmt
+        run: cargo fmt --check
+        working-directory: src-tauri
 
       - name: cargo check
         run: cargo check
@@ -93,6 +97,12 @@ jobs:
 
       - name: Build frontend (generates Paraglide files)
         run: bun run build
+
+      - name: ESLint
+        run: bun run lint
+
+      - name: Prettier check
+        run: bun run format:check
 
       - name: Svelte check
         run: bunx svelte-check --tsconfig ./tsconfig.json
@@ -161,7 +171,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

@@ -4,9 +4,23 @@
   import { m } from '$lib/paraglide/messages.js';
   import { translateIssueName } from '$lib/i18n-issues';
   import {
-    ImageOff, FileText, Text, Link2, Unlink, Heading1, List, Globe, Bot,
-    Blocks, Monitor, Copy, Accessibility, LayoutGrid, TextCursorInput,
-    TriangleAlert, ChevronRight,
+    ImageOff,
+    FileText,
+    Text,
+    Link2,
+    Unlink,
+    Heading1,
+    List,
+    Globe,
+    Bot,
+    Blocks,
+    Monitor,
+    Copy,
+    Accessibility,
+    LayoutGrid,
+    TextCursorInput,
+    TriangleAlert,
+    ChevronRight,
   } from 'lucide-svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -59,7 +73,9 @@
 
   $effect(() => {
     if (projectId) loadCounts();
-    else { issueCounts = []; }
+    else {
+      issueCounts = [];
+    }
   });
 
   async function loadCounts() {
@@ -116,9 +132,18 @@
   });
 
   let groupedIssues = $derived(() => {
-    const map = new Map<string, { issue_type: string; error: number; warning: number; info: number; total: number }>();
+    const map = new Map<
+      string,
+      { issue_type: string; error: number; warning: number; info: number; total: number }
+    >();
     for (const item of issueCounts) {
-      const existing = map.get(item.issue_type) || { issue_type: item.issue_type, error: 0, warning: 0, info: 0, total: 0 };
+      const existing = map.get(item.issue_type) || {
+        issue_type: item.issue_type,
+        error: 0,
+        warning: 0,
+        info: 0,
+        total: 0,
+      };
       existing[item.severity as 'error' | 'warning' | 'info'] = item.count;
       existing.total += item.count;
       map.set(item.issue_type, existing);
@@ -129,10 +154,10 @@
 
 <div class="semantic-dashboard">
   <div class="dashboard-head">
-    <h2>{m["dashboard.title"]()}</h2>
+    <h2>{m['dashboard.title']()}</h2>
     {#if activeFilter}
       <Button variant="outline" size="sm" onclick={clearFilter}>
-        {m["dashboard.clear_filter"]({ type: formatIssueType(activeFilter) })} &times;
+        {m['dashboard.clear_filter']({ type: formatIssueType(activeFilter) })} &times;
       </Button>
     {/if}
   </div>
@@ -147,7 +172,7 @@
     {:else if error}
       <div class="dashboard-error">{error}</div>
     {:else if issueCounts.length === 0}
-      <div class="dashboard-empty">{m["dashboard.no_issues"]()}</div>
+      <div class="dashboard-empty">{m['dashboard.no_issues']()}</div>
     {:else}
       <!-- Severity Summary Bar -->
       <div class="severity-bar">
@@ -181,20 +206,31 @@
       </div>
       <div class="severity-legend">
         {#if severityTotals().error > 0}
-          <span class="legend-item"><span class="legend-dot error"></span> {m["dashboard.errors"]({ count: severityTotals().error.toString() })}</span>
+          <span class="legend-item"
+            ><span class="legend-dot error"></span>
+            {m['dashboard.errors']({ count: severityTotals().error.toString() })}</span
+          >
         {/if}
         {#if severityTotals().warning > 0}
-          <span class="legend-item"><span class="legend-dot warning"></span> {m["dashboard.warnings"]({ count: severityTotals().warning.toString() })}</span>
+          <span class="legend-item"
+            ><span class="legend-dot warning"></span>
+            {m['dashboard.warnings']({ count: severityTotals().warning.toString() })}</span
+          >
         {/if}
         {#if severityTotals().info > 0}
-          <span class="legend-item"><span class="legend-dot info"></span> {m["dashboard.info"]({ count: severityTotals().info.toString() })}</span>
+          <span class="legend-item"
+            ><span class="legend-dot info"></span>
+            {m['dashboard.info']({ count: severityTotals().info.toString() })}</span
+          >
         {/if}
-        <span class="legend-total">{m["dashboard.total_issues"]({ count: totalIssues().toString() })}</span>
+        <span class="legend-total"
+          >{m['dashboard.total_issues']({ count: totalIssues().toString() })}</span
+        >
       </div>
 
       <!-- Issue Type Cards -->
       <div class="issue-cards">
-        {#each groupedIssues() as item}
+        {#each groupedIssues() as item (item.issue_type)}
           {@const sev = getDominantSeverity(item)}
           {@const Icon = getIcon(item.issue_type)}
           <Button
@@ -222,7 +258,7 @@
                 {/if}
                 <span class="count-total">{item.total}</span>
               </span>
-              <span class="card-hint">{m["dashboard.view_in_results"]()}</span>
+              <span class="card-hint">{m['dashboard.view_in_results']()}</span>
             </span>
             <ChevronRight class="card-arrow size-4" />
           </Button>
@@ -265,7 +301,9 @@
     color: var(--text-muted);
     font-size: 0.9rem;
   }
-  .dashboard-error { color: var(--danger); }
+  .dashboard-error {
+    color: var(--danger);
+  }
 
   /* Severity Bar */
   .severity-bar {
@@ -286,9 +324,17 @@
     min-width: 28px;
     transition: flex 0.3s ease;
   }
-  .severity-segment.error { background: var(--danger); }
-  .severity-segment.warning { background: var(--warning); color: var(--bg-deep); }
-  .severity-segment.info { background: var(--info); color: var(--bg-deep); }
+  .severity-segment.error {
+    background: var(--danger);
+  }
+  .severity-segment.warning {
+    background: var(--warning);
+    color: var(--bg-deep);
+  }
+  .severity-segment.info {
+    background: var(--info);
+    color: var(--bg-deep);
+  }
 
   .severity-legend {
     display: flex;
@@ -310,9 +356,15 @@
     height: 8px;
     border-radius: 50%;
   }
-  .legend-dot.error { background: var(--danger); }
-  .legend-dot.warning { background: var(--warning); }
-  .legend-dot.info { background: var(--info); }
+  .legend-dot.error {
+    background: var(--danger);
+  }
+  .legend-dot.warning {
+    background: var(--warning);
+  }
+  .legend-dot.info {
+    background: var(--info);
+  }
 
   .legend-total {
     margin-left: auto;
@@ -379,9 +431,18 @@
     padding: 1px 6px;
     border-radius: 4px;
   }
-  .count-badge.error { background: var(--bg-issue-error); color: var(--danger); }
-  .count-badge.warning { background: var(--bg-issue-warning); color: var(--warning); }
-  .count-badge.info { background: var(--bg-issue-info); color: var(--info); }
+  .count-badge.error {
+    background: var(--bg-issue-error);
+    color: var(--danger);
+  }
+  .count-badge.warning {
+    background: var(--bg-issue-warning);
+    color: var(--warning);
+  }
+  .count-badge.info {
+    background: var(--bg-issue-info);
+    color: var(--info);
+  }
 
   .count-total {
     font-size: 0.75rem;

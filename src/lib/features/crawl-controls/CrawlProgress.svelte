@@ -24,10 +24,7 @@
       <h2>{m['progress.title']()}</h2>
       <span class="progress-pct">{Math.round(progressPct)}%</span>
     </div>
-    <Progress
-      value={progressPct}
-      class="h-2 transition-all duration-300"
-    />
+    <Progress value={progressPct} class="h-2 transition-all duration-300" />
     <div class="progress-stats">
       <span>{m['progress.crawled']({ count: progress.crawled.toString() })}</span>
       <span>{m['progress.queued']({ count: progress.queued.toString() })}</span>

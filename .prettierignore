@@ -1,0 +1,13 @@
+build/
+dist/
+node_modules/
+.svelte-kit/
+src/lib/paraglide/
+src/lib/components/ui/
+vite.trace.config.ts
+src-tauri/target/
+src-tauri/gen/
+src-tauri/data/
+.kilo/
+tools/generate_html_elements.js
+tools/generate_nesting_table.js

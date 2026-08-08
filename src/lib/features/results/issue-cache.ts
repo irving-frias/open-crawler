@@ -16,7 +16,7 @@ export function parseIssues(issuesJson: string | null | undefined): any[] {
   if (!issuesJson) return [];
   const hit = cache.get(issuesJson);
   if (hit) return hit;
-  let parsed: any[] = [];
+  let parsed: any[];
   try {
     parsed = JSON.parse(issuesJson);
     if (!Array.isArray(parsed)) parsed = [];

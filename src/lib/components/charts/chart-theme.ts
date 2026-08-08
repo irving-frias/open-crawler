@@ -46,7 +46,9 @@ export function resolveColor(value: string | undefined): string {
 }
 
 export function fontFamily(): string {
-  return getComputedStyle(document.body).fontFamily || '-apple-system, BlinkMacSystemFont, sans-serif';
+  return (
+    getComputedStyle(document.body).fontFamily || '-apple-system, BlinkMacSystemFont, sans-serif'
+  );
 }
 
 export function watchTheme(callback: () => void): () => void {

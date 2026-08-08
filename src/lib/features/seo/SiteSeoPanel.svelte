@@ -175,7 +175,7 @@
     expandedIssues = next;
   }
 
-  async function copyToClipboard(text: string, field: string) {
+  async function copyToClipboard(text: string) {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -189,7 +189,9 @@
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-    } catch {}
+    } catch {
+      // Clipboard unavailable
+    }
   }
 </script>
 
@@ -256,7 +258,10 @@
           <div class="seo-site-progress">
             <div class="seo-site-progress-row">
               <span class="seo-site-progress-label">
-                {m['seo.site.rerun_all_running']({ processed: rerunProgress.processed, total: rerunProgress.total })}
+                {m['seo.site.rerun_all_running']({
+                  processed: rerunProgress.processed,
+                  total: rerunProgress.total,
+                })}
               </span>
               <div class="seo-site-progress-actions">
                 {#if rerunProgress.errors > 0}
@@ -264,7 +269,12 @@
                     {m['seo.site.progress_errors']({ errors: rerunProgress.errors })}
                   </span>
                 {/if}
-                <Button variant="ghost" size="xs" class="gap-1 text-muted-foreground" onclick={onCancelAudit}>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  class="gap-1 text-muted-foreground"
+                  onclick={onCancelAudit}
+                >
                   <Square class="size-3" />
                   {m['seo.site.cancel']()}
                 </Button>
@@ -280,9 +290,13 @@
           <div class="seo-site-grid">
             <div class="seo-site-stat">
               <span class="seo-site-stat-label">{m['seo.site.average']()}</span>
-              <span class="seo-site-stat-value" style="color: {scoreColor(overview.avg_score ?? 0)}">
+              <span
+                class="seo-site-stat-value"
+                style="color: {scoreColor(overview.avg_score ?? 0)}"
+              >
                 {Math.round(overview.avg_score ?? 0)}
-                {#if overview.avg_grade}<span class="seo-site-grade">· {overview.avg_grade}</span>{/if}
+                {#if overview.avg_grade}<span class="seo-site-grade">· {overview.avg_grade}</span
+                  >{/if}
               </span>
             </div>
             <div class="seo-site-stat">
@@ -326,7 +340,12 @@
               <h4 class="seo-site-title">{m['seo.site.top_issues']()}</h4>
               <div class="seo-site-issues">
                 {#each overview.top_issues as issue (issue.id)}
-                  {@const localized = localizeSeoCheck(issue.id, issue.message, issue.guidance, issue.evidence)}
+                  {@const localized = localizeSeoCheck(
+                    issue.id,
+                    issue.message,
+                    issue.guidance,
+                    issue.evidence
+                  )}
                   {@const open = expandedIssues.has(issue.id)}
                   <div class="seo-site-issue">
                     <Badge variant={severityVariant(issue.severity)}>
@@ -346,12 +365,17 @@
                         onclick={() => toggleIssue(issue.id)}
                         aria-expanded={open}
                       >
-                        <ChevronDown class={cn('size-3.5 transition-transform duration-200', open && 'rotate-180')} />
+                        <ChevronDown
+                          class={cn(
+                            'size-3.5 transition-transform duration-200',
+                            open && 'rotate-180'
+                          )}
+                        />
                         <span>{open ? m['seo.site.collapse']() : m['seo.site.expand']()}</span>
                       </button>
                       {#if open}
                         <div class="seo-site-issue-detail">
-                          {#if (localized.fix || localized.expected)}
+                          {#if localized.fix || localized.expected}
                             <div class="seo-fix-block">
                               {#if localized.fix}
                                 <div class="seo-fix-line">
@@ -362,7 +386,8 @@
                               {#if localized.expected}
                                 <div class="seo-fix-line">
                                   <span class="seo-fix-label">{m['seo.expected']()}</span>
-                                  <pre class="seo-expected-code"><code>{localized.expected}</code></pre>
+                                  <pre class="seo-expected-code"><code>{localized.expected}</code
+                                    ></pre>
                                 </div>
                               {/if}
                             </div>
@@ -381,7 +406,7 @@
                                     <button
                                       type="button"
                                       class="seo-example-xpath"
-                                      onclick={() => copyToClipboard(ex.xpath ?? '', `xpath-${issue.id}-${i}`)}
+                                      onclick={() => copyToClipboard(ex.xpath ?? '')}
                                     >
                                       <Copy class="size-3" />
                                       <code>{ex.xpath}</code>
@@ -641,7 +666,9 @@
     padding: 3px 6px;
     border-radius: 6px;
     width: fit-content;
-    transition: color var(--transition-fast), background var(--transition-fast);
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast);
   }
   .seo-site-issue-toggle:hover {
     color: var(--accent);

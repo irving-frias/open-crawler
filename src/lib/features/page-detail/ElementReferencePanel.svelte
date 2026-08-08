@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ElementReference, ElementRefSegment } from '$lib/data/html-elements';
+  import type { ElementReference } from '$lib/data/html-elements';
   import { m } from '$lib/paraglide/messages.js';
   import { getLocale } from '$lib/paraglide/runtime.js';
   import { ExternalLink } from 'lucide-svelte';
@@ -66,7 +66,8 @@
                 {#if typeof seg === 'string'}
                   {seg}
                 {:else if seg.href}
-                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a>
+                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a
+                  >
                 {:else}
                   {seg.text}
                 {/if}
@@ -93,7 +94,8 @@
                 {#if typeof seg === 'string'}
                   {seg}
                 {:else if seg.href}
-                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a>
+                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a
+                  >
                 {:else}
                   {seg.text}
                 {/if}
@@ -227,7 +229,9 @@
     text-decoration: none;
     font-weight: 500;
   }
-  .ref-link:hover { text-decoration: underline; }
+  .ref-link:hover {
+    text-decoration: underline;
+  }
 
   .ref-param {
     font-family: var(--font-mono);
@@ -246,7 +250,9 @@
     color: var(--accent);
     text-decoration: none;
   }
-  .ref-param-link:hover { text-decoration: underline; }
+  .ref-param-link:hover {
+    text-decoration: underline;
+  }
 
   .support-grid {
     display: grid;

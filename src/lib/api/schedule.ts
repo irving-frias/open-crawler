@@ -1,9 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type {
-  CreateScheduledJobRequest,
-  ScheduledJob,
-  UpdateScheduledJobRequest,
-} from './types';
+import type { CreateScheduledJobRequest, ScheduledJob, UpdateScheduledJobRequest } from './types';
 
 export function listScheduledJobs(): Promise<ScheduledJob[]> {
   return invoke<ScheduledJob[]>('list_scheduled_jobs');

@@ -20,7 +20,7 @@
 </script>
 
 {#if resumableInfo}
-  <AlertDialog.Root bind:open={open}>
+  <AlertDialog.Root bind:open>
     <AlertDialog.Content class="max-w-md">
       <AlertDialog.Header>
         <AlertDialog.Title>{m['resume.title']()}</AlertDialog.Title>

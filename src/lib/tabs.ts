@@ -1,4 +1,14 @@
-export const TAB_IDS = ['results', 'overview', 'dashboard', 'site_tree', 'comparator', 'duplicates', 'keywords', 'schedule', 'seo'] as const;
+export const TAB_IDS = [
+  'results',
+  'overview',
+  'dashboard',
+  'site_tree',
+  'comparator',
+  'duplicates',
+  'keywords',
+  'schedule',
+  'seo',
+] as const;
 
 export type TabId = (typeof TAB_IDS)[number];
 export type LazyTabId = Exclude<TabId, 'results'>;
@@ -19,7 +29,6 @@ export const TAB_DEFS: TabDef[] = [
   { id: 'seo' },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyComponent = any;
 
 const loaders: Record<LazyTabId, () => Promise<{ default: AnyComponent }>> = {

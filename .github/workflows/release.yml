@@ -32,7 +32,8 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          tag_name: ${{ github.ref_name || inputs.tag }}
+          update_release: true
+          tag_name: ${{ inputs.tag || github.ref_name }}
 
   build-tauri:
     needs: create-release
@@ -115,7 +116,7 @@ jobs:
           # TAURI_PRIVATE_KEY: ${{ secrets.WINDOWS_CERTIFICATE }}
           # TAURI_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name || inputs.tag }}
+          tagName: ${{ inputs.tag || github.ref_name }}
           args: --target ${{ matrix.target }}
 
       - name: Upload build artifacts (fallback)
@@ -213,7 +214,7 @@ jobs:
 
       - name: Rename Android artifacts
         run: |
-          TAG="${{ github.ref_name || inputs.tag }}"
+          TAG="${{ inputs.tag || github.ref_name }}"
           mkdir -p android-dist
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk "android-dist/open-crawler-${TAG}-android.apk"
           cp src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab "android-dist/open-crawler-${TAG}-android.aab"
@@ -221,7 +222,7 @@ jobs:
       - name: Upload APK and AAB to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: android-dist/*
 
   update-readme:
@@ -236,7 +237,7 @@ jobs:
         id: assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name || inputs.tag }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           release_json=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
@@ -273,6 +274,6 @@ jobs:
       - name: Update release description
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
           body_path: release_body.md
           append_body: true
