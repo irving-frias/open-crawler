@@ -30,5 +30,8 @@ pub async fn get_project_keywords(
     project_id: String,
     limit: Option<u32>,
 ) -> Result<Vec<KeywordAggregate>, AppError> {
-    with_repo(&state, move |repo| repo.get_keywords(&project_id, limit.unwrap_or(100))).await
+    with_repo(&state, move |repo| {
+        repo.get_keywords(&project_id, limit.unwrap_or(100))
+    })
+    .await
 }

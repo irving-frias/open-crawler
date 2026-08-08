@@ -7,7 +7,9 @@ use tracing::info;
 use crate::crawler::fetcher::HtmlFetcher;
 use crate::error::AppError;
 use crate::features::with_repo;
-use crate::models::{CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode, SiteTreeNode};
+use crate::models::{
+    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode, SiteTreeNode,
+};
 use crate::AppState;
 
 #[allow(clippy::too_many_arguments)]
@@ -89,7 +91,10 @@ pub async fn get_semantic_issue_counts(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Vec<IssueCount>, AppError> {
-    with_repo(&state, move |repo| repo.get_semantic_issue_counts(&project_id)).await
+    with_repo(&state, move |repo| {
+        repo.get_semantic_issue_counts(&project_id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -101,10 +106,7 @@ pub async fn get_page_html(
 }
 
 #[tauri::command]
-pub async fn inline_assets(
-    html: String,
-    base_url: String,
-) -> Result<String, AppError> {
+pub async fn inline_assets(html: String, base_url: String) -> Result<String, AppError> {
     let url = url::Url::parse(&base_url)?;
     crate::crawler::assets::inline_page_assets(&html, &url).await
 }
@@ -116,7 +118,9 @@ pub async fn recrawl_page(
 ) -> Result<CrawlResult, AppError> {
     // Get the original page data
     let pid = page_id.clone();
-    let original = with_repo(&state, move |repo| repo.get_page_detail(&pid)).await?.page;
+    let original = with_repo(&state, move |repo| repo.get_page_detail(&pid))
+        .await?
+        .page;
 
     let url = url::Url::parse(&original.url)?;
     let project_id = original.project_id.clone();
@@ -131,13 +135,22 @@ pub async fn recrawl_page(
         repo.get_latest_session_config(&project_id_cfg)
     })
     .await?;
-    let cookies = config.as_ref().map(|c| c.cookies.clone()).unwrap_or_default();
+    let cookies = config
+        .as_ref()
+        .map(|c| c.cookies.clone())
+        .unwrap_or_default();
     let site_auth = config.and_then(|c| c.site_auth);
 
     // Fetch the page
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher =
-        crate::crawler::fetcher::HttpFetcher::new(user_agent, 30000, Vec::new(), cookies, site_auth, None)?;
+    let fetcher = crate::crawler::fetcher::HttpFetcher::new(
+        user_agent,
+        30000,
+        Vec::new(),
+        cookies,
+        site_auth,
+        None,
+    )?;
     let response = fetcher.fetch(&url).await?;
 
     // Parse SEO data
@@ -176,10 +189,12 @@ pub async fn recrawl_page(
     // Capture screenshot
     let screenshot_png = {
         let url_str = original.url.clone();
-        tokio::task::spawn_blocking(move || crate::crawler::screenshot::capture_screenshot(&url_str))
-            .await
-            .map_err(|e| AppError::Crawl(e.to_string()))?
-            .ok()
+        tokio::task::spawn_blocking(move || {
+            crate::crawler::screenshot::capture_screenshot(&url_str)
+        })
+        .await
+        .map_err(|e| AppError::Crawl(e.to_string()))?
+        .ok()
     };
 
     // Serialize
@@ -285,15 +300,20 @@ pub async fn capture_page_screenshot(
     // Capture screenshot
     let png_data = {
         let url_clone = url.clone();
-        tokio::task::spawn_blocking(move || crate::crawler::screenshot::capture_screenshot(&url_clone))
-            .await
-            .map_err(|e| AppError::Crawl(e.to_string()))?
-            .map_err(|e| AppError::Crawl(e.to_string()))?
+        tokio::task::spawn_blocking(move || {
+            crate::crawler::screenshot::capture_screenshot(&url_clone)
+        })
+        .await
+        .map_err(|e| AppError::Crawl(e.to_string()))?
+        .map_err(|e| AppError::Crawl(e.to_string()))?
     };
 
     // Save to DB
     let png_for_save = png_data.clone();
-    with_repo(&state, move |repo| repo.save_screenshot(&page_id, &png_for_save)).await?;
+    with_repo(&state, move |repo| {
+        repo.save_screenshot(&page_id, &png_for_save)
+    })
+    .await?;
 
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_data);

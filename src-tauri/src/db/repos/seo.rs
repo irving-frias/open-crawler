@@ -1,11 +1,9 @@
-use rusqlite::OptionalExtension;
 use rusqlite::params;
+use rusqlite::OptionalExtension;
 
 use crate::crawler::parser::SemanticIssue;
 use crate::error::AppError;
-use crate::models::{
-    GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview,
-};
+use crate::models::{GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview};
 use crate::seo::SeoAuditResult;
 
 use super::CrawlRepo;
@@ -64,10 +62,7 @@ impl<'a> CrawlRepo<'a> {
         )?;
         let rows = stmt
             .query_map(params![project_id], |row| {
-                Ok((
-                    row.get::<_, f64>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                ))
+                Ok((row.get::<_, f64>(0)?, row.get::<_, Option<String>>(1)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -106,16 +101,28 @@ impl<'a> CrawlRepo<'a> {
             };
 
             for cat in &audit.categories {
-                let entry = category_scores.entry(cat.category.clone()).or_insert((0.0, 0));
+                let entry = category_scores
+                    .entry(cat.category.clone())
+                    .or_insert((0.0, 0));
                 entry.0 += cat.score;
                 entry.1 += 1;
             }
             for check in &audit.checks {
                 if !check.passed {
                     let entry = issue_counts
-                        .entry((check.category.clone(), check.severity.clone(), check.id.clone()))
+                        .entry((
+                            check.category.clone(),
+                            check.severity.clone(),
+                            check.id.clone(),
+                        ))
                         .or_insert_with(|| {
-                            (0, check.message.clone(), check.guidance.clone(), check.evidence.clone(), Vec::new())
+                            (
+                                0,
+                                check.message.clone(),
+                                check.guidance.clone(),
+                                check.evidence.clone(),
+                                Vec::new(),
+                            )
                         });
                     entry.0 += 1;
                     for example in &check.examples {
@@ -147,16 +154,21 @@ impl<'a> CrawlRepo<'a> {
 
         let mut top_issues: Vec<SeoIssueCount> = issue_counts
             .into_iter()
-            .map(|((category, severity, id), (occurrences, message, guidance, evidence, examples))| SeoIssueCount {
-                id,
-                category,
-                severity,
-                occurrences,
-                message,
-                guidance,
-                evidence,
-                examples,
-            })
+            .map(
+                |(
+                    (category, severity, id),
+                    (occurrences, message, guidance, evidence, examples),
+                )| SeoIssueCount {
+                    id,
+                    category,
+                    severity,
+                    occurrences,
+                    message,
+                    guidance,
+                    evidence,
+                    examples,
+                },
+            )
             .collect();
         top_issues.sort_by_key(|b| std::cmp::Reverse(b.occurrences));
         top_issues.truncate(15);

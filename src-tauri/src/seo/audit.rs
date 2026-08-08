@@ -245,7 +245,11 @@ mod tests {
         for id in ["img_dimensions", "image_optimization"] {
             let check = result.checks.iter().find(|c| c.id == id).unwrap();
             assert!(!check.passed, "{id} should fail");
-            assert_eq!(check.examples.len(), 2, "{id} should list the 2 offending images");
+            assert_eq!(
+                check.examples.len(),
+                2,
+                "{id} should list the 2 offending images"
+            );
             for ex in &check.examples {
                 assert_eq!(ex.issue_type, "img_no_dimensions");
                 assert!(ex.xpath.is_some(), "{id} example should carry an xpath");

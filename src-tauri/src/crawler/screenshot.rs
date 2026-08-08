@@ -38,11 +38,7 @@ pub fn capture_screenshot(url: &str) -> Result<Vec<u8>, AppError> {
     let png_data = std::fs::read(output_path)
         .map_err(|e| AppError::Crawl(format!("Failed to read screenshot: {}", e)))?;
 
-    info!(
-        "Screenshot captured for {}: {} bytes",
-        url,
-        png_data.len()
-    );
+    info!("Screenshot captured for {}: {} bytes", url, png_data.len());
 
     Ok(png_data)
 }
@@ -64,7 +60,10 @@ pub(crate) fn find_chrome() -> Result<String, AppError> {
     }
 
     // Try `which` to find chrome in PATH
-    if let Ok(output) = Command::new("which").args(["google-chrome", "chromium"]).output() {
+    if let Ok(output) = Command::new("which")
+        .args(["google-chrome", "chromium"])
+        .output()
+    {
         let paths_str = String::from_utf8_lossy(&output.stdout);
         if let Some(first_line) = paths_str.lines().next() {
             if !first_line.is_empty() {
@@ -74,6 +73,6 @@ pub(crate) fn find_chrome() -> Result<String, AppError> {
     }
 
     Err(AppError::Crawl(
-        "Chrome/Chromium not found. Install Google Chrome to enable page screenshots.".to_string()
+        "Chrome/Chromium not found. Install Google Chrome to enable page screenshots.".to_string(),
     ))
 }

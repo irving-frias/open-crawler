@@ -34,7 +34,13 @@ pub struct LinuxRfcomm {
 pub fn connect(addr: &str, channel: u8) -> Result<LinuxRfcomm, AppError> {
     let mac = parse_mac(addr)?;
 
-    let fd = unsafe { libc::socket(AF_BLUETOOTH, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, BTPROTO_RFCOMM) };
+    let fd = unsafe {
+        libc::socket(
+            AF_BLUETOOTH,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
+            BTPROTO_RFCOMM,
+        )
+    };
     if fd < 0 {
         return Err(IoError::last_os_error().into());
     }
@@ -135,7 +141,11 @@ fn set_nonblocking(fd: libc::c_int, nonblocking: bool) -> Result<(), IoError> {
     Ok(())
 }
 
-fn set_socket_timeout(fd: libc::c_int, opt: libc::c_int, secs: libc::time_t) -> Result<(), AppError> {
+fn set_socket_timeout(
+    fd: libc::c_int,
+    opt: libc::c_int,
+    secs: libc::time_t,
+) -> Result<(), AppError> {
     let tv = libc::timeval {
         tv_sec: secs,
         tv_usec: 0,
@@ -193,7 +203,9 @@ impl ObexStream for LinuxRfcomm {
                 return Err(AppError::Crawl(format!("RFCOMM write failed: {err}")));
             }
             if n == 0 {
-                return Err(AppError::Crawl("RFCOMM connection closed during write".into()));
+                return Err(AppError::Crawl(
+                    "RFCOMM connection closed during write".into(),
+                ));
             }
             written += n as usize;
         }

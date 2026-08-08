@@ -1,7 +1,7 @@
 use scraper::{Html, Selector};
 use url::Url;
 
-use crate::crawler::parser::{SeoData, SemanticIssue};
+use crate::crawler::parser::{SemanticIssue, SeoData};
 
 use super::audit::{AuditContext, CheckResult};
 
@@ -31,15 +31,17 @@ impl PageExtras {
         let mut extras = PageExtras::default();
 
         // Doctype
-        extras.doctype = html.trim_start().to_ascii_lowercase().starts_with("<!doctype");
+        extras.doctype = html
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("<!doctype");
 
         // Charset / viewport
         extras.charset = has_selector(&document, "meta[charset]");
         extras.viewport = has_selector(&document, r#"meta[name="viewport"]"#);
 
         // Favicon
-        extras.favicon =
-            has_selector(&document, r#"link[rel~="icon"], link[rel="shortcut icon"]"#);
+        extras.favicon = has_selector(&document, r#"link[rel~="icon"], link[rel="shortcut icon"]"#);
 
         // Resource hints
         extras.preconnect_or_preload =
@@ -254,7 +256,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "error",
         title_present,
         3.0,
-        if title_present { "Page has a title" } else { "Page has no <title>" },
+        if title_present {
+            "Page has a title"
+        } else {
+            "Page has no <title>"
+        },
         "Add a unique, descriptive <title> tag to every page.",
         None,
     ));
@@ -270,14 +276,22 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
     ));
 
     let desc_present = seo.meta_description.is_some();
-    let desc_len = seo.meta_description.as_deref().map(|d| d.chars().count()).unwrap_or(0);
+    let desc_len = seo
+        .meta_description
+        .as_deref()
+        .map(|d| d.chars().count())
+        .unwrap_or(0);
     out.push(check(
         "meta_description_present",
         "meta",
         "warning",
         desc_present,
         2.0,
-        if desc_present { "Page has a meta description" } else { "Page has no meta description" },
+        if desc_present {
+            "Page has a meta description"
+        } else {
+            "Page has no meta description"
+        },
         "Write a unique 50-160 character meta description for each page.",
         None,
     ));
@@ -299,7 +313,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         h1_present,
         2.0,
-        if h1_present { "Page has one H1" } else { "Page has no <h1>" },
+        if h1_present {
+            "Page has one H1"
+        } else {
+            "Page has no <h1>"
+        },
         "Add exactly one <h1> summarizing the page's main topic.",
         None,
     ));
@@ -366,9 +384,10 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         Some(format!("{top_keyword_density:.1}%")),
     ));
 
-    let origin = Url::parse(&ctx.url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| (u.scheme().to_string(), h.to_string())));
+    let origin = Url::parse(&ctx.url).ok().and_then(|u| {
+        u.host_str()
+            .map(|h| (u.scheme().to_string(), h.to_string()))
+    });
     let mut has_internal = false;
     let mut has_outbound = false;
     for link in &seo.outgoing_links {
@@ -377,7 +396,9 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         }
         if let Ok(parsed) = Url::parse(&link.url) {
             let same = match &origin {
-                Some((scheme, host)) => parsed.scheme() == scheme && parsed.host_str() == Some(host),
+                Some((scheme, host)) => {
+                    parsed.scheme() == scheme && parsed.host_str() == Some(host)
+                }
                 None => false,
             };
             if same {
@@ -416,7 +437,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         https,
         2.0,
-        if https { "Served over HTTPS" } else { "Not served over HTTPS" },
+        if https {
+            "Served over HTTPS"
+        } else {
+            "Not served over HTTPS"
+        },
         "Serve the site over HTTPS with a valid certificate.",
         None,
     ));
@@ -436,7 +461,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         extras.viewport,
         2.0,
-        if extras.viewport { "Viewport meta tag present" } else { "No viewport meta tag" },
+        if extras.viewport {
+            "Viewport meta tag present"
+        } else {
+            "No viewport meta tag"
+        },
         "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">.",
         None,
     ));
@@ -446,7 +475,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         extras.favicon,
         1.0,
-        if extras.favicon { "Favicon present" } else { "No favicon declared" },
+        if extras.favicon {
+            "Favicon present"
+        } else {
+            "No favicon declared"
+        },
         "Add a favicon via <link rel=\"icon\">.",
         None,
     ));
@@ -456,7 +489,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         extras.charset,
         1.0,
-        if extras.charset { "Charset declared" } else { "No charset declared" },
+        if extras.charset {
+            "Charset declared"
+        } else {
+            "No charset declared"
+        },
         "Declare <meta charset=\"utf-8\"> in the <head>.",
         None,
     ));
@@ -466,7 +503,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         extras.doctype,
         1.0,
-        if extras.doctype { "HTML5 doctype present" } else { "Missing HTML5 doctype" },
+        if extras.doctype {
+            "HTML5 doctype present"
+        } else {
+            "Missing HTML5 doctype"
+        },
         "Start the document with <!DOCTYPE html>.",
         None,
     ));
@@ -476,7 +517,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         seo.canonical.is_some(),
         2.0,
-        if seo.canonical.is_some() { "Canonical tag present" } else { "No canonical tag" },
+        if seo.canonical.is_some() {
+            "Canonical tag present"
+        } else {
+            "No canonical tag"
+        },
         "Add <link rel=\"canonical\"> pointing to the page's preferred URL.",
         None,
     ));
@@ -491,7 +536,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         !noindex,
         2.0,
-        if noindex { "Page is marked noindex" } else { "Page is indexable" },
+        if noindex {
+            "Page is marked noindex"
+        } else {
+            "Page is indexable"
+        },
         "Remove the noindex directive if this page should appear in search results.",
         None,
     ));
@@ -501,7 +550,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         seo.html_lang.is_some(),
         2.0,
-        if seo.html_lang.is_some() { "HTML lang attribute present" } else { "Missing HTML lang attribute" },
+        if seo.html_lang.is_some() {
+            "HTML lang attribute present"
+        } else {
+            "Missing HTML lang attribute"
+        },
         "Set the lang attribute on <html> (e.g. lang=\"en\").",
         None,
     ));
@@ -535,7 +588,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         og.og_title.is_some(),
         2.0,
-        if og.og_title.is_some() { "og:title present" } else { "Missing og:title" },
+        if og.og_title.is_some() {
+            "og:title present"
+        } else {
+            "Missing og:title"
+        },
         "Add <meta property=\"og:title\"> matching the page title.",
         None,
     ));
@@ -545,7 +602,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         og.og_description.is_some(),
         2.0,
-        if og.og_description.is_some() { "og:description present" } else { "Missing og:description" },
+        if og.og_description.is_some() {
+            "og:description present"
+        } else {
+            "Missing og:description"
+        },
         "Add a concise <meta property=\"og:description\">.",
         None,
     ));
@@ -555,7 +616,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         og.og_image.is_some(),
         2.0,
-        if og.og_image.is_some() { "og:image present" } else { "Missing og:image" },
+        if og.og_image.is_some() {
+            "og:image present"
+        } else {
+            "Missing og:image"
+        },
         "Add an <meta property=\"og:image\"> (1200×630 recommended).",
         None,
     ));
@@ -565,7 +630,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.og_image_alt.is_some(),
         1.0,
-        if og.og_image_alt.is_some() { "og:image:alt present" } else { "Missing og:image:alt" },
+        if og.og_image_alt.is_some() {
+            "og:image:alt present"
+        } else {
+            "Missing og:image:alt"
+        },
         "Describe the Open Graph image with og:image:alt.",
         None,
     ));
@@ -575,7 +644,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.og_url.is_some(),
         1.0,
-        if og.og_url.is_some() { "og:url present" } else { "Missing og:url" },
+        if og.og_url.is_some() {
+            "og:url present"
+        } else {
+            "Missing og:url"
+        },
         "Add og:url pointing to the canonical page URL.",
         None,
     ));
@@ -585,7 +658,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.og_type.is_some(),
         1.0,
-        if og.og_type.is_some() { "og:type present" } else { "Missing og:type" },
+        if og.og_type.is_some() {
+            "og:type present"
+        } else {
+            "Missing og:type"
+        },
         "Add <meta property=\"og:type\"> (e.g. website or article).",
         None,
     ));
@@ -595,7 +672,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.og_site_name.is_some(),
         1.0,
-        if og.og_site_name.is_some() { "og:site_name present" } else { "Missing og:site_name" },
+        if og.og_site_name.is_some() {
+            "og:site_name present"
+        } else {
+            "Missing og:site_name"
+        },
         "Add <meta property=\"og:site_name\"> with your brand name.",
         None,
     ));
@@ -605,7 +686,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         og.twitter_card.is_some(),
         2.0,
-        if og.twitter_card.is_some() { "twitter:card present" } else { "Missing twitter:card" },
+        if og.twitter_card.is_some() {
+            "twitter:card present"
+        } else {
+            "Missing twitter:card"
+        },
         "Add <meta name=\"twitter:card\" content=\"summary_large_image\">.",
         None,
     ));
@@ -615,7 +700,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.twitter_title.is_some(),
         1.0,
-        if og.twitter_title.is_some() { "twitter:title present" } else { "Missing twitter:title" },
+        if og.twitter_title.is_some() {
+            "twitter:title present"
+        } else {
+            "Missing twitter:title"
+        },
         "Add a twitter:title meta tag.",
         None,
     ));
@@ -625,7 +714,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.twitter_description.is_some(),
         1.0,
-        if og.twitter_description.is_some() { "twitter:description present" } else { "Missing twitter:description" },
+        if og.twitter_description.is_some() {
+            "twitter:description present"
+        } else {
+            "Missing twitter:description"
+        },
         "Add a twitter:description meta tag.",
         None,
     ));
@@ -635,7 +728,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         og.twitter_image.is_some(),
         1.0,
-        if og.twitter_image.is_some() { "twitter:image present" } else { "Missing twitter:image" },
+        if og.twitter_image.is_some() {
+            "twitter:image present"
+        } else {
+            "Missing twitter:image"
+        },
         "Add a twitter:image meta tag.",
         None,
     ));
@@ -657,9 +754,15 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "warning",
         extras.img_total == 0 || extras.img_with_dimensions == extras.img_total,
         2.0,
-        format!("Images with explicit dimensions: {}/{}", extras.img_with_dimensions, extras.img_total),
+        format!(
+            "Images with explicit dimensions: {}/{}",
+            extras.img_with_dimensions, extras.img_total
+        ),
         "Specify width/height on images to avoid layout shift.",
-        Some(format!("{}/{}", extras.img_with_dimensions, extras.img_total)),
+        Some(format!(
+            "{}/{}",
+            extras.img_with_dimensions, extras.img_total
+        )),
     ));
     out.push(check(
         "form_labels",
@@ -856,8 +959,15 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Structure the content into short paragraphs and subheadings.",
         Some(extras.p_count.to_string()),
     ));
-    let semantic_html =
-        !has_issue(seo, &["missing_main", "missing_header", "missing_footer", "missing_nav"]);
+    let semantic_html = !has_issue(
+        seo,
+        &[
+            "missing_main",
+            "missing_header",
+            "missing_footer",
+            "missing_nav",
+        ],
+    );
     out.push(check(
         "semantic_html",
         "ai_readability",
@@ -886,7 +996,11 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         extras.has_json_ld,
         1.0,
-        if extras.has_json_ld { "JSON-LD structured data present" } else { "No JSON-LD structured data" },
+        if extras.has_json_ld {
+            "JSON-LD structured data present"
+        } else {
+            "No JSON-LD structured data"
+        },
         "Add JSON-LD structured data describing the page's content.",
         None,
     ));
@@ -952,7 +1066,10 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "info",
         extras.question_headings > 0,
         1.0,
-        format!("Question-style headings: {} (≥ 1 recommended)", extras.question_headings),
+        format!(
+            "Question-style headings: {} (≥ 1 recommended)",
+            extras.question_headings
+        ),
         "Use headings phrased as questions users actually ask (e.g. 'How does…').",
         Some(extras.question_headings.to_string()),
     ));
@@ -989,7 +1106,15 @@ const SEMANTIC_CHECK_MAP: &[(&str, &[&str])] = &[
     ("header_landmark", &["missing_header"]),
     ("footer_landmark", &["missing_footer"]),
     ("nav_landmark", &["missing_nav"]),
-    ("semantic_html", &["missing_main", "missing_header", "missing_footer", "missing_nav"]),
+    (
+        "semantic_html",
+        &[
+            "missing_main",
+            "missing_header",
+            "missing_footer",
+            "missing_nav",
+        ],
+    ),
 ];
 
 /// Attach up to 5 concrete offending elements to failed checks so the UI can

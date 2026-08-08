@@ -59,7 +59,10 @@ pub async fn run_seo_audit(
         repo.get_latest_session_config(&project_id_cfg)
     })
     .await?;
-    let cookies = config.as_ref().map(|c| c.cookies.clone()).unwrap_or_default();
+    let cookies = config
+        .as_ref()
+        .map(|c| c.cookies.clone())
+        .unwrap_or_default();
     let site_auth = config.and_then(|c| c.site_auth);
 
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
@@ -120,7 +123,10 @@ pub async fn suggest_fix(
 ) -> Result<FixSuggestion, AppError> {
     let settings = with_repo(&state, |repo| repo.get_all_settings()).await?;
 
-    let enabled = settings.get("ai_enabled").map(|v| v == "true").unwrap_or(false);
+    let enabled = settings
+        .get("ai_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(false);
     if !enabled {
         return Err(AppError::Crawl(
             "AI suggestions are not enabled. Turn them on in Settings → AI Assistant.".to_string(),
@@ -211,7 +217,11 @@ fn extract_code_block(text: &str) -> Option<String> {
     let rest = &text[content_start..];
     let end = rest.find("```")?;
     let block = rest[..end].trim().to_string();
-    if block.is_empty() { None } else { Some(block) }
+    if block.is_empty() {
+        None
+    } else {
+        Some(block)
+    }
 }
 
 /// Project-wide SEO overview aggregated from stored audits.
@@ -261,7 +271,10 @@ pub async fn stop_seo_audit(
         drop(audits);
         drop(state_write);
         audit.cancellation.cancel();
-        info!("SEO audit cancellation signal sent for project: {}", project_id);
+        info!(
+            "SEO audit cancellation signal sent for project: {}",
+            project_id
+        );
         let _ = app.emit(
             "seo-audit-complete",
             serde_json::json!({ "project_id": &project_id, "cancelled": true }),
@@ -303,18 +316,14 @@ pub async fn run_seo_audit_all(
         repo.get_latest_session_config(&project_id_cfg)
     })
     .await?;
-    let cookies = config.as_ref().map(|c| c.cookies.clone()).unwrap_or_default();
+    let cookies = config
+        .as_ref()
+        .map(|c| c.cookies.clone())
+        .unwrap_or_default();
     let site_auth = config.and_then(|c| c.site_auth);
 
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher = HttpFetcher::new(
-        user_agent,
-        30000,
-        Vec::new(),
-        cookies,
-        site_auth,
-        None,
-    )?;
+    let fetcher = HttpFetcher::new(user_agent, 30000, Vec::new(), cookies, site_auth, None)?;
     let parser = SeoParser::new();
 
     let token = tokio_util::sync::CancellationToken::new();
@@ -374,8 +383,10 @@ pub async fn run_seo_audit_all(
             let json = serde_json::to_string(&audit).ok();
             let score = audit.score;
             let pid = page_id.clone();
-            with_repo(&state, move |repo| repo.update_seo_audit(&pid, score, json.as_deref()))
-                .await
+            with_repo(&state, move |repo| {
+                repo.update_seo_audit(&pid, score, json.as_deref())
+            })
+            .await
         }
         .await;
 
@@ -393,7 +404,11 @@ pub async fn run_seo_audit_all(
         audits.remove(&project_id);
     }
 
-    let percent = if total == 0 { 100.0 } else { (processed as f32 / total as f32) * 100.0 };
+    let percent = if total == 0 {
+        100.0
+    } else {
+        (processed as f32 / total as f32) * 100.0
+    };
     let final_progress = SeoAuditProgress {
         project_id: project_id.clone(),
         processed,

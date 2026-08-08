@@ -192,7 +192,12 @@ pub async fn import_package(
     let app_import = app.clone();
     let path = import_path.clone();
     let result = with_repo(&state, move |repo| {
-        package_import(repo, &app_import, Path::new(&path), ImportMode::parse(&mode))
+        package_import(
+            repo,
+            &app_import,
+            Path::new(&path),
+            ImportMode::parse(&mode),
+        )
     })
     .await;
 
@@ -210,11 +215,13 @@ fn share_package(app: &AppHandle, path: &str) -> Result<(), AppError> {
     let path = path.to_string();
 
     std::thread::spawn(move || {
-        let _ = app.share_file().share_file(tauri_plugin_share::ShareRequest {
-            path: Some(path),
-            mime: Some("application/octet-stream".to_string()),
-            group: None,
-        });
+        let _ = app
+            .share_file()
+            .share_file(tauri_plugin_share::ShareRequest {
+                path: Some(path),
+                mime: Some("application/octet-stream".to_string()),
+                group: None,
+            });
     });
     Ok(())
 }
@@ -262,9 +269,7 @@ pub async fn start_transfer_server(
 }
 
 #[tauri::command]
-pub async fn stop_transfer_server(
-    state: State<'_, Arc<RwLock<AppState>>>,
-) -> Result<(), AppError> {
+pub async fn stop_transfer_server(state: State<'_, Arc<RwLock<AppState>>>) -> Result<(), AppError> {
     let state_read = state.read().await;
     server::stop_transfer_server(&state_read)
 }
@@ -280,11 +285,7 @@ pub async fn get_active_transfer(
 /// Downloads a package from a transfer URL (typed or scanned from a QR code)
 /// into `dest`, reporting progress via the `transfer-progress` event.
 #[tauri::command]
-pub async fn download_transfer(
-    app: AppHandle,
-    url: String,
-    dest: String,
-) -> Result<(), AppError> {
+pub async fn download_transfer(app: AppHandle, url: String, dest: String) -> Result<(), AppError> {
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(10))
         .build()
@@ -399,15 +400,9 @@ pub async fn import_shared_intent(
                 let url_dl = url.clone();
                 let app_dl = app.clone();
                 let dest_dl = dest.clone();
-                download_transfer(app_dl, url_dl, dest_dl.to_string_lossy().into_owned())
-                    .await?;
-                let summary = import_package(
-                    app,
-                    state,
-                    dest.to_string_lossy().into_owned(),
-                    mode,
-                )
-                .await?;
+                download_transfer(app_dl, url_dl, dest_dl.to_string_lossy().into_owned()).await?;
+                let summary =
+                    import_package(app, state, dest.to_string_lossy().into_owned(), mode).await?;
                 let _ = std::fs::remove_file(&dest);
                 Ok(Some(summary))
             }
@@ -450,6 +445,9 @@ mod tests {
 
     #[test]
     fn returns_none_when_no_payload() {
-        assert_eq!(parse_intent_payload("#Intent;action=android.intent.action.VIEW;end"), None);
+        assert_eq!(
+            parse_intent_payload("#Intent;action=android.intent.action.VIEW;end"),
+            None
+        );
     }
 }

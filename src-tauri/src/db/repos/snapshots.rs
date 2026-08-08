@@ -20,14 +20,49 @@ struct SnapshotRow {
 impl SnapshotRow {
     fn diff(&self, other: &SnapshotRow) -> Vec<UrlFieldDiff> {
         let mut diffs = Vec::new();
-        push_diff(&mut diffs, "status_code", self.status_code.map(|v| v.to_string()), other.status_code.map(|v| v.to_string()));
+        push_diff(
+            &mut diffs,
+            "status_code",
+            self.status_code.map(|v| v.to_string()),
+            other.status_code.map(|v| v.to_string()),
+        );
         push_diff(&mut diffs, "title", self.title.clone(), other.title.clone());
-        push_diff(&mut diffs, "meta_description", self.meta_description.clone(), other.meta_description.clone());
-        push_diff(&mut diffs, "size_bytes", self.size_bytes.map(|v| v.to_string()), other.size_bytes.map(|v| v.to_string()));
-        push_diff(&mut diffs, "load_time_ms", self.load_time_ms.map(|v| v.to_string()), other.load_time_ms.map(|v| v.to_string()));
-        push_diff(&mut diffs, "is_indexable", self.is_indexable.map(|v| v.to_string()), other.is_indexable.map(|v| v.to_string()));
-        push_diff(&mut diffs, "readability_score", self.readability_score.map(|v| format!("{:.1}", v)), other.readability_score.map(|v| format!("{:.1}", v)));
-        push_diff(&mut diffs, "seo_score", self.seo_score.map(|v| format!("{:.1}", v)), other.seo_score.map(|v| format!("{:.1}", v)));
+        push_diff(
+            &mut diffs,
+            "meta_description",
+            self.meta_description.clone(),
+            other.meta_description.clone(),
+        );
+        push_diff(
+            &mut diffs,
+            "size_bytes",
+            self.size_bytes.map(|v| v.to_string()),
+            other.size_bytes.map(|v| v.to_string()),
+        );
+        push_diff(
+            &mut diffs,
+            "load_time_ms",
+            self.load_time_ms.map(|v| v.to_string()),
+            other.load_time_ms.map(|v| v.to_string()),
+        );
+        push_diff(
+            &mut diffs,
+            "is_indexable",
+            self.is_indexable.map(|v| v.to_string()),
+            other.is_indexable.map(|v| v.to_string()),
+        );
+        push_diff(
+            &mut diffs,
+            "readability_score",
+            self.readability_score.map(|v| format!("{:.1}", v)),
+            other.readability_score.map(|v| format!("{:.1}", v)),
+        );
+        push_diff(
+            &mut diffs,
+            "seo_score",
+            self.seo_score.map(|v| format!("{:.1}", v)),
+            other.seo_score.map(|v| format!("{:.1}", v)),
+        );
         diffs
     }
 }
@@ -178,7 +213,8 @@ impl<'a> CrawlRepo<'a> {
                  (snapshot_id, page_id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
-            for (page_id, url, status, title, desc, size, load, indexable, readability, seo) in rows {
+            for (page_id, url, status, title, desc, size, load, indexable, readability, seo) in rows
+            {
                 ins.execute(params![
                     snapshot_id,
                     page_id,

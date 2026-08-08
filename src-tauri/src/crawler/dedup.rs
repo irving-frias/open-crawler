@@ -46,10 +46,17 @@ impl Deduplicator {
         }
 
         // Sort query params
-        let mut pairs: Vec<(String, String)> = parsed.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let mut pairs: Vec<(String, String)> = parsed
+            .query_pairs()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         if !pairs.is_empty() {
             pairs.sort_by(|a, b| a.0.cmp(&b.0));
-            let sorted_query: String = pairs.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("&");
+            let sorted_query: String = pairs
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join("&");
             parsed.set_query(Some(&sorted_query));
         }
 

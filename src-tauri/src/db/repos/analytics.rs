@@ -18,9 +18,11 @@ impl<'a> CrawlRepo<'a> {
         url: Option<&str>,
         limit: u32,
     ) -> Result<Vec<SiteTreeNode>, AppError> {
-        let (sql, row_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
-            if let Some(from_url) = url {
-                let sql = "SELECT pl.to_url, cp.title, cp.status_code, cp.depth,
+        let (sql, row_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(
+            from_url,
+        ) = url
+        {
+            let sql = "SELECT pl.to_url, cp.title, cp.status_code, cp.depth,
                             EXISTS (
                                 SELECT 1 FROM page_links pl2
                                 WHERE pl2.from_url = pl.to_url
@@ -37,17 +39,17 @@ impl<'a> CrawlRepo<'a> {
                      GROUP BY pl.to_url
                      ORDER BY cp.crawl_timestamp DESC
                      LIMIT ?5"
-                    .to_string();
-                let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-                    Box::new(project_id.to_string()),
-                    Box::new(project_id.to_string()),
-                    Box::new(project_id.to_string()),
-                    Box::new(from_url.to_string()),
-                    Box::new(limit as i32),
-                ];
-                (sql, params)
-            } else {
-                let sql = "SELECT url, title, status_code, depth,
+                .to_string();
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                Box::new(project_id.to_string()),
+                Box::new(project_id.to_string()),
+                Box::new(project_id.to_string()),
+                Box::new(from_url.to_string()),
+                Box::new(limit as i32),
+            ];
+            (sql, params)
+        } else {
+            let sql = "SELECT url, title, status_code, depth,
                             EXISTS (
                                 SELECT 1 FROM page_links pl2
                                 WHERE pl2.from_url = crawled_pages.url
@@ -64,13 +66,13 @@ impl<'a> CrawlRepo<'a> {
                      ORDER BY crawl_timestamp DESC
                      LIMIT ?3"
                     .to_string();
-                let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-                    Box::new(project_id.to_string()),
-                    Box::new(project_id.to_string()),
-                    Box::new(limit as i32),
-                ];
-                (sql, params)
-            };
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                Box::new(project_id.to_string()),
+                Box::new(project_id.to_string()),
+                Box::new(limit as i32),
+            ];
+            (sql, params)
+        };
 
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt
@@ -164,9 +166,7 @@ impl<'a> CrawlRepo<'a> {
                AND to_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)",
         )?;
         let links: Vec<(String, String)> = link_stmt
-            .query_map(params![project_id], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?
+            .query_map(params![project_id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut children_map: std::collections::HashMap<String, Vec<String>> =
@@ -269,18 +269,14 @@ impl<'a> CrawlRepo<'a> {
                 .query_row(sql, params![project_id], |r| r.get(0))?)
         };
 
-        let total_pages = count(
-            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1",
-        )?;
-        let indexed_pages = count(
-            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND is_indexable = 1",
-        )?;
+        let total_pages = count("SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1")?;
+        let indexed_pages =
+            count("SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND is_indexable = 1")?;
         let broken_pages = count(
             "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND status_code >= 400 AND blocked = 0",
         )?;
-        let blocked_pages = count(
-            "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND blocked = 1",
-        )?;
+        let blocked_pages =
+            count("SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND blocked = 1")?;
         let duplicate_count = count(
             "SELECT COUNT(*) FROM crawled_pages WHERE project_id = ?1 AND duplicate_group_id IS NOT NULL",
         )?;
@@ -360,12 +356,10 @@ impl<'a> CrawlRepo<'a> {
             params![project_id],
         )?;
 
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT url, content_hash FROM crawled_pages
+        let mut stmt = self.conn.prepare(
+            "SELECT url, content_hash FROM crawled_pages
                  WHERE project_id = ?1 AND content_hash IS NOT NULL",
-            )?;
+        )?;
         let rows: Vec<(String, Option<String>)> = stmt
             .query_map(params![project_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
@@ -411,7 +405,8 @@ impl<'a> CrawlRepo<'a> {
         }
 
         let mut group_map: std::collections::HashMap<usize, i64> = std::collections::HashMap::new();
-        let mut member_counts: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+        let mut member_counts: std::collections::HashMap<usize, u32> =
+            std::collections::HashMap::new();
         for i in 0..n {
             let root = find(&mut parent, i);
             *member_counts.entry(root).or_insert(0) += 1;
@@ -484,17 +479,17 @@ impl<'a> CrawlRepo<'a> {
     }
 
     /// Aggregates per-page keyword frequency lists into project-wide totals.
-    pub fn get_keywords(&self, project_id: &str, limit: u32) -> Result<Vec<KeywordAggregate>, AppError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT keywords_json FROM crawled_pages
+    pub fn get_keywords(
+        &self,
+        project_id: &str,
+        limit: u32,
+    ) -> Result<Vec<KeywordAggregate>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT keywords_json FROM crawled_pages
                  WHERE project_id = ?1 AND keywords_json IS NOT NULL",
-            )?;
+        )?;
         let rows = stmt
-            .query_map(params![project_id], |row| {
-                row.get::<_, String>(0)
-            })?
+            .query_map(params![project_id], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut totals: std::collections::HashMap<String, (u64, u32)> =
@@ -507,10 +502,7 @@ impl<'a> CrawlRepo<'a> {
                 let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) else {
                     continue;
                 };
-                let count = item
-                    .get("count")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let count = item.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
                 let entry = totals.entry(keyword.to_string()).or_insert((0, 0));
                 entry.0 += count;
                 entry.1 += 1;

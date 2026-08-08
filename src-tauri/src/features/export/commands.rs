@@ -131,7 +131,11 @@ pub async fn export_full(
 /// Copies a file into an Android `content://` URI (SAF) by resolving the URI to
 /// a writable file descriptor through the fs plugin's mobile bridge.
 #[cfg(target_os = "android")]
-pub(crate) fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_to_content_uri(
+    app: &AppHandle,
+    uri: &str,
+    src: &std::path::Path,
+) -> Result<(), AppError> {
     use std::io::Write;
 
     use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
@@ -149,14 +153,22 @@ pub(crate) fn copy_to_content_uri(app: &AppHandle, uri: &str, src: &std::path::P
 }
 
 #[cfg(not(target_os = "android"))]
-pub(crate) fn copy_to_content_uri(_app: &AppHandle, _uri: &str, _src: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_to_content_uri(
+    _app: &AppHandle,
+    _uri: &str,
+    _src: &std::path::Path,
+) -> Result<(), AppError> {
     Ok(())
 }
 
 /// Copies a file from an Android `content://` URI (SAF picker result) into the
 /// app data dir so it can be read with plain `std::fs`.
 #[cfg(target_os = "android")]
-pub(crate) fn copy_from_content_uri(app: &AppHandle, uri: &str, dst: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_from_content_uri(
+    app: &AppHandle,
+    uri: &str,
+    dst: &std::path::Path,
+) -> Result<(), AppError> {
     use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
 
     if let Some(parent) = dst.parent() {
@@ -174,7 +186,11 @@ pub(crate) fn copy_from_content_uri(app: &AppHandle, uri: &str, dst: &std::path:
 }
 
 #[cfg(not(target_os = "android"))]
-pub(crate) fn copy_from_content_uri(_app: &AppHandle, _uri: &str, _dst: &std::path::Path) -> Result<(), AppError> {
+pub(crate) fn copy_from_content_uri(
+    _app: &AppHandle,
+    _uri: &str,
+    _dst: &std::path::Path,
+) -> Result<(), AppError> {
     Err(AppError::Crawl("content URI import not supported".into()))
 }
 
@@ -237,11 +253,13 @@ fn share_export(app: &AppHandle, path: &str, format: &str) {
     // The Android share plugin never resolves its invoke after launching the
     // share sheet, so run it on a detached thread to avoid blocking.
     std::thread::spawn(move || {
-        let _ = app.share_file().share_file(tauri_plugin_share::ShareRequest {
-            path: Some(path),
-            mime: Some(mime),
-            group: None,
-        });
+        let _ = app
+            .share_file()
+            .share_file(tauri_plugin_share::ShareRequest {
+                path: Some(path),
+                mime: Some(mime),
+                group: None,
+            });
     });
 }
 
@@ -290,7 +308,13 @@ fn export_csv_single(
         for item in &batch {
             let indexable = item
                 .is_indexable
-                .map(|i| if i { "Yes".to_string() } else { "No".to_string() })
+                .map(|i| {
+                    if i {
+                        "Yes".to_string()
+                    } else {
+                        "No".to_string()
+                    }
+                })
                 .unwrap_or_else(|| "Unknown".to_string());
             let issues_str = item
                 .semantic_issues_json
@@ -300,7 +324,9 @@ fn export_csv_single(
                         .map(|issues| {
                             let errors: Vec<&serde_json::Value> = issues
                                 .iter()
-                                .filter(|iss| iss.get("severity").and_then(|s| s.as_str()) == Some("error"))
+                                .filter(|iss| {
+                                    iss.get("severity").and_then(|s| s.as_str()) == Some("error")
+                                })
                                 .collect();
                             serde_json::to_string(&errors).unwrap_or_else(|_| "[]".to_string())
                         })
@@ -335,7 +361,13 @@ fn export_csv_single(
     Ok(())
 }
 
-fn xlsx_str(ws: &mut rust_xlsxwriter::Worksheet, row: u32, col: u16, val: &str, fmt: Option<&rust_xlsxwriter::Format>) -> Result<(), AppError> {
+fn xlsx_str(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    row: u32,
+    col: u16,
+    val: &str,
+    fmt: Option<&rust_xlsxwriter::Format>,
+) -> Result<(), AppError> {
     let res = match fmt {
         Some(f) => ws.write_string_with_format(row, col, val.to_string(), f),
         None => ws.write_string(row, col, val.to_string()),
@@ -344,7 +376,13 @@ fn xlsx_str(ws: &mut rust_xlsxwriter::Worksheet, row: u32, col: u16, val: &str, 
     Ok(())
 }
 
-fn xlsx_num(ws: &mut rust_xlsxwriter::Worksheet, row: u32, col: u16, val: f64, fmt: Option<&rust_xlsxwriter::Format>) -> Result<(), AppError> {
+fn xlsx_num(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    row: u32,
+    col: u16,
+    val: f64,
+    fmt: Option<&rust_xlsxwriter::Format>,
+) -> Result<(), AppError> {
     let res = match fmt {
         Some(f) => ws.write_number_with_format(row, col, val, f),
         None => ws.write_number(row, col, val),
@@ -367,16 +405,35 @@ fn sheet_count(rows: u32) -> usize {
     rows.div_ceil(MAX_ROWS_PER_SHEET) as usize
 }
 
-fn write_page_row(ws: &mut rust_xlsxwriter::Worksheet, row: u32, p: &crate::models::CrawlResult, alt: &rust_xlsxwriter::Format, wrap: &rust_xlsxwriter::Format) -> Result<(), AppError> {
-    let f = if row.is_multiple_of(2) { Some(alt) } else { None };
+fn write_page_row(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    row: u32,
+    p: &crate::models::CrawlResult,
+    alt: &rust_xlsxwriter::Format,
+    wrap: &rust_xlsxwriter::Format,
+) -> Result<(), AppError> {
+    let f = if row.is_multiple_of(2) {
+        Some(alt)
+    } else {
+        None
+    };
     xlsx_str(ws, row, 0, &p.url, f)?;
     xlsx_num(ws, row, 1, p.status_code.unwrap_or(0) as f64, f)?;
     xlsx_str(ws, row, 2, p.title.as_deref().unwrap_or(""), Some(wrap))?;
-    xlsx_str(ws, row, 3, p.meta_description.as_deref().unwrap_or(""), Some(wrap))?;
+    xlsx_str(
+        ws,
+        row,
+        3,
+        p.meta_description.as_deref().unwrap_or(""),
+        Some(wrap),
+    )?;
     xlsx_str(ws, row, 4, p.h1.as_deref().unwrap_or(""), f)?;
     xlsx_str(ws, row, 5, p.canonical.as_deref().unwrap_or(""), f)?;
     xlsx_str(ws, row, 6, p.html_lang.as_deref().unwrap_or(""), f)?;
-    let idx = p.is_indexable.map(|v| if v {"Yes"} else {"No"}).unwrap_or("Unknown");
+    let idx = p
+        .is_indexable
+        .map(|v| if v { "Yes" } else { "No" })
+        .unwrap_or("Unknown");
     xlsx_str(ws, row, 7, idx, f)?;
     xlsx_num(ws, row, 8, p.depth as f64, f)?;
     xlsx_str(ws, row, 9, p.parent_url.as_deref().unwrap_or(""), f)?;
@@ -397,7 +454,13 @@ fn write_issue_row(
     info_fmt: &rust_xlsxwriter::Format,
 ) -> Result<(), AppError> {
     xlsx_str(ws, row, 0, url, None)?;
-    xlsx_str(ws, row, 1, iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    xlsx_str(
+        ws,
+        row,
+        1,
+        iss.get("issue_type").and_then(|v| v.as_str()).unwrap_or(""),
+        None,
+    )?;
     let sev = iss.get("severity").and_then(|v| v.as_str()).unwrap_or("");
     let sev_fmt = match sev {
         "error" => Some(err_fmt),
@@ -406,27 +469,87 @@ fn write_issue_row(
         _ => None,
     };
     xlsx_str(ws, row, 2, sev, sev_fmt)?;
-    xlsx_str(ws, row, 3, iss.get("message").and_then(|v| v.as_str()).unwrap_or(""), Some(wrap))?;
-    xlsx_str(ws, row, 4, iss.get("element").and_then(|v| v.as_str()).unwrap_or(""), None)?;
-    xlsx_str(ws, row, 5, iss.get("css_selector").and_then(|v| v.as_str()).unwrap_or(""), None)?;
-    xlsx_str(ws, row, 6, iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""), None)?;
+    xlsx_str(
+        ws,
+        row,
+        3,
+        iss.get("message").and_then(|v| v.as_str()).unwrap_or(""),
+        Some(wrap),
+    )?;
+    xlsx_str(
+        ws,
+        row,
+        4,
+        iss.get("element").and_then(|v| v.as_str()).unwrap_or(""),
+        None,
+    )?;
+    xlsx_str(
+        ws,
+        row,
+        5,
+        iss.get("css_selector")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+        None,
+    )?;
+    xlsx_str(
+        ws,
+        row,
+        6,
+        iss.get("xpath").and_then(|v| v.as_str()).unwrap_or(""),
+        None,
+    )?;
     Ok(())
 }
 
-fn finalize_sheet(ws: &mut rust_xlsxwriter::Worksheet, data_rows: u32, num_cols: u16) -> Result<(), AppError> {
-    ws.set_column_width(0, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-    if num_cols > 2 { ws.set_column_width(2, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?; }
-    if num_cols > 3 { ws.set_column_width(3, 40.0).map_err(|e| AppError::Crawl(e.to_string()))?; }
-    if data_rows > 0 {
-        ws.autofilter(0, 0, data_rows, num_cols - 1).map_err(|e| AppError::Crawl(e.to_string()))?;
+fn finalize_sheet(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    data_rows: u32,
+    num_cols: u16,
+) -> Result<(), AppError> {
+    ws.set_column_width(0, 60.0)
+        .map_err(|e| AppError::Crawl(e.to_string()))?;
+    if num_cols > 2 {
+        ws.set_column_width(2, 40.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
     }
-    ws.set_freeze_panes(1, 0).map_err(|e| AppError::Crawl(e.to_string()))?;
+    if num_cols > 3 {
+        ws.set_column_width(3, 40.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+    }
+    if data_rows > 0 {
+        ws.autofilter(0, 0, data_rows, num_cols - 1)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+    }
+    ws.set_freeze_panes(1, 0)
+        .map_err(|e| AppError::Crawl(e.to_string()))?;
     Ok(())
 }
 
-const PAGE_HEADERS: [&str; 12] = ["URL","Status Code","Title","Meta Description","H1","Canonical","HTML Lang","Indexable","Depth","Parent URL","Size (bytes)","Load Time (ms)"];
-const ISSUE_HEADERS: [&str; 7] = ["URL","Issue Type","Severity","Message","Element","Selector","XPath"];
-const LINK_HEADERS: [&str; 5] = ["From URL","To URL","Link Type","Anchor Text","Follow"];
+const PAGE_HEADERS: [&str; 12] = [
+    "URL",
+    "Status Code",
+    "Title",
+    "Meta Description",
+    "H1",
+    "Canonical",
+    "HTML Lang",
+    "Indexable",
+    "Depth",
+    "Parent URL",
+    "Size (bytes)",
+    "Load Time (ms)",
+];
+const ISSUE_HEADERS: [&str; 7] = [
+    "URL",
+    "Issue Type",
+    "Severity",
+    "Message",
+    "Element",
+    "Selector",
+    "XPath",
+];
+const LINK_HEADERS: [&str; 5] = ["From URL", "To URL", "Link Type", "Anchor Text", "Follow"];
 
 fn export_xlsx(
     repo: &CrawlRepo,
@@ -447,9 +570,15 @@ fn export_xlsx(
         .set_align(FormatAlign::Center);
     let alt = Format::new().set_background_color(0xF8F9FA);
     let wrap = Format::new().set_text_wrap();
-    let err_fmt = Format::new().set_background_color(0xFFE0E0).set_font_color(0x721C24);
-    let warn_fmt = Format::new().set_background_color(0xFFF3CD).set_font_color(0x856404);
-    let info_fmt = Format::new().set_background_color(0xD1ECF1).set_font_color(0x0C5460);
+    let err_fmt = Format::new()
+        .set_background_color(0xFFE0E0)
+        .set_font_color(0x721C24);
+    let warn_fmt = Format::new()
+        .set_background_color(0xFFF3CD)
+        .set_font_color(0x856404);
+    let info_fmt = Format::new()
+        .set_background_color(0xD1ECF1)
+        .set_font_color(0x0C5460);
 
     let total = total_pages as u64 + total_issues as u64 + total_links as u64;
     let mut processed: u64 = 0;
@@ -460,7 +589,8 @@ fn export_xlsx(
         let mut sheet_idx: usize = 0;
         let mut sheet_rows: u32 = 1;
         let mut ws = workbook.add_worksheet_with_constant_memory();
-        ws.set_name(sheet_name("Pages", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_name(sheet_name("Pages", 0, num_sheets))
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         for (col, h) in PAGE_HEADERS.iter().enumerate() {
             xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
         }
@@ -482,7 +612,8 @@ fn export_xlsx(
                     finalize_sheet(ws, MAX_ROWS_PER_SHEET, 12)?;
                     sheet_idx += 1;
                     ws = workbook.add_worksheet_with_constant_memory();
-                    ws.set_name(sheet_name("Pages", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    ws.set_name(sheet_name("Pages", sheet_idx, num_sheets))
+                        .map_err(|e| AppError::Crawl(e.to_string()))?;
                     for (col, h) in PAGE_HEADERS.iter().enumerate() {
                         xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
                     }
@@ -506,7 +637,8 @@ fn export_xlsx(
         let mut sheet_idx: usize = 0;
         let mut sheet_rows: u32 = 1;
         let mut ws = workbook.add_worksheet_with_constant_memory();
-        ws.set_name(sheet_name("Issues", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_name(sheet_name("Issues", 0, num_sheets))
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         for (col, h) in ISSUE_HEADERS.iter().enumerate() {
             xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
         }
@@ -533,18 +665,24 @@ fn export_xlsx(
                             }
                             if sheet_rows > MAX_ROWS_PER_SHEET {
                                 finalize_sheet(ws, MAX_ROWS_PER_SHEET, 7)?;
-                                ws.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-                                ws.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-                                ws.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_column_width(3, 50.0)
+                                    .map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_column_width(5, 50.0)
+                                    .map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_column_width(6, 50.0)
+                                    .map_err(|e| AppError::Crawl(e.to_string()))?;
                                 sheet_idx += 1;
                                 ws = workbook.add_worksheet_with_constant_memory();
-                                ws.set_name(sheet_name("Issues", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                                ws.set_name(sheet_name("Issues", sheet_idx, num_sheets))
+                                    .map_err(|e| AppError::Crawl(e.to_string()))?;
                                 for (col, h) in ISSUE_HEADERS.iter().enumerate() {
                                     xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
                                 }
                                 sheet_rows = 1;
                             }
-                            write_issue_row(ws, sheet_rows, &p.url, iss, &wrap, &err_fmt, &warn_fmt, &info_fmt)?;
+                            write_issue_row(
+                                ws, sheet_rows, &p.url, iss, &wrap, &err_fmt, &warn_fmt, &info_fmt,
+                            )?;
                             sheet_rows += 1;
                             issues_written += 1;
                         }
@@ -558,9 +696,12 @@ fn export_xlsx(
             last_id = Some(last.id.clone());
         }
         finalize_sheet(ws, sheet_rows.saturating_sub(1), 7)?;
-        ws.set_column_width(3, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-        ws.set_column_width(5, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
-        ws.set_column_width(6, 50.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(3, 50.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(5, 50.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(6, 50.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
     }
 
     // === Pass 3: Links sheets (streamed by rowid batch, split if > 1,048,575 links) ===
@@ -569,7 +710,8 @@ fn export_xlsx(
         let mut sheet_idx: usize = 0;
         let mut sheet_rows: u32 = 1;
         let mut ws = workbook.add_worksheet_with_constant_memory();
-        ws.set_name(sheet_name("Links", 0, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_name(sheet_name("Links", 0, num_sheets))
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         for (col, h) in LINK_HEADERS.iter().enumerate() {
             xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
         }
@@ -583,17 +725,23 @@ fn export_xlsx(
             for (_, lk) in &batch {
                 if sheet_rows > MAX_ROWS_PER_SHEET {
                     finalize_sheet(ws, MAX_ROWS_PER_SHEET, 5)?;
-                    ws.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    ws.set_column_width(1, 60.0)
+                        .map_err(|e| AppError::Crawl(e.to_string()))?;
                     sheet_idx += 1;
                     ws = workbook.add_worksheet_with_constant_memory();
-                    ws.set_name(sheet_name("Links", sheet_idx, num_sheets)).map_err(|e| AppError::Crawl(e.to_string()))?;
+                    ws.set_name(sheet_name("Links", sheet_idx, num_sheets))
+                        .map_err(|e| AppError::Crawl(e.to_string()))?;
                     for (col, h) in LINK_HEADERS.iter().enumerate() {
                         xlsx_str(ws, 0, col as u16, h, Some(&header_fmt))?;
                     }
                     sheet_rows = 1;
                 }
                 let r = sheet_rows;
-                let f = if r.is_multiple_of(2) { Some(&alt) } else { None };
+                let f = if r.is_multiple_of(2) {
+                    Some(&alt)
+                } else {
+                    None
+                };
                 xlsx_str(ws, r, 0, &lk.from_url, f)?;
                 xlsx_str(ws, r, 1, &lk.to_url, f)?;
                 xlsx_str(ws, r, 2, &lk.link_type, f)?;
@@ -606,9 +754,12 @@ fn export_xlsx(
             last_rowid = Some(batch.last().expect("batch is not empty").0);
         }
         finalize_sheet(ws, sheet_rows.saturating_sub(1), 5)?;
-        ws.set_column_width(1, 60.0).map_err(|e| AppError::Crawl(e.to_string()))?;
+        ws.set_column_width(1, 60.0)
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
     }
 
-    workbook.save(file_path).map_err(|e| AppError::Crawl(e.to_string()))?;
+    workbook
+        .save(file_path)
+        .map_err(|e| AppError::Crawl(e.to_string()))?;
     Ok(())
 }

@@ -110,10 +110,7 @@ impl<'a> CrawlRepo<'a> {
         )?;
 
         // 5b. Delete page_issues (no FK; keyed by project_id)
-        tx.execute(
-            "DELETE FROM page_issues WHERE project_id = ?1",
-            params![id],
-        )?;
+        tx.execute("DELETE FROM page_issues WHERE project_id = ?1", params![id])?;
 
         // 6. Delete crawl_snapshot_data (child of crawl_snapshots)
         tx.execute(

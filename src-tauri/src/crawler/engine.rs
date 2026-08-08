@@ -59,7 +59,12 @@ impl CrawlEngine {
 
     #[allow(dead_code)]
     fn is_same_origin(&self, url: &Url) -> bool {
-        if !self.config.as_ref().map(|c| c.same_origin_only).unwrap_or(true) {
+        if !self
+            .config
+            .as_ref()
+            .map(|c| c.same_origin_only)
+            .unwrap_or(true)
+        {
             return true;
         }
         let origin = format!("{}://{}", url.scheme(), url.host_str().unwrap_or(""));
@@ -72,14 +77,18 @@ impl CrawlEngine {
             return true;
         }
         if !config.include_patterns.is_empty() {
-            let matches_include = config.include_patterns.iter()
+            let matches_include = config
+                .include_patterns
+                .iter()
                 .any(|pattern| glob::Pattern::new(pattern).is_ok_and(|p| p.matches(url)));
             if !matches_include {
                 return false;
             }
         }
         if !config.exclude_patterns.is_empty() {
-            let matches_exclude = config.exclude_patterns.iter()
+            let matches_exclude = config
+                .exclude_patterns
+                .iter()
                 .any(|pattern| glob::Pattern::new(pattern).is_ok_and(|p| p.matches(url)));
             if matches_exclude {
                 return false;
@@ -163,7 +172,10 @@ impl CrawlEngine {
             if let Some(interrupted) = repo.get_interrupted_session(&project_id)? {
                 info!(
                     "Found interrupted session: {} (pages: {}, errors: {}, elapsed: {}s)",
-                    interrupted.id, interrupted.pages_crawled, interrupted.errors, interrupted.elapsed_secs
+                    interrupted.id,
+                    interrupted.pages_crawled,
+                    interrupted.errors,
+                    interrupted.elapsed_secs
                 );
                 session_id = interrupted.id.clone();
 
@@ -274,12 +286,7 @@ impl CrawlEngine {
 
         // Create DbWriter channel
         let (db_tx, db_rx) = create_db_writer_channel(1000);
-        let mut db_writer = DbWriter::new(
-            db_rx,
-            app.clone(),
-            state.clone(),
-            project_id.clone(),
-        );
+        let mut db_writer = DbWriter::new(db_rx, app.clone(), state.clone(), project_id.clone());
 
         // Spawn DbWriter task
         let db_writer_handle = tokio::spawn(async move {
@@ -287,13 +294,12 @@ impl CrawlEngine {
         });
 
         // Create RobotsChecker
-        let mut robots_checker =
-            RobotsChecker::new(
-                config.user_agent(),
-                config.cookies.clone(),
-                config.site_auth.clone(),
-                config.proxy.as_ref(),
-            )?;
+        let mut robots_checker = RobotsChecker::new(
+            config.user_agent(),
+            config.cookies.clone(),
+            config.site_auth.clone(),
+            config.proxy.as_ref(),
+        )?;
 
         info!("Frontier has {} URLs to process", {
             self.frontier.as_ref().map(|f| f.len()).unwrap_or(0)
@@ -306,8 +312,13 @@ impl CrawlEngine {
         // loop) and the visited set. Fetch tasks dedup + enqueue new URLs
         // directly against these (see fetch_and_parse) instead of funneling
         // every discovered URL through a single receiver task.
-        let frontier_for_recv = Arc::new(tokio::sync::RwLock::new(Frontier::new(config.max_depth, 100_000)));
-        let visited_for_recv = Arc::new(tokio::sync::RwLock::new(LruCache::new(NonZeroUsize::new(LRU_CAPACITY).unwrap())));
+        let frontier_for_recv = Arc::new(tokio::sync::RwLock::new(Frontier::new(
+            config.max_depth,
+            100_000,
+        )));
+        let visited_for_recv = Arc::new(tokio::sync::RwLock::new(LruCache::new(
+            NonZeroUsize::new(LRU_CAPACITY).unwrap(),
+        )));
         // Seed the discovery visited set with already-queued/visited URLs so that
         // links pointing back to seeds or sitemap URLs are not crawled twice.
         {
@@ -344,10 +355,7 @@ impl CrawlEngine {
             if config.max_crawl_time_secs > 0
                 && start_time.elapsed().as_secs() >= config.max_crawl_time_secs
             {
-                info!(
-                    "Reached time limit: {}s",
-                    config.max_crawl_time_secs
-                );
+                info!("Reached time limit: {}s", config.max_crawl_time_secs);
                 break;
             }
 
@@ -370,9 +378,7 @@ impl CrawlEngine {
                     };
 
                     // Robots.txt check
-                    if config.respect_robots
-                        && !robots_checker.can_fetch(&url).await
-                    {
+                    if config.respect_robots && !robots_checker.can_fetch(&url).await {
                         info!("Blocked by robots.txt: {}", url_str);
                         continue;
                     }
@@ -473,13 +479,15 @@ impl CrawlEngine {
                                 warn!("  -> FAILED to fetch {}: {}", url_clone, e);
 
                                 // Send error to DbWriter
-                                let _ = db_tx_error.send(CrawlResultMsg::Error {
-                                    url: url_clone.clone(),
-                                    config_id: config_id_clone.clone(),
-                                    project_id: project_id_clone.clone(),
-                                    error_type: "fetch_error".to_string(),
-                                    message: e.to_string(),
-                                }).await;
+                                let _ = db_tx_error
+                                    .send(CrawlResultMsg::Error {
+                                        url: url_clone.clone(),
+                                        config_id: config_id_clone.clone(),
+                                        project_id: project_id_clone.clone(),
+                                        error_type: "fetch_error".to_string(),
+                                        message: e.to_string(),
+                                    })
+                                    .await;
                             }
                         }
 
@@ -847,9 +855,13 @@ impl CrawlEngine {
                     let matches_include = if include_patterns.is_empty() {
                         true
                     } else {
-                        include_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)))
+                        include_patterns.iter().any(|p| {
+                            glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url))
+                        })
                     };
-                    let matches_exclude = exclude_patterns.iter().any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)));
+                    let matches_exclude = exclude_patterns
+                        .iter()
+                        .any(|p| glob::Pattern::new(p).is_ok_and(|pat| pat.matches(outgoing_url)));
                     if !matches_include || matches_exclude {
                         continue;
                     }
@@ -881,21 +893,22 @@ impl CrawlEngine {
 /// Returns true if the URL points to a static asset (not an HTML page)
 fn is_static_asset(url: &str) -> bool {
     // Strip query string and fragment for extension check
-    let path = url.split('?').next().unwrap_or(url).split('#').next().unwrap_or(url);
+    let path = url
+        .split('?')
+        .next()
+        .unwrap_or(url)
+        .split('#')
+        .next()
+        .unwrap_or(url);
 
     // If URL ends with a known non-HTML extension, skip it
     let path_lower = path.to_lowercase();
     let skip_extensions = [
-        ".css", ".js", ".mjs", ".cjs",
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".bmp", ".tiff",
-        ".woff", ".woff2", ".ttf", ".eot", ".otf",
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-        ".zip", ".gz", ".tar", ".rar", ".7z",
-        ".mp3", ".mp4", ".webm", ".ogg", ".wav", ".flac",
-        ".avi", ".mov", ".mkv", ".m4v",
-        ".xml", ".json", ".txt", ".csv",
-        ".apk", ".exe", ".dmg", ".deb", ".rpm",
-        ".mp3", ".aac", ".wma",
+        ".css", ".js", ".mjs", ".cjs", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg",
+        ".ico", ".bmp", ".tiff", ".woff", ".woff2", ".ttf", ".eot", ".otf", ".pdf", ".doc",
+        ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".gz", ".tar", ".rar", ".7z", ".mp3",
+        ".mp4", ".webm", ".ogg", ".wav", ".flac", ".avi", ".mov", ".mkv", ".m4v", ".xml", ".json",
+        ".txt", ".csv", ".apk", ".exe", ".dmg", ".deb", ".rpm", ".mp3", ".aac", ".wma",
     ];
 
     for ext in &skip_extensions {
@@ -990,10 +1003,10 @@ mod tests {
         let origin = spawn_no_sitemap_site().await;
         let seed = format!("{}/", origin);
 
-        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let fetcher =
+            HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
-        let visited =
-            Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
         let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
         // Engine builds allowed origins without the port (see CrawlEngine::start).
@@ -1043,12 +1056,12 @@ mod tests {
         let origin = spawn_no_sitemap_site().await;
         let seed = format!("{}/", origin);
 
-        let fetcher = HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let fetcher =
+            HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
         // Simulate the discovery visited set pre-seeded with the seed URL and a
         // sitemap URL (/a), exactly as CrawlEngine::start now does.
-        let visited =
-            Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
         visited
             .write()
             .await
@@ -1087,10 +1100,6 @@ mod tests {
 
         let discovered: Vec<(String, u32)> = frontier.read().await.drain_all();
         assert_eq!(discovered.len(), 1);
-        assert!(
-            discovered[0].0.ends_with("/b"),
-            "got {:?}",
-            discovered
-        );
+        assert!(discovered[0].0.ends_with("/b"), "got {:?}", discovered);
     }
 }

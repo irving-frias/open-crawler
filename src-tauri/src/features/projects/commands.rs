@@ -51,7 +51,10 @@ pub async fn rename_project(
     state: State<'_, Arc<RwLock<AppState>>>,
     request: RenameProjectRequest,
 ) -> Result<(), AppError> {
-    with_repo(&state, move |repo| repo.rename_project(&request.id, &request.name)).await?;
+    with_repo(&state, move |repo| {
+        repo.rename_project(&request.id, &request.name)
+    })
+    .await?;
     projects_changed(&app);
     Ok(())
 }

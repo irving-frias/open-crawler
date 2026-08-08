@@ -81,12 +81,7 @@ impl SitemapParser {
         result
     }
 
-    async fn parse_sitemap_recursive(
-        &self,
-        url: &str,
-        result: &mut SitemapResult,
-        depth: u32,
-    ) {
+    async fn parse_sitemap_recursive(&self, url: &str, result: &mut SitemapResult, depth: u32) {
         if depth > 5 {
             warn!("Sitemap recursion depth exceeded for: {}", url);
             return;

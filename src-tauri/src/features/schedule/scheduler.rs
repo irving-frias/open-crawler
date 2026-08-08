@@ -90,7 +90,9 @@ async fn run_due_jobs(app: &AppHandle, state: &Arc<RwLock<AppState>>) -> Result<
             }),
         );
 
-        if let Err(e) = start_crawl_internal(app.clone(), state.clone(), config, &job.project_id).await {
+        if let Err(e) =
+            start_crawl_internal(app.clone(), state.clone(), config, &job.project_id).await
+        {
             error!("Failed to run scheduled job {}: {}", job.id, e);
         }
     }

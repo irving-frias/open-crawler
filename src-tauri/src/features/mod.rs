@@ -29,7 +29,10 @@ use crate::AppState;
 /// queries / batched writes never stall the async runtime that also carries the
 /// crawl engine and IPC events. Callers pass `move` closures capturing owned
 /// values; the closure must be `Send + 'static`.
-pub(crate) async fn with_repo<T, F>(state: &State<'_, Arc<RwLock<AppState>>>, f: F) -> Result<T, AppError>
+pub(crate) async fn with_repo<T, F>(
+    state: &State<'_, Arc<RwLock<AppState>>>,
+    f: F,
+) -> Result<T, AppError>
 where
     F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,

@@ -37,9 +37,7 @@ pub(crate) fn apply_basic_auth(
     auth: &Option<crate::models::SiteAuth>,
 ) -> reqwest::RequestBuilder {
     match auth {
-        Some(a) if !a.username.is_empty() => {
-            request.basic_auth(&a.username, Some(&a.password))
-        }
+        Some(a) if !a.username.is_empty() => request.basic_auth(&a.username, Some(&a.password)),
         _ => request,
     }
 }

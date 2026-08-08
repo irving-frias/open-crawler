@@ -354,19 +354,31 @@ mod tests {
 </head></html>"#;
         let out = strip_sri_attrs(html);
         assert!(!out.contains("integrity"), "integrity not stripped: {out}");
-        assert!(!out.contains("crossorigin"), "crossorigin not stripped: {out}");
+        assert!(
+            !out.contains("crossorigin"),
+            "crossorigin not stripped: {out}"
+        );
         assert!(out.contains("href=\"/css/a.css\""), "href lost: {out}");
         assert!(out.contains("href=\"/css/b.css\""), "href lost: {out}");
         assert!(out.contains("src=\"/app.js\""), "script src lost: {out}");
-        assert!(out.contains("href=\"/favicon.ico\""), "other link lost: {out}");
+        assert!(
+            out.contains("href=\"/favicon.ico\""),
+            "other link lost: {out}"
+        );
     }
 
     #[test]
     fn strip_sri_preserves_other_attrs_and_text() {
         let html = r#"<p>integrity="keep this text"</p><link data-x="a>b" rel="stylesheet" href="/x.css" integrity="sha256-X">"#;
         let out = strip_sri_attrs(html);
-        assert!(!out.contains("integrity=\"sha256-X\""), "integrity attr not stripped: {out}");
+        assert!(
+            !out.contains("integrity=\"sha256-X\""),
+            "integrity attr not stripped: {out}"
+        );
         assert!(out.contains("data-x=\"a>b\""), "attr with > mangled: {out}");
-        assert!(out.contains("integrity=\"keep this text\""), "text content altered: {out}");
+        assert!(
+            out.contains("integrity=\"keep this text\""),
+            "text content altered: {out}"
+        );
     }
 }

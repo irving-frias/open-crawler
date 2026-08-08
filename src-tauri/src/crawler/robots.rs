@@ -207,11 +207,12 @@ impl RobotsChecker {
         }
 
         // Specific section overrides wildcard
-        let (disallow_paths, crawl_delay_ms) = if in_specific_section || !specific_disallow.is_empty() {
-            (specific_disallow, specific_delay)
-        } else {
-            (wildcard_disallow, wildcard_delay)
-        };
+        let (disallow_paths, crawl_delay_ms) =
+            if in_specific_section || !specific_disallow.is_empty() {
+                (specific_disallow, specific_delay)
+            } else {
+                (wildcard_disallow, wildcard_delay)
+            };
 
         info!(
             "Parsed robots.txt for {}: {} disallow rules, {}ms delay, {} sitemaps",

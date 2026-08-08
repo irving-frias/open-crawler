@@ -6,8 +6,8 @@ pub mod features;
 pub mod models;
 pub mod nesting_table;
 pub mod pagespeed;
-pub mod seo;
 pub mod secrets;
+pub mod seo;
 pub mod transfer;
 
 use std::collections::HashMap;
@@ -48,7 +48,9 @@ pub struct SeoAuditState {
     pub progress: crate::features::seo::commands::SeoAuditProgress,
 }
 
-type ResultsCacheArc = std::sync::Arc<std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>>;
+type ResultsCacheArc = std::sync::Arc<
+    std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>,
+>;
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
@@ -62,8 +64,7 @@ pub struct AppState {
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -154,7 +155,9 @@ pub fn run() {
                 db: Mutex::new(conn),
                 crawls: Arc::new(RwLock::new(HashMap::new())),
                 seo_audits: Arc::new(RwLock::new(HashMap::new())),
-                results_cache: Arc::new(Mutex::new(lru::LruCache::new(NonZeroUsize::new(512).unwrap()))),
+                results_cache: Arc::new(Mutex::new(lru::LruCache::new(
+                    NonZeroUsize::new(512).unwrap(),
+                ))),
                 transfer_server: std::sync::Mutex::new(None),
             };
 

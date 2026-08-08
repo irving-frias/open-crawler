@@ -69,7 +69,11 @@ mod macos {
 
         unsafe impl NSSharingServiceDelegate for SharePickerDelegate {
             #[unsafe(method(sharingService:didShareItems:))]
-            fn sharing_service_did_share_items(&self, _service: &NSSharingService, _items: &NSArray) {
+            fn sharing_service_did_share_items(
+                &self,
+                _service: &NSSharingService,
+                _items: &NSArray,
+            ) {
                 self.complete(Ok(()));
             }
 
@@ -89,7 +93,10 @@ mod macos {
     );
 
     impl SharePickerDelegate {
-        fn new(mtm: MainThreadMarker, completion: mpsc::Sender<Result<(), String>>) -> Retained<Self> {
+        fn new(
+            mtm: MainThreadMarker,
+            completion: mpsc::Sender<Result<(), String>>,
+        ) -> Retained<Self> {
             let ivars = ShareDelegateIvars {
                 completion: RefCell::new(Some(completion)),
             };
@@ -104,10 +111,7 @@ mod macos {
             let ptr = self as *const SharePickerDelegate;
             ACTIVE_DELEGATES.with(|delegates| {
                 let mut list = delegates.borrow_mut();
-                if let Some(pos) = list
-                    .iter()
-                    .position(|item| Retained::as_ptr(item) == ptr)
-                {
+                if let Some(pos) = list.iter().position(|item| Retained::as_ptr(item) == ptr) {
                     list.remove(pos);
                 }
             });
@@ -147,7 +151,8 @@ mod macos {
                         let mtm = MainThreadMarker::new()
                             .ok_or_else(|| "Main thread marker unavailable".to_string())?;
                         let delegate = SharePickerDelegate::new(mtm, completion_tx);
-                        ACTIVE_DELEGATES.with(|delegates| delegates.borrow_mut().push(delegate.retain()));
+                        ACTIVE_DELEGATES
+                            .with(|delegates| delegates.borrow_mut().push(delegate.retain()));
                         picker.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
 
                         let bounds = ns_view.bounds();
@@ -185,7 +190,9 @@ mod macos {
 
     /// Retrieves the native `NSView` of the Tauri window, compatible with
     /// `raw-window-handle`.
-    fn get_ns_view<R: tauri::Runtime>(window: &WebviewWindow<R>) -> Result<Retained<NSView>, String> {
+    fn get_ns_view<R: tauri::Runtime>(
+        window: &WebviewWindow<R>,
+    ) -> Result<Retained<NSView>, String> {
         let window_handle: WindowHandle<'_> = window.window_handle().map_err(|e| e.to_string())?;
         if let RawWindowHandle::AppKit(handle) = window_handle.as_raw() {
             let ns_view_ptr = handle.ns_view.as_ptr();

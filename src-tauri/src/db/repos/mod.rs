@@ -32,11 +32,19 @@ pub(crate) fn decompress_gzip(data: &[u8]) -> Vec<u8> {
 }
 
 pub(crate) fn compress_html_body(html: &Option<String>) -> Option<String> {
-    html.as_ref().map(|s| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, compress_gzip(s.as_bytes())))
+    html.as_ref().map(|s| {
+        base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            compress_gzip(s.as_bytes()),
+        )
+    })
 }
 
 pub(crate) fn decompress_html_body(encoded: &Option<String>) -> Option<String> {
-    encoded.as_ref().and_then(|e| base64::Engine::decode(&base64::engine::general_purpose::STANDARD, e).ok()).and_then(|bytes| String::from_utf8(decompress_gzip(&bytes)).ok())
+    encoded
+        .as_ref()
+        .and_then(|e| base64::Engine::decode(&base64::engine::general_purpose::STANDARD, e).ok())
+        .and_then(|bytes| String::from_utf8(decompress_gzip(&bytes)).ok())
 }
 
 pub(crate) fn compress_png(png: &Option<Vec<u8>>) -> Option<Vec<u8>> {
@@ -68,7 +76,10 @@ pub struct CrawlSessionInfo {
 
 impl<'a> CrawlRepo<'a> {
     pub fn new(conn: &'a Connection, results_cache: Option<ResultsCacheArc>) -> Self {
-        Self { conn, results_cache }
+        Self {
+            conn,
+            results_cache,
+        }
     }
 
     /// Exposes the raw SQLite connection for low-level operations (e.g. the
@@ -80,7 +91,11 @@ impl<'a> CrawlRepo<'a> {
     pub(crate) fn invalidate_cache_for_project(&self, project_id: &str) {
         if let Some(ref cache_arc) = self.results_cache {
             let mut cache = cache_arc.lock().unwrap();
-            let keys_to_remove: Vec<ResultsCacheKey> = cache.iter().filter(|(k, _)| k.project_id == project_id).map(|(k, _)| k.clone()).collect();
+            let keys_to_remove: Vec<ResultsCacheKey> = cache
+                .iter()
+                .filter(|(k, _)| k.project_id == project_id)
+                .map(|(k, _)| k.clone())
+                .collect();
             for key in keys_to_remove {
                 cache.pop(&key);
             }
@@ -140,9 +155,17 @@ mod tests {
         }
     }
 
-    fn filter(repo: &CrawlRepo, missing: bool, dup: bool, noindex: bool, is404: bool) -> Vec<String> {
+    fn filter(
+        repo: &CrawlRepo,
+        missing: bool,
+        dup: bool,
+        noindex: bool,
+        is404: bool,
+    ) -> Vec<String> {
         let (items, _) = repo
-            .get_results("p1", 1, 100, None, None, None, None, None, None, missing, dup, noindex, is404)
+            .get_results(
+                "p1", 1, 100, None, None, None, None, None, None, missing, dup, noindex, is404,
+            )
             .unwrap();
         items.into_iter().map(|r| r.url).collect()
     }
@@ -237,7 +260,21 @@ mod tests {
 
         // status IN (200, 301) OR missing title -> all three pages match.
         let (items, total) = repo
-            .get_results("p1", 1, 100, None, None, Some(&[200, 301]), None, None, None, true, false, false, false)
+            .get_results(
+                "p1",
+                1,
+                100,
+                None,
+                None,
+                Some(&[200, 301]),
+                None,
+                None,
+                None,
+                true,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(total, 3);
         let urls: Vec<String> = items.into_iter().map(|r| r.url).collect();
@@ -260,7 +297,21 @@ mod tests {
 
         // A page outside the project must not leak in via the OR union.
         let (_, total) = repo
-            .get_results("p1", 1, 100, None, None, Some(&[200]), None, None, None, false, false, false, false)
+            .get_results(
+                "p1",
+                1,
+                100,
+                None,
+                None,
+                Some(&[200]),
+                None,
+                None,
+                None,
+                false,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(total, 0);
     }
@@ -319,7 +370,9 @@ mod tests {
         ])
         .unwrap();
 
-        let children = repo.get_site_tree("p1", Some("https://x.com/a"), 100).unwrap();
+        let children = repo
+            .get_site_tree("p1", Some("https://x.com/a"), 100)
+            .unwrap();
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].url, "https://x.com/b");
         assert!(!children[0].has_children);
@@ -405,13 +458,41 @@ mod tests {
         assert_eq!(count, 2, "each issue occurrence becomes a page_issues row");
 
         let (items, _) = repo
-            .get_results("p1", 1, 100, None, None, None, Some(&["warning".to_string()]), None, None, false, false, false, false)
+            .get_results(
+                "p1",
+                1,
+                100,
+                None,
+                None,
+                None,
+                Some(&["warning".to_string()]),
+                None,
+                None,
+                false,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].url, "https://x.com/a");
 
         let (items, _) = repo
-            .get_results("p1", 1, 100, Some("img_no_alt"), None, None, None, None, None, false, false, false, false)
+            .get_results(
+                "p1",
+                1,
+                100,
+                Some("img_no_alt"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                false,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(items.len(), 1);
 
@@ -419,7 +500,21 @@ mod tests {
         repo.save_results_batch(&[page("b", "https://x.com/b", Some("B"), 200, true)])
             .unwrap();
         let (items, _) = repo
-            .get_results("p1", 1, 100, Some("img_no_alt"), None, None, None, None, None, false, false, false, false)
+            .get_results(
+                "p1",
+                1,
+                100,
+                Some("img_no_alt"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                false,
+                false,
+                false,
+                false,
+            )
             .unwrap();
         assert_eq!(items.len(), 1);
 
@@ -452,7 +547,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 0, "stale page_issues for the replaced row must be removed");
+        assert_eq!(
+            count, 0,
+            "stale page_issues for the replaced row must be removed"
+        );
 
         let count: i64 = repo
             .conn
@@ -487,7 +585,9 @@ mod tests {
         assert_eq!(count, 1, "re-crawl must not accumulate duplicate URL rows");
 
         let (results, _) = repo
-            .get_results("p1", 1, 100, None, None, None, None, None, None, false, false, false, false)
+            .get_results(
+                "p1", 1, 100, None, None, None, None, None, None, false, false, false, false,
+            )
             .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "id2");
@@ -495,7 +595,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_project_with_snapshots() {        let repo = test_repo();
+    fn test_delete_project_with_snapshots() {
+        let repo = test_repo();
         repo.conn.execute_batch(
             "INSERT INTO crawl_snapshots (id, project_id, config_id, snapshot_time) VALUES ('s1', 'p1', 'cfg', datetime('now'));
              INSERT INTO crawl_snapshot_data (snapshot_id, page_id, url, title) VALUES ('s1', 'pg1', 'https://x.com/a', 'A');",
@@ -511,7 +612,9 @@ mod tests {
         assert_eq!(remaining, 0);
         let remaining: i64 = repo
             .conn
-            .query_row("SELECT COUNT(*) FROM projects WHERE id = 'p1'", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM projects WHERE id = 'p1'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(remaining, 0);
     }

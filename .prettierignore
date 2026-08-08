@@ -3,6 +3,7 @@ dist/
 node_modules/
 .svelte-kit/
 src/lib/paraglide/
+project.inlang/
 src/lib/components/ui/
 vite.trace.config.ts
 src-tauri/target/

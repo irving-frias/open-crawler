@@ -123,7 +123,14 @@ pub async fn get_favicon(url: String) -> Result<Option<String>, AppError> {
         _ => return Ok(None),
     };
 
-    let fetcher = HttpFetcher::new(IMPLICIT_USER_AGENT, 10_000, Vec::new(), Vec::new(), None, None)?;
+    let fetcher = HttpFetcher::new(
+        IMPLICIT_USER_AGENT,
+        10_000,
+        Vec::new(),
+        Vec::new(),
+        None,
+        None,
+    )?;
 
     if let Ok(response) = fetcher.fetch(&page_url).await {
         let document = Html::parse_document(&response.html);

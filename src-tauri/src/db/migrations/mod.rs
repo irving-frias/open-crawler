@@ -8,7 +8,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "001_add_content_analysis",
         include_str!("001_add_content_analysis.sql"),
     ),
-    ("002_add_social_meta", include_str!("002_add_social_meta.sql")),
+    (
+        "002_add_social_meta",
+        include_str!("002_add_social_meta.sql"),
+    ),
     ("003_add_pagespeed", include_str!("003_add_pagespeed.sql")),
     (
         "004_create_crawl_snapshots",
@@ -18,11 +21,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "005_add_blocked_flag",
         include_str!("005_add_blocked_flag.sql"),
     ),
-    ("006_add_page_issues", include_str!("006_add_page_issues.sql")),
     (
-        "007_scheduled_jobs",
-        include_str!("007_scheduled_jobs.sql"),
+        "006_add_page_issues",
+        include_str!("006_add_page_issues.sql"),
     ),
+    ("007_scheduled_jobs", include_str!("007_scheduled_jobs.sql")),
     ("008_seo_audit", include_str!("008_seo_audit.sql")),
 ];
 
@@ -63,7 +66,9 @@ mod tests {
     use crate::db::schema::run_migrations;
 
     fn column_names(conn: &Connection, table: &str) -> Vec<String> {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table)).unwrap();
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .unwrap();
         stmt.query_map([], |row| row.get::<_, String>(1))
             .unwrap()
             .filter_map(|r| r.ok())
@@ -87,7 +92,11 @@ mod tests {
             "seo_score",
             "seo_audit_json",
         ] {
-            assert!(cols.contains(&expected.to_string()), "missing column {}", expected);
+            assert!(
+                cols.contains(&expected.to_string()),
+                "missing column {}",
+                expected
+            );
         }
 
         let snapshots: String = conn
@@ -116,7 +125,9 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, MIGRATIONS.len() as i64);
     }

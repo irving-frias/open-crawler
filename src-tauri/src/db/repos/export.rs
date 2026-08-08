@@ -64,7 +64,10 @@ impl<'a> CrawlRepo<'a> {
         let mut stmt = self.conn.prepare(&query)?;
         let results = match (last_timestamp, last_id) {
             (Some(ts), Some(id)) => stmt
-                .query_map(params![project_id, ts, id, limit], Self::row_to_result_export)?
+                .query_map(
+                    params![project_id, ts, id, limit],
+                    Self::row_to_result_export,
+                )?
                 .collect::<Result<Vec<_>, _>>()?,
             _ => stmt
                 .query_map(params![project_id, limit], Self::row_to_result_export)?

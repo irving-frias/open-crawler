@@ -122,15 +122,13 @@ fn build_absolute_xpath(el: &scraper::ElementRef) -> String {
     };
 
     match el.parent() {
-        Some(parent) if parent.value().is_element() => {
-            match scraper::ElementRef::wrap(parent) {
-                Some(pe) => {
-                    let parent_path = build_absolute_xpath(&pe);
-                    format!("{}/{}", parent_path, current)
-                }
-                None => current,
+        Some(parent) if parent.value().is_element() => match scraper::ElementRef::wrap(parent) {
+            Some(pe) => {
+                let parent_path = build_absolute_xpath(&pe);
+                format!("{}/{}", parent_path, current)
             }
-        }
+            None => current,
+        },
         _ => format!("/html/body/{}", current),
     }
 }
@@ -416,7 +414,7 @@ impl SeoParser {
                 element: "<html>".to_string(),
                 message: "Missing lang attribute on <html> element".to_string(),
                 selector: Some("html".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -428,7 +426,7 @@ impl SeoParser {
                 element: "<title>".to_string(),
                 message: "Missing <title> tag".to_string(),
                 selector: Some("title".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -440,7 +438,7 @@ impl SeoParser {
                 element: "<meta>".to_string(),
                 message: "Missing meta description".to_string(),
                 selector: Some(r#"meta[name="description"]"#.to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -452,7 +450,7 @@ impl SeoParser {
                 element: "<link>".to_string(),
                 message: "Missing canonical link".to_string(),
                 selector: Some(r#"link[rel="canonical"]"#.to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -464,7 +462,7 @@ impl SeoParser {
                 element: "<main>".to_string(),
                 message: "Page has no <main> element".to_string(),
                 selector: Some("main".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -476,7 +474,7 @@ impl SeoParser {
                 element: "<header>".to_string(),
                 message: "Page has no <header> element".to_string(),
                 selector: Some("header".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -488,7 +486,7 @@ impl SeoParser {
                 element: "<footer>".to_string(),
                 message: "Page has no <footer> element".to_string(),
                 selector: Some("footer".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -501,7 +499,7 @@ impl SeoParser {
                 element: "<nav>".to_string(),
                 message: "Page has links but no <nav> element".to_string(),
                 selector: Some("nav".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -513,7 +511,7 @@ impl SeoParser {
                 element: "<h1>".to_string(),
                 message: "Missing <h1> tag".to_string(),
                 selector: Some("h1".to_string()),
-            ..Default::default()
+                ..Default::default()
             });
         }
 
@@ -526,7 +524,10 @@ impl SeoParser {
                     "multiple_h1",
                     "warning",
                     "<h1>",
-                    &format!("Page has {} <h1> elements; only one is recommended", h1_count),
+                    &format!(
+                        "Page has {} <h1> elements; only one is recommended",
+                        h1_count
+                    ),
                     Some("h1".to_string()),
                     Some(h1),
                 ));
@@ -542,7 +543,11 @@ impl SeoParser {
         let imgs_selector = r#"img:not([alt]), img[alt=""]"#;
         let img_no_alt_count = self.count_elements(document, imgs_selector);
         if img_no_alt_count > 0 {
-            for img in self.iter_elements(document, imgs_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+            for img in self
+                .iter_elements(document, imgs_selector)
+                .into_iter()
+                .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+            {
                 issues.push(issue(
                     "img_no_alt",
                     "error",
@@ -560,7 +565,11 @@ impl SeoParser {
         let imgs_dims_selector = r#"img:not([width]), img:not([height])"#;
         let img_no_dims_count = self.count_elements(document, imgs_dims_selector);
         if img_no_dims_count > 0 {
-            for img in self.iter_elements(document, imgs_dims_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+            for img in self
+                .iter_elements(document, imgs_dims_selector)
+                .into_iter()
+                .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+            {
                 issues.push(issue(
                     "img_no_dimensions",
                     "warning",
@@ -576,7 +585,11 @@ impl SeoParser {
         let no_id_selector = "input:not([id]), textarea:not([id]), select:not([id])";
         let inputs_no_id = self.count_elements(document, no_id_selector);
         if inputs_no_id > 0 {
-            for el in self.iter_elements(document, no_id_selector).into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+            for el in self
+                .iter_elements(document, no_id_selector)
+                .into_iter()
+                .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+            {
                 issues.push(issue(
                     "input_no_id",
                     "warning",
@@ -591,7 +604,10 @@ impl SeoParser {
         // 14. Form controls without an associated <label> (one issue per control)
         let inputs_no_label = self.inputs_without_label(document);
         if !inputs_no_label.is_empty() {
-            for el in inputs_no_label.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+            for el in inputs_no_label
+                .into_iter()
+                .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+            {
                 issues.push(issue(
                     "input_no_label",
                     "error",
@@ -656,7 +672,11 @@ impl SeoParser {
         document.select(&selector).count()
     }
 
-    fn iter_elements<'a>(&self, document: &'a Html, selector_str: &str) -> Vec<scraper::ElementRef<'a>> {
+    fn iter_elements<'a>(
+        &self,
+        document: &'a Html,
+        selector_str: &str,
+    ) -> Vec<scraper::ElementRef<'a>> {
         match Selector::parse(selector_str) {
             Ok(s) => document.select(&s).collect(),
             Err(_) => Vec::new(),
@@ -665,7 +685,12 @@ impl SeoParser {
 
     fn check_heading_hierarchy(&self, document: &Html) -> Option<SemanticIssue> {
         let selectors: Vec<(&str, u8)> = vec![
-            ("h1", 1), ("h2", 2), ("h3", 3), ("h4", 4), ("h5", 5), ("h6", 6),
+            ("h1", 1),
+            ("h2", 2),
+            ("h3", 3),
+            ("h4", 4),
+            ("h5", 5),
+            ("h6", 6),
         ];
 
         let mut last_level: Option<u8> = None;
@@ -685,8 +710,8 @@ impl SeoParser {
                             element: format!("<h{}>", level),
                             message: format!("Heading level skips from h{} to h{}", prev, level),
                             selector: Some(sel_str.to_string()),
-                        ..Default::default()
-            });
+                            ..Default::default()
+                        });
                     }
                 }
                 last_level = Some(level);
@@ -697,7 +722,9 @@ impl SeoParser {
     }
 
     fn inputs_without_label<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
-        let selector = match Selector::parse("input:not([type='hidden']):not([type='submit']):not([type='button'])") {
+        let selector = match Selector::parse(
+            "input:not([type='hidden']):not([type='submit']):not([type='button'])",
+        ) {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
@@ -759,7 +786,12 @@ impl SeoParser {
                 }
             };
 
-            if text.is_empty() && !has_aria_label && !has_aria_labelledby && !has_title && !has_img_alt {
+            if text.is_empty()
+                && !has_aria_label
+                && !has_aria_labelledby
+                && !has_title
+                && !has_img_alt
+            {
                 result.push(link);
             }
         }
@@ -807,7 +839,8 @@ impl SeoParser {
     /// Reports "cant" as error, "doubt" as warning.
     fn check_element_nesting(&self, document: &Html) -> Vec<SemanticIssue> {
         let mut issues = Vec::new();
-        let mut seen_pairs: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut seen_pairs: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
 
         let all_selector = Selector::parse("*").unwrap();
         for element in document.select(&all_selector) {
@@ -865,7 +898,10 @@ impl SeoParser {
     }
 
     /// Find the nearest ancestor element (not text nodes or comments)
-    fn find_parent_element<'a>(&self, element: scraper::ElementRef<'a>) -> Option<scraper::ElementRef<'a>> {
+    fn find_parent_element<'a>(
+        &self,
+        element: scraper::ElementRef<'a>,
+    ) -> Option<scraper::ElementRef<'a>> {
         let mut current = element.parent();
         while let Some(node) = current {
             if let Some(el) = scraper::ElementRef::wrap(node) {
@@ -1117,12 +1153,7 @@ impl SeoParser {
                 .or_else(|| el.value().attr("name"))
                 .unwrap_or("")
                 .to_string();
-            let content = el
-                .value()
-                .attr("content")
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let content = el.value().attr("content").unwrap_or("").trim().to_string();
             if content.is_empty() {
                 continue;
             }
@@ -1145,12 +1176,7 @@ impl SeoParser {
 
         for el in document.select(&twitter_selector) {
             let key = el.value().attr("name").unwrap_or("").to_string();
-            let content = el
-                .value()
-                .attr("content")
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let content = el.value().attr("content").unwrap_or("").trim().to_string();
             if content.is_empty() {
                 continue;
             }
@@ -1240,28 +1266,26 @@ fn count_syllables(word: &str) -> usize {
 fn is_stopword(word: &str) -> bool {
     const STOPWORDS: &[&str] = &[
         // English
-        "the", "and", "for", "with", "that", "this", "from", "have", "are", "was", "were",
-        "been", "will", "would", "could", "should", "shall", "might", "must", "can", "may",
-        "their", "there", "these", "those", "them", "they", "than", "then", "which", "what",
-        "when", "where", "while", "who", "whom", "whose", "why", "how", "your", "yours",
-        "you", "our", "ours", "his", "her", "hers", "its", "not", "but", "also", "into",
-        "about", "after", "before", "between", "over", "under", "again", "once", "out",
-        "down", "off", "very", "just", "because", "every", "some", "such", "only", "other",
-        "each", "both", "more", "most", "few", "same", "here", "upon", "through", "during",
-        "above", "below", "does", "did", "doing", "has", "had", "having", "get", "got",
-        "one", "two", "three", "first", "second", "next", "last", "any", "another", "those",
-        "being", "been", "come", "go", "goes", "going", "am", "is",
-        // Spanish
-        "como", "para", "por", "con", "los", "las", "una", "uno", "unas", "unos", "del",
-        "que", "cual", "quien", "este", "esta", "esto", "ese", "esa", "eso", "aquel",
-        "aquella", "ello", "ella", "ellos", "ellas", "usted", "ustedes", "nosotros",
-        "nosotras", "vosotros", "vosotras", "sido", "ser", "estos", "estas", "entre",
-        "sobre", "hacia", "desde", "hasta", "durante", "contra", "mediante", "tambien",
-        "pero", "aunque", "porque", "sino", "sino", "si", "no", "ni", "ya", "mas",
-        "menos", "todo", "toda", "todos", "todas", "nada", "algo", "alguien", "nadie",
-        "muy", "tan", "tanto", "cuando", "donde", "el", "me", "te", "se", "lo", "la",
-        "le", "les", "mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra",
-        "vuestro", "vuestra", "estan", "estas", "son", "era", "fue", "sera",
+        "the", "and", "for", "with", "that", "this", "from", "have", "are", "was", "were", "been",
+        "will", "would", "could", "should", "shall", "might", "must", "can", "may", "their",
+        "there", "these", "those", "them", "they", "than", "then", "which", "what", "when",
+        "where", "while", "who", "whom", "whose", "why", "how", "your", "yours", "you", "our",
+        "ours", "his", "her", "hers", "its", "not", "but", "also", "into", "about", "after",
+        "before", "between", "over", "under", "again", "once", "out", "down", "off", "very",
+        "just", "because", "every", "some", "such", "only", "other", "each", "both", "more",
+        "most", "few", "same", "here", "upon", "through", "during", "above", "below", "does",
+        "did", "doing", "has", "had", "having", "get", "got", "one", "two", "three", "first",
+        "second", "next", "last", "any", "another", "those", "being", "been", "come", "go", "goes",
+        "going", "am", "is", // Spanish
+        "como", "para", "por", "con", "los", "las", "una", "uno", "unas", "unos", "del", "que",
+        "cual", "quien", "este", "esta", "esto", "ese", "esa", "eso", "aquel", "aquella", "ello",
+        "ella", "ellos", "ellas", "usted", "ustedes", "nosotros", "nosotras", "vosotros",
+        "vosotras", "sido", "ser", "estos", "estas", "entre", "sobre", "hacia", "desde", "hasta",
+        "durante", "contra", "mediante", "tambien", "pero", "aunque", "porque", "sino", "sino",
+        "si", "no", "ni", "ya", "mas", "menos", "todo", "toda", "todos", "todas", "nada", "algo",
+        "alguien", "nadie", "muy", "tan", "tanto", "cuando", "donde", "el", "me", "te", "se", "lo",
+        "la", "le", "les", "mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "vuestro",
+        "vuestra", "estan", "estas", "son", "era", "fue", "sera",
     ];
     STOPWORDS.contains(&word)
 }
@@ -1299,7 +1323,11 @@ mod tests {
 
         // Should have no errors, maybe some info
         let errors: Vec<_> = issues.iter().filter(|i| i.severity == "error").collect();
-        assert!(errors.is_empty(), "Clean page should have no errors: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "Clean page should have no errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1319,7 +1347,11 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let error_types: Vec<&str> = issues.iter().filter(|i| i.severity == "error").map(|i| i.issue_type.as_str()).collect();
+        let error_types: Vec<&str> = issues
+            .iter()
+            .filter(|i| i.severity == "error")
+            .map(|i| i.issue_type.as_str())
+            .collect();
         assert!(error_types.contains(&"missing_html_lang"));
         assert!(error_types.contains(&"missing_title"));
         assert!(error_types.contains(&"img_no_alt"));
@@ -1350,28 +1382,79 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let img_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "img_no_alt").collect();
-        assert_eq!(img_issues.len(), 2, "expected 2 imgs without alt, got {:#?}", img_issues);
+        let img_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "img_no_alt")
+            .collect();
+        assert_eq!(
+            img_issues.len(),
+            2,
+            "expected 2 imgs without alt, got {:#?}",
+            img_issues
+        );
         for issue in img_issues {
-            assert!(issue.xpath.is_some(), "img_no_alt issue should carry an xpath");
-            assert!(issue.css_selector.is_some(), "img_no_alt issue should carry a css_selector");
-            assert!(issue.snippet.is_some(), "img_no_alt issue should carry a snippet");
+            assert!(
+                issue.xpath.is_some(),
+                "img_no_alt issue should carry an xpath"
+            );
+            assert!(
+                issue.css_selector.is_some(),
+                "img_no_alt issue should carry a css_selector"
+            );
+            assert!(
+                issue.snippet.is_some(),
+                "img_no_alt issue should carry a snippet"
+            );
         }
 
-        let dims_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "img_no_dimensions").collect();
-        assert_eq!(dims_issues.len(), 3, "expected 3 imgs without dimensions, got {:#?}", dims_issues);
+        let dims_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "img_no_dimensions")
+            .collect();
+        assert_eq!(
+            dims_issues.len(),
+            3,
+            "expected 3 imgs without dimensions, got {:#?}",
+            dims_issues
+        );
         for issue in &dims_issues {
-            assert!(issue.xpath.is_some(), "img_no_dimensions issue should carry an xpath");
-            assert!(issue.css_selector.is_some(), "img_no_dimensions issue should carry a css_selector");
-            assert!(issue.snippet.is_some(), "img_no_dimensions issue should carry a snippet");
+            assert!(
+                issue.xpath.is_some(),
+                "img_no_dimensions issue should carry an xpath"
+            );
+            assert!(
+                issue.css_selector.is_some(),
+                "img_no_dimensions issue should carry a css_selector"
+            );
+            assert!(
+                issue.snippet.is_some(),
+                "img_no_dimensions issue should carry a snippet"
+            );
         }
 
-        let label_issues: Vec<_> = issues.iter().filter(|i| i.issue_type == "input_no_label").collect();
-        assert_eq!(label_issues.len(), 4, "expected 4 invalid inputs, got {:#?}", label_issues);
+        let label_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "input_no_label")
+            .collect();
+        assert_eq!(
+            label_issues.len(),
+            4,
+            "expected 4 invalid inputs, got {:#?}",
+            label_issues
+        );
         for issue in label_issues {
-            assert!(issue.xpath.is_some(), "input_no_label issue should carry an xpath");
-            assert!(issue.css_selector.is_some(), "input_no_label issue should carry a css_selector");
-            assert!(issue.snippet.is_some(), "input_no_label issue should carry a snippet");
+            assert!(
+                issue.xpath.is_some(),
+                "input_no_label issue should carry an xpath"
+            );
+            assert!(
+                issue.css_selector.is_some(),
+                "input_no_label issue should carry a css_selector"
+            );
+            assert!(
+                issue.snippet.is_some(),
+                "input_no_label issue should carry a snippet"
+            );
         }
     }
 
@@ -1390,11 +1473,14 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
         assert!(!nesting_issues.is_empty(), "Should detect div inside span");
-        assert!(nesting_issues.iter().any(|i| i.message.contains("<div>") && i.message.contains("<span>")));
+        assert!(nesting_issues
+            .iter()
+            .any(|i| i.message.contains("<div>") && i.message.contains("<span>")));
     }
 
     #[test]
@@ -1414,14 +1500,25 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
         assert!(!nesting_issues.is_empty(), "Should detect div inside span");
         for issue in nesting_issues {
-            let xpath = issue.xpath.as_deref().expect("nesting issue should have xpath");
-            assert_eq!(xpath.matches("[@id='").count(), 1, "xpath has duplicate id selector: {xpath}");
-            assert!(!xpath.contains("']'"), "xpath has mangled id value: {xpath}");
+            let xpath = issue
+                .xpath
+                .as_deref()
+                .expect("nesting issue should have xpath");
+            assert_eq!(
+                xpath.matches("[@id='").count(),
+                1,
+                "xpath has duplicate id selector: {xpath}"
+            );
+            assert!(
+                !xpath.contains("']'"),
+                "xpath has mangled id value: {xpath}"
+            );
             assert!(xpath.contains("menu-items"), "xpath lost id value: {xpath}");
         }
     }
@@ -1446,16 +1543,27 @@ mod tests {
         let selector = Selector::parse("ul#menu-items li:nth-of-type(5) a span").unwrap();
         let span = document.select(&selector).next().expect("span not found");
         let xpath = compute_xpath(&span);
-        assert_eq!(xpath, "//*[@id='menu-items']/li[5]/a/span", "unexpected xpath: {xpath}");
+        assert_eq!(
+            xpath, "//*[@id='menu-items']/li[5]/a/span",
+            "unexpected xpath: {xpath}"
+        );
 
         let issues = parser.analyze_semantics(&document);
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting" || i.issue_type == "context_nesting")
             .collect();
         for issue in nesting_issues {
             if let Some(xpath) = issue.xpath.as_deref() {
-                assert_eq!(xpath.matches("[@id='").count(), 1, "xpath has duplicate id selector: {xpath}");
-                assert!(!xpath.contains("']'"), "xpath has mangled id value: {xpath}");
+                assert_eq!(
+                    xpath.matches("[@id='").count(),
+                    1,
+                    "xpath has duplicate id selector: {xpath}"
+                );
+                assert!(
+                    !xpath.contains("']'"),
+                    "xpath has mangled id value: {xpath}"
+                );
             }
         }
     }
@@ -1475,10 +1583,14 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "context_nesting")
             .collect();
-        assert!(!nesting_issues.is_empty(), "Should detect p inside a as context-dependent");
+        assert!(
+            !nesting_issues.is_empty(),
+            "Should detect p inside a as context-dependent"
+        );
     }
 
     #[test]
@@ -1496,10 +1608,14 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
-        assert!(!nesting_issues.is_empty(), "Should detect table inside code");
+        assert!(
+            !nesting_issues.is_empty(),
+            "Should detect table inside code"
+        );
     }
 
     #[test]
@@ -1517,7 +1633,8 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
         assert!(nesting_issues.is_empty(), "div inside div should be valid");
@@ -1538,7 +1655,8 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
         assert!(nesting_issues.is_empty(), "span inside div should be valid");
@@ -1560,7 +1678,8 @@ mod tests {
         let document = Html::parse_document(html);
         let issues = parser.analyze_semantics(&document);
 
-        let nesting_issues: Vec<_> = issues.iter()
+        let nesting_issues: Vec<_> = issues
+            .iter()
             .filter(|i| i.issue_type == "invalid_nesting")
             .collect();
         assert!(nesting_issues.is_empty(), "li inside ul should be valid");
@@ -1595,7 +1714,10 @@ mod tests {
             ));
         }
         body.push_str("</p>");
-        let html = format!("<!DOCTYPE html><html lang='en'><head><title>Test</title></head><body>{}</body></html>", body);
+        let html = format!(
+            "<!DOCTYPE html><html lang='en'><head><title>Test</title></head><body>{}</body></html>",
+            body
+        );
         let url = Url::parse("https://example.com").unwrap();
         let (data, _) = parser.parse(&html, &url);
 
@@ -1660,7 +1782,10 @@ mod tests {
             data.og_meta.og_description.as_deref(),
             Some("A great description")
         );
-        assert_eq!(data.og_meta.og_image.as_deref(), Some("https://example.com/img.png"));
+        assert_eq!(
+            data.og_meta.og_image.as_deref(),
+            Some("https://example.com/img.png")
+        );
         assert_eq!(data.og_meta.og_type.as_deref(), Some("article"));
         assert_eq!(
             data.og_meta.twitter_card.as_deref(),

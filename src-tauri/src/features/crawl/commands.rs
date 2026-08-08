@@ -40,7 +40,10 @@ pub async fn get_last_crawl_config(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
 ) -> Result<Option<CrawlConfig>, AppError> {
-    with_repo(&state, move |repo| repo.get_latest_session_config(&project_id)).await
+    with_repo(&state, move |repo| {
+        repo.get_latest_session_config(&project_id)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -162,7 +165,12 @@ pub(crate) async fn start_crawl_internal(
         engine.set_config(config);
 
         let result = engine
-            .start(app_handle.clone(), state_clone.clone(), token, &project_id_clone)
+            .start(
+                app_handle.clone(),
+                state_clone.clone(),
+                token,
+                &project_id_clone,
+            )
             .await;
 
         if let Err(e) = result {

@@ -39,11 +39,7 @@ const CLOUDFLARE_CHALLENGE_MARKERS: &[&str] = &[
 
 /// Detects whether a response is a Cloudflare security/challenge hook instead
 /// of a genuine HTTP error page.
-pub fn is_cloudflare_challenge(
-    status: u16,
-    headers: &HashMap<String, String>,
-    html: &str,
-) -> bool {
+pub fn is_cloudflare_challenge(status: u16, headers: &HashMap<String, String>, html: &str) -> bool {
     if status < 400 {
         return false;
     }

@@ -15,7 +15,10 @@ pub async fn get_pagespeed_score(
     url: String,
 ) -> Result<PageSpeedData, AppError> {
     let url_clone = url.clone();
-    let page_id = with_repo(&state, move |repo| repo.find_page_id(&project_id, &url_clone)).await?;
+    let page_id = with_repo(&state, move |repo| {
+        repo.find_page_id(&project_id, &url_clone)
+    })
+    .await?;
 
     if let Some(pid) = page_id.clone() {
         let (score, json) = with_repo(&state, move |repo| repo.get_pagespeed(&pid)).await?;
@@ -27,14 +30,20 @@ pub async fn get_pagespeed_score(
         }
     }
 
-    let api_key = with_repo(&state, |repo| crate::secrets::get(repo, "pagespeed_api_key")).await?;
+    let api_key = with_repo(&state, |repo| {
+        crate::secrets::get(repo, "pagespeed_api_key")
+    })
+    .await?;
 
     let data = crate::pagespeed::fetch_pagespeed(&url, api_key.as_deref()).await?;
 
     if let Some(pid) = page_id {
         let score = data.score.map(|s| s as f64);
         let json = serde_json::to_string(&data).ok();
-        let _ = with_repo(&state, move |repo| repo.update_pagespeed(&pid, score, json.as_deref())).await;
+        let _ = with_repo(&state, move |repo| {
+            repo.update_pagespeed(&pid, score, json.as_deref())
+        })
+        .await;
     }
 
     Ok(data)

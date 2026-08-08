@@ -272,7 +272,10 @@ fn delete_project_rows(conn: &Connection, id: &str) -> Result<(), AppError> {
         "DELETE FROM crawl_queue WHERE session_id IN (SELECT id FROM crawl_sessions WHERE project_id = ?1)",
         params![id],
     )?;
-    conn.execute("DELETE FROM crawl_sessions WHERE project_id = ?1", params![id])?;
+    conn.execute(
+        "DELETE FROM crawl_sessions WHERE project_id = ?1",
+        params![id],
+    )?;
     conn.execute(
         "DELETE FROM page_links WHERE config_id IN (SELECT id FROM crawl_config WHERE project_id = ?1)",
         params![id],
@@ -294,7 +297,10 @@ fn delete_project_rows(conn: &Connection, id: &str) -> Result<(), AppError> {
         "DELETE FROM crawl_snapshots WHERE project_id = ?1",
         params![id],
     )?;
-    conn.execute("DELETE FROM crawl_config WHERE project_id = ?1", params![id])?;
+    conn.execute(
+        "DELETE FROM crawl_config WHERE project_id = ?1",
+        params![id],
+    )?;
     conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     Ok(())
 }
@@ -413,7 +419,8 @@ fn read_package(file_path: &Path, dir: &Path) -> Result<PackageManifest, AppErro
         }
     }
 
-    let manifest = manifest.ok_or_else(|| AppError::Crawl("Package has no manifest".to_string()))?;
+    let manifest =
+        manifest.ok_or_else(|| AppError::Crawl("Package has no manifest".to_string()))?;
     if !db_written {
         return Err(AppError::Crawl("Package has no database".to_string()));
     }
@@ -512,12 +519,7 @@ fn copy_projects(
         imported.insert(project.id.clone());
         tx.execute(
             "INSERT INTO projects (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                new_id,
-                project.name,
-                project.created_at,
-                project.updated_at
-            ],
+            params![new_id, project.name, project.created_at, project.updated_at],
         )?;
     }
 
@@ -562,9 +564,8 @@ fn name_exists(conn: &Connection, name: &str) -> Result<bool, AppError> {
 }
 
 fn find_project_id_by_name(conn: &Connection, name: &str) -> Result<Option<String>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT id FROM projects WHERE name = ?1 COLLATE NOCASE ORDER BY rowid LIMIT 1",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id FROM projects WHERE name = ?1 COLLATE NOCASE ORDER BY rowid LIMIT 1")?;
     let mut rows = stmt.query_map(params![name], |r| r.get(0))?;
     if let Some(id) = rows.next() {
         return Ok(Some(id?));
@@ -596,10 +597,7 @@ fn copy_configs(
              SELECT DISTINCT config_id, project_id FROM crawl_errors",
         )?;
         let rows = stmt.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Option<String>>(1)?,
-            ))
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
         })?;
         for row in rows {
             let (config_id, project_id) = row?;
@@ -640,7 +638,9 @@ fn copy_configs(
                 })
                 .and_then(|p| project_map.get(p).cloned())
         };
-        let Some(owner) = owner else { continue; };
+        let Some(owner) = owner else {
+            continue;
+        };
 
         insert.execute(params![
             new_id,
@@ -1166,9 +1166,14 @@ mod tests {
 
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
 
-        assert_eq!(summary.imported.len(), 1, "afa imports, legacy default is skipped");
+        assert_eq!(
+            summary.imported.len(),
+            1,
+            "afa imports, legacy default is skipped"
+        );
         assert_eq!(summary.imported[0].name, "afa");
         assert!(summary.warnings.is_empty());
 
@@ -1183,7 +1188,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(configs, 1);
-        assert_eq!(config_project.as_deref(), Some(summary.imported[0].id.as_str()));
+        assert_eq!(
+            config_project.as_deref(),
+            Some(summary.imported[0].id.as_str())
+        );
         assert_eq!(pages, 2);
         assert_eq!(links, 1);
 
@@ -1214,15 +1222,7 @@ mod tests {
             counts(&src_conn, &pid);
 
         let repo = CrawlRepo::new(&src_conn, None);
-        export_package_inner(
-            &repo,
-            &work.0,
-            None,
-            false,
-            false,
-            &pkg_path,
-        )
-        .unwrap();
+        export_package_inner(&repo, &work.0, None, false, false, &pkg_path).unwrap();
 
         // Zip contains exactly the two entries and a correct checksum.
         let archive = File::open(&pkg_path).unwrap();
@@ -1250,7 +1250,8 @@ mod tests {
         let dest_path = work.0.join("dest.db");
         let dest_conn = temp_conn(&dest_path);
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
         assert_eq!(summary.imported.len(), 1);
         assert!(summary.skipped.is_empty());
         assert!(summary.warnings.is_empty());
@@ -1294,7 +1295,8 @@ mod tests {
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         seed_project(&dest_conn, "Dup");
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
         assert!(summary.imported.is_empty());
         assert_eq!(summary.skipped.len(), 1);
         assert_eq!(summary.skipped[0].name, "Dup");
@@ -1317,10 +1319,15 @@ mod tests {
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         seed_project(&dest_conn, "Dup");
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Copy).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Copy).unwrap();
         assert_eq!(summary.imported.len(), 1);
         let name_count: i64 = dest_conn
-            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Dup'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'Dup'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(name_count, 2);
         // Total pages = 2 (existing) + 2 (imported duplicate).
@@ -1345,10 +1352,15 @@ mod tests {
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         seed_project(&dest_conn, "Repl");
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Overwrite).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Overwrite).unwrap();
         assert_eq!(summary.imported.len(), 1);
         let name_count: i64 = dest_conn
-            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Repl'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'Repl'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(name_count, 1);
         let total_pages: i64 = dest_conn
@@ -1368,12 +1380,20 @@ mod tests {
         let repo = CrawlRepo::new(&src_conn, None);
         seed_project(&src_conn, "Keep");
         seed_project(&src_conn, "Drop");
-        export_package_inner(&repo, &work.0, Some(vec!["proj-Keep".into()]), false, false, &pkg_path)
-            .unwrap();
+        export_package_inner(
+            &repo,
+            &work.0,
+            Some(vec!["proj-Keep".into()]),
+            false,
+            false,
+            &pkg_path,
+        )
+        .unwrap();
 
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
         assert_eq!(summary.imported.len(), 1);
         assert_eq!(summary.imported[0].name, "Keep");
     }
@@ -1392,7 +1412,8 @@ mod tests {
 
         let dest_conn = temp_conn(&work.0.join("dest.db"));
         let dest_repo = CrawlRepo::new(&dest_conn, None);
-        let summary = import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
+        let summary =
+            import_package_inner(&dest_repo, &work.0, &pkg_path, ImportMode::Skip).unwrap();
         let null_count: i64 = dest_conn
             .query_row(
                 "SELECT COUNT(*) FROM crawled_pages WHERE html_body IS NOT NULL",

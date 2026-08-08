@@ -17,9 +17,9 @@ pub(crate) fn compute_next_run(
     cron_expression: &str,
     from: &str,
 ) -> Result<Option<String>, AppError> {
-    let schedule: cron::Schedule = cron_expression
-        .parse()
-        .map_err(|e| AppError::Crawl(format!("Invalid cron expression '{cron_expression}': {e}")))?;
+    let schedule: cron::Schedule = cron_expression.parse().map_err(|e| {
+        AppError::Crawl(format!("Invalid cron expression '{cron_expression}': {e}"))
+    })?;
     let from_dt = chrono::DateTime::parse_from_rfc3339(from)
         .map_err(|e| AppError::Crawl(e.to_string()))?
         .with_timezone(&chrono::Utc);
@@ -43,7 +43,8 @@ impl<'a> CrawlRepo<'a> {
         })
     }
 
-    const JOB_COLUMNS: &'static str = "id, project_id, cron_expression, config_json, enabled, last_run, next_run, created_at";
+    const JOB_COLUMNS: &'static str =
+        "id, project_id, cron_expression, config_json, enabled, last_run, next_run, created_at";
 
     pub fn list_scheduled_jobs(&self) -> Result<Vec<ScheduledJob>, AppError> {
         let mut stmt = self.conn.prepare(&format!(
@@ -59,7 +60,10 @@ impl<'a> CrawlRepo<'a> {
 
     pub fn get_scheduled_job(&self, id: &str) -> Result<Option<ScheduledJob>, AppError> {
         let result = self.conn.query_row(
-            &format!("SELECT {} FROM scheduled_jobs WHERE id = ?1", Self::JOB_COLUMNS),
+            &format!(
+                "SELECT {} FROM scheduled_jobs WHERE id = ?1",
+                Self::JOB_COLUMNS
+            ),
             params![id],
             Self::row_to_job,
         );

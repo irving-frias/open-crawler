@@ -1,5 +1,5 @@
-use rusqlite::OptionalExtension;
 use rusqlite::params;
+use rusqlite::OptionalExtension;
 
 use crate::error::AppError;
 use crate::models::{CrawlResult, PageDetail, PageLink};
@@ -389,9 +389,9 @@ impl<'a> CrawlRepo<'a> {
     }
 
     pub fn list_page_id_urls(&self, project_id: &str) -> Result<Vec<(String, String)>, AppError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, url FROM crawled_pages WHERE project_id = ?1 ORDER BY url",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, url FROM crawled_pages WHERE project_id = ?1 ORDER BY url")?;
         let rows = stmt
             .query_map(params![project_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))

@@ -8,13 +8,13 @@
 
 use std::time::{Duration, Instant};
 
+use windows::core::Interface;
 use windows::Devices::Bluetooth::BluetoothDevice;
 use windows::Devices::Bluetooth::Rfcomm::RfcommServiceId;
 use windows::Foundation::{AsyncStatus, IAsyncOperation};
 use windows::Networking::Sockets::StreamSocket;
 use windows::Storage::Streams::{DataReader, DataWriter, IInputStream, IOutputStream};
 use windows::Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED};
-use windows::core::Interface;
 
 use crate::error::AppError;
 
@@ -48,7 +48,9 @@ pub fn connect(addr: &str) -> Result<WindowsRfcomm, AppError> {
 
     let service_id = RfcommServiceId::FromShortId(0x1105).map_err(win_err)?;
     let services_result = await_op(
-        &device.GetRfcommServicesForIdAsync(&service_id).map_err(win_err)?,
+        &device
+            .GetRfcommServicesForIdAsync(&service_id)
+            .map_err(win_err)?,
         Duration::from_secs(20),
     )?;
     let services = services_result.Services().map_err(win_err)?;
@@ -107,7 +109,9 @@ impl ObexStream for WindowsRfcomm {
             if loaded == 0 {
                 return Err(AppError::Crawl("RFCOMM connection closed".into()));
             }
-            self.reader.ReadBytes(&mut buf[offset..offset + loaded]).map_err(win_err)?;
+            self.reader
+                .ReadBytes(&mut buf[offset..offset + loaded])
+                .map_err(win_err)?;
             offset += loaded;
         }
         Ok(())
@@ -149,10 +153,7 @@ fn await_action(op: &windows::Foundation::IAsyncAction, timeout: Duration) -> Re
 }
 
 /// Blocks on a WinRT `IAsyncOperation<T>` until completion or `timeout`.
-fn await_op<T>(
-    op: &IAsyncOperation<T>,
-    timeout: Duration,
-) -> Result<T, AppError>
+fn await_op<T>(op: &IAsyncOperation<T>, timeout: Duration) -> Result<T, AppError>
 where
     T: windows::core::RuntimeType,
 {

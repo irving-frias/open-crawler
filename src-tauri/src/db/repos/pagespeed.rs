@@ -1,5 +1,5 @@
-use rusqlite::OptionalExtension;
 use rusqlite::params;
+use rusqlite::OptionalExtension;
 
 use crate::error::AppError;
 
@@ -12,7 +12,12 @@ impl<'a> CrawlRepo<'a> {
             .query_row(
                 "SELECT pagespeed_score, pagespeed_json FROM crawled_pages WHERE id = ?1",
                 params![page_id],
-                |row| Ok((row.get::<_, Option<f64>>(0)?, row.get::<_, Option<String>>(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, Option<f64>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
             )
             .optional()?;
         Ok(row.unwrap_or((None, None)))

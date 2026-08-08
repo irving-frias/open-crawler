@@ -46,10 +46,8 @@ pub fn compute(checks: &[CheckResult]) -> (f64, String, Vec<CategoryResult>) {
     let mut categories: Vec<CategoryResult> = Vec::new();
 
     for category in CATEGORY_ORDER {
-        let cat_checks: Vec<&CheckResult> = checks
-            .iter()
-            .filter(|c| c.category == *category)
-            .collect();
+        let cat_checks: Vec<&CheckResult> =
+            checks.iter().filter(|c| c.category == *category).collect();
         if cat_checks.is_empty() {
             continue;
         }

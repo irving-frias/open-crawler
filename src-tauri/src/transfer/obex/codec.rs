@@ -147,7 +147,10 @@ pub fn connect_request(max_packet: u16) -> Vec<u8> {
     // The CONNECT body starts with version, flags and the max packet length.
     // Insert them right after the 3-byte packet header.
     let mut buf = p.build();
-    buf.splice(3..3, [0x10, 0x00, (max_packet >> 8) as u8, max_packet as u8]);
+    buf.splice(
+        3..3,
+        [0x10, 0x00, (max_packet >> 8) as u8, max_packet as u8],
+    );
     let len = buf.len() as u16;
     buf[1..3].copy_from_slice(&len.to_be_bytes());
     buf
@@ -304,7 +307,9 @@ pub fn read_packet(
     read_exact(&mut header)?;
     let len = u16::from_be_bytes([header[1], header[2]]) as usize;
     if len < 3 {
-        return Err(crate::error::AppError::Crawl("malformed OBEX packet length".into()));
+        return Err(crate::error::AppError::Crawl(
+            "malformed OBEX packet length".into(),
+        ));
     }
     let mut rest = vec![0u8; len - 3];
     read_exact(&mut rest)?;
@@ -340,7 +345,9 @@ mod tests {
         assert!(resp.headers.contains(&Header::Name("hello.txt".into())));
         assert!(resp.headers.contains(&Header::U32(HDR_LENGTH, 5)));
         assert!(resp.headers.contains(&Header::U32(HDR_CONNECTION, 7)));
-        assert!(resp.headers.contains(&Header::Bytes(HDR_BODY, b"he".to_vec())));
+        assert!(resp
+            .headers
+            .contains(&Header::Bytes(HDR_BODY, b"he".to_vec())));
     }
 
     #[test]
@@ -348,7 +355,9 @@ mod tests {
         let p = put_request(None, None, b"x", true, None);
         assert_eq!(p[0], OP_PUT_FINAL);
         let resp = parse_response(&p).unwrap();
-        assert!(resp.headers.contains(&Header::Bytes(HDR_BODY_END, b"x".to_vec())));
+        assert!(resp
+            .headers
+            .contains(&Header::Bytes(HDR_BODY_END, b"x".to_vec())));
     }
 
     #[test]
@@ -385,7 +394,10 @@ mod tests {
         buf[1] = 0x00;
         buf[2] = (buf.len()) as u8;
         let resp = parse_response(&buf).unwrap();
-        assert_eq!(resp.headers, vec![Header::Bytes(HDR_TARGET, OBJECT_PUSH_TARGET.to_vec())]);
+        assert_eq!(
+            resp.headers,
+            vec![Header::Bytes(HDR_TARGET, OBJECT_PUSH_TARGET.to_vec())]
+        );
     }
 
     #[test]

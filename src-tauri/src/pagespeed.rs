@@ -24,7 +24,8 @@ pub async fn fetch_pagespeed(url: &str, api_key: Option<&str>) -> Result<PageSpe
         .map_err(|e| AppError::Pagespeed(e.to_string()))?;
 
     let encoded: String = url::form_urlencoded::byte_serialize(url.as_bytes()).collect();
-    let mut request_url = format!("{PSI_ENDPOINT}?url={encoded}&strategy=desktop&category=performance");
+    let mut request_url =
+        format!("{PSI_ENDPOINT}?url={encoded}&strategy=desktop&category=performance");
     if let Some(key) = api_key.filter(|k| !k.is_empty()) {
         let encoded_key: String = url::form_urlencoded::byte_serialize(key.as_bytes()).collect();
         request_url.push_str(&format!("&key={encoded_key}"));

@@ -53,7 +53,11 @@ pub fn start_transfer_server(
         )));
     }
 
-    let ttl = if minutes == 0 { DEFAULT_TTL_MINUTES } else { minutes };
+    let ttl = if minutes == 0 {
+        DEFAULT_TTL_MINUTES
+    } else {
+        minutes
+    };
     let expires_at = SystemTime::now() + Duration::from_secs(ttl * 60);
 
     let server = match Server::http(("0.0.0.0", DEFAULT_PORT)) {
@@ -108,9 +112,10 @@ pub fn start_transfer_server(
     }
 
     {
-        let mut slot = state.transfer_server.lock().map_err(|e| {
-            AppError::Crawl(format!("failed to lock transfer server state: {e}"))
-        })?;
+        let mut slot = state
+            .transfer_server
+            .lock()
+            .map_err(|e| AppError::Crawl(format!("failed to lock transfer server state: {e}")))?;
         *slot = Some(TransferServerState {
             path: file_path.to_path_buf(),
             token: token.clone(),
@@ -140,9 +145,10 @@ pub fn start_transfer_server(
 
 /// Stops the active transfer server (no-op if none is running).
 pub fn stop_transfer_server(state: &AppState) -> Result<(), AppError> {
-    let mut slot = state.transfer_server.lock().map_err(|e| {
-        AppError::Crawl(format!("failed to lock transfer server state: {e}"))
-    })?;
+    let mut slot = state
+        .transfer_server
+        .lock()
+        .map_err(|e| AppError::Crawl(format!("failed to lock transfer server state: {e}")))?;
     if let Some(active) = slot.take() {
         active.stop.store(true, Ordering::SeqCst);
         info!("Transfer server stopped");
@@ -166,7 +172,9 @@ pub fn active_transfer(state: &AppState) -> Option<TransferInfo> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let file_size_bytes = std::fs::metadata(&active.path).map(|m| m.len()).unwrap_or(0);
+    let file_size_bytes = std::fs::metadata(&active.path)
+        .map(|m| m.len())
+        .unwrap_or(0);
     (!expired).then_some(TransferInfo {
         urls: active.urls.clone(),
         port: active.port,
@@ -344,8 +352,7 @@ fn respond_text(request: Request, status: u16, body: &str) {
     let response = Response::from_string(body.to_string())
         .with_status_code(StatusCode(status))
         .with_header(
-            Header::from_bytes("Content-Type", "text/plain; charset=utf-8")
-                .expect("valid header"),
+            Header::from_bytes("Content-Type", "text/plain; charset=utf-8").expect("valid header"),
         );
     let _ = request.respond(response);
 }
@@ -449,8 +456,7 @@ fn respond_html(request: Request, status: u16, body: &str) {
     let response = Response::from_string(body.to_string())
         .with_status_code(StatusCode(status))
         .with_header(
-            Header::from_bytes("Content-Type", "text/html; charset=utf-8")
-                .expect("valid header"),
+            Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("valid header"),
         );
     let _ = request.respond(response);
 }
@@ -503,8 +509,9 @@ mod tests {
             match stream.read(&mut byte) {
                 Ok(0) => break,
                 Ok(_) => header.push(byte[0]),
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
                 {
                     break;
                 }
@@ -531,7 +538,8 @@ mod tests {
             .find_map(|l| {
                 let l = l.trim_end_matches('\r');
                 let (k, v) = l.split_once(':')?;
-                (k.eq_ignore_ascii_case("content-length")).then(|| v.trim().parse::<usize>().ok())?
+                (k.eq_ignore_ascii_case("content-length"))
+                    .then(|| v.trim().parse::<usize>().ok())?
             })
             .unwrap_or(0);
 
@@ -541,8 +549,9 @@ mod tests {
             match stream.read(&mut body[read_total..]) {
                 Ok(0) => break,
                 Ok(n) => read_total += n,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
                 {
                     break;
                 }
@@ -568,7 +577,13 @@ mod tests {
             .urls
             .iter()
             .any(|u| u.contains("127.0.0.1") && u.contains(&info.token)));
-        assert_eq!(info.urls.len(), info.urls.iter().collect::<std::collections::HashSet<_>>().len());
+        assert_eq!(
+            info.urls.len(),
+            info.urls
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+        );
 
         let addr = format!("127.0.0.1:{}", info.port);
 

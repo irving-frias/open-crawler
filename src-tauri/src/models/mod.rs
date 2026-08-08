@@ -12,7 +12,5 @@ pub use crawl_result::{
     UrlFieldDiff,
 };
 pub use project::{CreateProjectRequest, Project, RenameProjectRequest};
-pub use schedule::{
-    CreateScheduledJobRequest, ScheduledJob, UpdateScheduledJobRequest,
-};
+pub use schedule::{CreateScheduledJobRequest, ScheduledJob, UpdateScheduledJobRequest};
 pub use seo::{GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview};
