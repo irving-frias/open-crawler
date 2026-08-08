@@ -126,7 +126,9 @@ pub async fn suggest_fix(
             "AI suggestions are not enabled. Turn them on in Settings → AI Assistant.".to_string(),
         ));
     }
-    let api_key = settings.get("ai_api_key").cloned().unwrap_or_default();
+    let api_key = with_repo(&state, |repo| crate::secrets::get(repo, "ai_api_key"))
+        .await?
+        .unwrap_or_default();
     if api_key.is_empty() {
         return Err(AppError::Crawl(
             "No AI API key configured in Settings → AI Assistant.".to_string(),

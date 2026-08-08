@@ -33,17 +33,18 @@ SEO audit tool similar to Screaming Frog, built with **Rust + Tauri v2 + Svelte 
 
 Download the latest release for your platform from [Releases](https://github.com/irving-frias/open-crawler/releases):
 
-| Platform | Installer |
-|----------|-----------|
-| macOS (Apple Silicon) | `.dmg` |
-| macOS (Intel) | `.dmg` |
-| Windows (x64) | `.msi` |
-| Linux (x64) | `.deb` |
-| Android | `.apk` |
+| Platform              | Installer |
+| --------------------- | --------- |
+| macOS (Apple Silicon) | `.dmg`    |
+| macOS (Intel)         | `.dmg`    |
+| Windows (x64)         | `.msi`    |
+| Linux (x64)           | `.deb`    |
+| Android               | `.apk`    |
 
 ### From Source
 
 **Prerequisites:**
+
 - [Rust](https://rustup.rs/) (stable)
 - [Bun](https://bun.sh/) 1.3+
 
@@ -67,53 +68,53 @@ bun tauri dev
 
 ### Crawl settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Depth** | 10 | How deep to crawl from the seed URL (1 = seed page only) |
-| **Time Limit** | 3600s | Maximum crawl duration in seconds |
-| **Concurrency** | 10 | Number of parallel page fetches |
-| **Crawl Delay** | 100ms | Delay between requests to the same host |
-| **Respect robots.txt** | Yes | Honor crawl-delay and disallow rules |
-| **Check sitemap.xml** | Yes | Discover URLs from sitemaps referenced in robots.txt |
-| **Same-origin only** | Yes | Restrict crawling to the seed domain |
-| **Check semantic HTML** | Yes | Run 18+ accessibility and SEO checks |
-| **Include/Exclude patterns** | — | URL glob patterns to include or exclude |
-| **Custom headers** | — | Extra HTTP headers sent on each request |
-| **Proxy** | Off | Optional HTTP proxy with basic auth |
+| Setting                      | Default | Description                                              |
+| ---------------------------- | ------- | -------------------------------------------------------- |
+| **Max Depth**                | 10      | How deep to crawl from the seed URL (1 = seed page only) |
+| **Time Limit**               | 3600s   | Maximum crawl duration in seconds                        |
+| **Concurrency**              | 10      | Number of parallel page fetches                          |
+| **Crawl Delay**              | 100ms   | Delay between requests to the same host                  |
+| **Respect robots.txt**       | Yes     | Honor crawl-delay and disallow rules                     |
+| **Check sitemap.xml**        | Yes     | Discover URLs from sitemaps referenced in robots.txt     |
+| **Same-origin only**         | Yes     | Restrict crawling to the seed domain                     |
+| **Check semantic HTML**      | Yes     | Run 18+ accessibility and SEO checks                     |
+| **Include/Exclude patterns** | —       | URL glob patterns to include or exclude                  |
+| **Custom headers**           | —       | Extra HTTP headers sent on each request                  |
+| **Proxy**                    | Off     | Optional HTTP proxy with basic auth                      |
 
 ### App settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Theme** | System | Dark / Light / System |
-| **UI Style** | Classic | Classic / Neumorph / Clay / Glass / Brutalism |
-| **Results per page** | 50 | Default table page size |
-| **Notifications** | On | Native desktop/mobile notifications |
-| **PageSpeed API key** | — | Google API key for per-page Core Web Vitals |
-| **Default crawl config** | — | Values pre-filled on new crawls |
+| Setting                  | Default | Description                                   |
+| ------------------------ | ------- | --------------------------------------------- |
+| **Theme**                | System  | Dark / Light / System                         |
+| **UI Style**             | Classic | Classic / Neumorph / Clay / Glass / Brutalism |
+| **Results per page**     | 50      | Default table page size                       |
+| **Notifications**        | On      | Native desktop/mobile notifications           |
+| **PageSpeed API key**    | —       | Google API key for per-page Core Web Vitals   |
+| **Default crawl config** | —       | Values pre-filled on new crawls               |
 
 ## Semantic Audit Checks
 
-| Check | Severity | Description |
-|-------|----------|-------------|
-| `missing_html_lang` | Error | Missing `lang` attribute on `<html>` |
-| `missing_title` | Error | Missing `<title>` tag |
-| `missing_meta_description` | Warning | Missing meta description |
-| `missing_canonical` | Warning | Missing canonical link |
-| `missing_main` | Warning | No `<main>` element |
-| `missing_header` | Warning | No `<header>` element |
-| `missing_footer` | Warning | No `<footer>` element |
-| `missing_nav` | Warning | No `<nav>` element |
-| `missing_h1` | Warning | Missing `<h1>` tag |
-| `multiple_h1` | Warning | Multiple `<h1>` tags |
-| `heading_skip` | Warning | Heading level skips (e.g., h1 to h3) |
-| `img_no_alt` | Error | Images missing `alt` attribute |
-| `input_no_id` | Warning | Form elements missing `id` |
-| `input_no_label` | Error | Inputs without associated `<label>` |
-| `empty_link_text` | Warning | Links with no text or aria-label |
-| `missing_aria` | Warning | Form controls missing aria-label |
-| `invalid_nesting` | Error | Flow content inside phrasing content |
-| `context_nesting` | Error | Elements nested outside their allowed context |
+| Check                      | Severity | Description                                   |
+| -------------------------- | -------- | --------------------------------------------- |
+| `missing_html_lang`        | Error    | Missing `lang` attribute on `<html>`          |
+| `missing_title`            | Error    | Missing `<title>` tag                         |
+| `missing_meta_description` | Warning  | Missing meta description                      |
+| `missing_canonical`        | Warning  | Missing canonical link                        |
+| `missing_main`             | Warning  | No `<main>` element                           |
+| `missing_header`           | Warning  | No `<header>` element                         |
+| `missing_footer`           | Warning  | No `<footer>` element                         |
+| `missing_nav`              | Warning  | No `<nav>` element                            |
+| `missing_h1`               | Warning  | Missing `<h1>` tag                            |
+| `multiple_h1`              | Warning  | Multiple `<h1>` tags                          |
+| `heading_skip`             | Warning  | Heading level skips (e.g., h1 to h3)          |
+| `img_no_alt`               | Error    | Images missing `alt` attribute                |
+| `input_no_id`              | Warning  | Form elements missing `id`                    |
+| `input_no_label`           | Error    | Inputs without associated `<label>`           |
+| `empty_link_text`          | Warning  | Links with no text or aria-label              |
+| `missing_aria`             | Warning  | Form controls missing aria-label              |
+| `invalid_nesting`          | Error    | Flow content inside phrasing content          |
+| `context_nesting`          | Error    | Elements nested outside their allowed context |
 
 ## Architecture
 
@@ -172,12 +173,12 @@ open-crawler/
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Rust, Tauri v2, rusqlite (SQLite), tokio, reqwest |
-| **Frontend** | Svelte 5, TypeScript, SvelteKit, shadcn-svelte, Chart.js, Lucide icons, Paraglide i18n |
-| **Build** | Vite, Bun, adapter-static |
-| **CI/CD** | GitHub Actions — lint/test, desktop builds (macOS ARM/Intel, Linux, Windows), Android APK |
+| Layer        | Technology                                                                                |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| **Backend**  | Rust, Tauri v2, rusqlite (SQLite), tokio, reqwest                                         |
+| **Frontend** | Svelte 5, TypeScript, SvelteKit, shadcn-svelte, Chart.js, Lucide icons, Paraglide i18n    |
+| **Build**    | Vite, Bun, adapter-static                                                                 |
+| **CI/CD**    | GitHub Actions — lint/test, desktop builds (macOS ARM/Intel, Linux, Windows), Android APK |
 
 ## Development
 

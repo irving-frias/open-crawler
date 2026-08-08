@@ -24,12 +24,12 @@ El keystore se genera en formato PKCS12 (soportado por AGP); el nombre del archi
 
 Andá a tu repositorio → Settings → Secrets and variables → Actions, y agregá estos secrets:
 
-| Secret | Value |
-|--------|-------|
-| `ANDROID_KEYSTORE_BASE64` | Base64 del keystore |
-| `ANDROID_KEY_ALIAS` | `opencrawler` |
-| `ANDROID_KEYSTORE_PASSWORD` | `android` |
-| `ANDROID_KEY_PASSWORD` | `android` |
+| Secret                      | Value               |
+| --------------------------- | ------------------- |
+| `ANDROID_KEYSTORE_BASE64`   | Base64 del keystore |
+| `ANDROID_KEY_ALIAS`         | `opencrawler`       |
+| `ANDROID_KEYSTORE_PASSWORD` | `android`           |
+| `ANDROID_KEY_PASSWORD`      | `android`           |
 
 Para obtener el base64 del keystore:
 
@@ -44,6 +44,7 @@ base64 -w 0 android/opencrawler.keystore        # Linux
 El workflow está en `.github/workflows/android.yml`.
 
 Se ejecuta automáticamente en:
+
 - Push a `main`
 - Pull requests a `main`
 - Manualmente con `workflow_dispatch`

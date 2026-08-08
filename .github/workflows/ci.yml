@@ -73,6 +73,12 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+        working-directory: src-tauri
+
   check-frontend:
     name: Frontend Check
     runs-on: ubuntu-latest
@@ -106,6 +112,9 @@ jobs:
 
       - name: Svelte check
         run: bunx svelte-check --tsconfig ./tsconfig.json
+
+      - name: bun audit
+        run: bun audit
 
   build-tauri:
     name: Build (${{ matrix.platform }})

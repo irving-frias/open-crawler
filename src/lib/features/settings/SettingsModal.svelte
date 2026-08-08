@@ -29,9 +29,13 @@
   let checkSemantics = $state(true);
   let maxCrawlTime = $state('3600');
   let notificationsEnabled = $state(true);
+  let pagespeedKeySet = $state(false);
   let pagespeedApiKey = $state('');
+  let pagespeedRemoveKey = $state(false);
   let aiEnabled = $state(false);
+  let aiKeySet = $state(false);
   let aiApiKey = $state('');
+  let aiRemoveKey = $state(false);
   let aiBaseUrl = $state('https://api.openai.com/v1');
   let aiModel = $state('gpt-4o-mini');
   let saving = $state(false);
@@ -53,9 +57,11 @@
       if (settings.max_crawl_time) maxCrawlTime = settings.max_crawl_time;
       if (settings.notifications_enabled !== undefined)
         notificationsEnabled = settings.notifications_enabled === 'true';
-      if (settings.pagespeed_api_key) pagespeedApiKey = settings.pagespeed_api_key;
+      pagespeedKeySet = settings.pagespeed_api_key_set === 'true';
+      pagespeedRemoveKey = false;
       if (settings.ai_enabled) aiEnabled = settings.ai_enabled === 'true';
-      if (settings.ai_api_key) aiApiKey = settings.ai_api_key;
+      aiKeySet = settings.ai_api_key_set === 'true';
+      aiRemoveKey = false;
       if (settings.ai_base_url) aiBaseUrl = settings.ai_base_url;
       if (settings.ai_model) aiModel = settings.ai_model;
     } catch (e) {
@@ -76,12 +82,14 @@
         check_semantics: checkSemantics.toString(),
         max_crawl_time: maxCrawlTime,
         notifications_enabled: notificationsEnabled.toString(),
-        pagespeed_api_key: pagespeedApiKey,
         ai_enabled: aiEnabled.toString(),
-        ai_api_key: aiApiKey,
         ai_base_url: aiBaseUrl,
         ai_model: aiModel,
       };
+      if (pagespeedApiKey) settings.pagespeed_api_key = pagespeedApiKey;
+      else if (pagespeedRemoveKey) settings.pagespeed_api_key = '';
+      if (aiApiKey) settings.ai_api_key = aiApiKey;
+      else if (aiRemoveKey) settings.ai_api_key = '';
       await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
@@ -172,9 +180,23 @@
           type="password"
           bind:value={pagespeedApiKey}
           autocomplete="off"
-          placeholder={m['settings.pagespeed_api_key_placeholder']()}
+          placeholder={pagespeedKeySet
+            ? m['settings.pagespeed_api_key_saved']()
+            : m['settings.pagespeed_api_key_placeholder']()}
         />
         <p class="text-xs text-muted-foreground">{m['settings.pagespeed_api_key_hint']()}</p>
+        {#if pagespeedKeySet && !pagespeedRemoveKey}
+          <Button
+            variant="ghost"
+            class="h-6 w-fit px-2 text-xs text-destructive"
+            onclick={() => {
+              pagespeedRemoveKey = true;
+              pagespeedApiKey = '';
+            }}
+          >
+            {m['settings.pagespeed_api_key_clear']()}
+          </Button>
+        {/if}
       </div>
 
       <Separator />
@@ -198,9 +220,23 @@
           type="password"
           bind:value={aiApiKey}
           autocomplete="off"
-          placeholder={m['settings.ai_api_key_placeholder']()}
+          placeholder={aiKeySet
+            ? m['settings.ai_api_key_saved']()
+            : m['settings.ai_api_key_placeholder']()}
         />
         <p class="text-xs text-muted-foreground">{m['settings.ai_api_key_hint']()}</p>
+        {#if aiKeySet && !aiRemoveKey}
+          <Button
+            variant="ghost"
+            class="h-6 w-fit px-2 text-xs text-destructive"
+            onclick={() => {
+              aiRemoveKey = true;
+              aiApiKey = '';
+            }}
+          >
+            {m['settings.ai_api_key_clear']()}
+          </Button>
+        {/if}
       </div>
       <div class="grid gap-1.5">
         <Label for="ai-base-url">{m['settings.ai_base_url']()}</Label>

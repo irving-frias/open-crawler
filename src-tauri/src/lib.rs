@@ -7,6 +7,7 @@ pub mod models;
 pub mod nesting_table;
 pub mod pagespeed;
 pub mod seo;
+pub mod secrets;
 pub mod transfer;
 
 use std::collections::HashMap;
@@ -70,7 +71,6 @@ pub fn run() {
 
     let builder = {
         let base = tauri::Builder::default()
-            .plugin(tauri_plugin_shell::init())
             .plugin(tauri_plugin_dialog::init())
             .plugin(tauri_plugin_fs::init())
             .plugin(tauri_plugin_notification::init())

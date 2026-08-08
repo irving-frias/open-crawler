@@ -27,7 +27,7 @@ pub async fn get_pagespeed_score(
         }
     }
 
-    let api_key = with_repo(&state, |repo| repo.get_setting("pagespeed_api_key")).await?;
+    let api_key = with_repo(&state, |repo| crate::secrets::get(repo, "pagespeed_api_key")).await?;
 
     let data = crate::pagespeed::fetch_pagespeed(&url, api_key.as_deref()).await?;
 

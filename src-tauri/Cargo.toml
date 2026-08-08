@@ -12,7 +12,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-notification = "2"
@@ -34,7 +33,7 @@ ahash = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 lru = "0.12"
-quick-xml = "0.36"
+quick-xml = "0.41"
 flate2 = "1"
 base64 = "0.22"
 futures = "0.3"
@@ -48,6 +47,7 @@ sha2 = "0.11.0"
 tiny_http = "0.12.0"
 local-ip-address = "0.6.13"
 cron = "0.12"
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "brotli", "rustls-tls", "socks", "stream"] }
