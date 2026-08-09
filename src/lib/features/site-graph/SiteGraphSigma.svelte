@@ -23,12 +23,10 @@
   import { cn } from '$lib/utils.js';
 
   let {
-    projectId,
     graph,
     edges,
     onBack,
   }: {
-    projectId: string;
     graph: GraphData | null;
     edges: SiteGraphEdge[];
     onBack: () => void;
