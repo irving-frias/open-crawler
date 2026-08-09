@@ -57,7 +57,7 @@ pub(crate) fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
 
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
-    results_cache: Option<ResultsCacheArc>,
+    results_cache: Option<&'a ResultsCacheArc>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +75,7 @@ pub struct CrawlSessionInfo {
 }
 
 impl<'a> CrawlRepo<'a> {
-    pub fn new(conn: &'a Connection, results_cache: Option<ResultsCacheArc>) -> Self {
+    pub fn new(conn: &'a Connection, results_cache: Option<&'a ResultsCacheArc>) -> Self {
         Self {
             conn,
             results_cache,
@@ -89,7 +89,7 @@ impl<'a> CrawlRepo<'a> {
     }
 
     pub(crate) fn invalidate_cache_for_project(&self, project_id: &str) {
-        if let Some(ref cache_arc) = self.results_cache {
+        if let Some(cache_arc) = self.results_cache {
             let mut cache = cache_arc.lock().unwrap();
             let keys_to_remove: Vec<ResultsCacheKey> = cache
                 .iter()
@@ -564,6 +564,151 @@ mod tests {
     }
 
     #[test]
+    fn test_seo_overview_aggregates_normalized_rows() {
+        let repo = test_repo();
+        let audit = serde_json::json!({
+            "score": 72.0,
+            "grade": "C",
+            "categories": [
+                {"category": "meta", "score": 50.0, "weight": 0.25, "passed_weight": 10.0, "total_weight": 20.0, "passed_checks": 1, "total_checks": 2},
+                {"category": "technical", "score": 90.0, "weight": 0.20, "passed_weight": 18.0, "total_weight": 20.0, "passed_checks": 2, "total_checks": 2}
+            ],
+            "checks": [
+                {"id": "title_present", "category": "meta", "severity": "error", "passed": false,
+                 "weight": 1.0, "message": "Missing title", "guidance": "Add a title",
+                 "examples": [{"issue_type": "missing_title", "severity": "error", "element": "head", "message": "x"}]},
+                {"id": "meta_desc_present", "category": "meta", "severity": "warning", "passed": true,
+                 "weight": 1.0, "message": "ok", "guidance": "ok"}
+            ],
+            "priority_fixes": [{"id": "title_present", "priority": "critical", "message": "m", "guidance": "g", "category": "meta"}]
+        });
+        let mut p = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        p.seo_score = Some(72.0);
+        p.seo_audit_json = Some(audit.to_string());
+        repo.save_results_batch(&[p]).unwrap();
+
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.audited_pages, 1);
+        assert_eq!(overview.total_pages, 1);
+        assert!((overview.avg_score.unwrap() - 72.0).abs() < 1e-9);
+        assert_eq!(overview.avg_grade.as_deref(), Some("C"));
+        assert_eq!(overview.total_fixes, 1);
+        assert_eq!(overview.top_issues.len(), 1);
+        assert_eq!(overview.top_issues[0].id, "title_present");
+        assert_eq!(overview.top_issues[0].occurrences, 1);
+        assert_eq!(overview.category_averages.len(), 2);
+    }
+
+    #[test]
+    fn test_seo_overview_recrawl_clears_stale_normalized() {
+        let repo = test_repo();
+        let audit = serde_json::json!({
+            "score": 100.0,
+            "grade": "A",
+            "categories": [{"category": "meta", "score": 100.0, "weight": 0.25, "passed_weight": 20.0, "total_weight": 20.0, "passed_checks": 2, "total_checks": 2}],
+            "checks": [{"id": "title_present", "category": "meta", "severity": "error", "passed": false,
+                        "weight": 1.0, "message": "Missing title", "guidance": "Add a title"}],
+            "priority_fixes": []
+        });
+        let mut p = page("oldid", "https://x.com/a", Some("A"), 200, true);
+        p.seo_score = Some(100.0);
+        p.seo_audit_json = Some(audit.to_string());
+        repo.save_results_batch(&[p]).unwrap();
+
+        // Re-crawl same URL with no audit: stale normalized rows must be gone.
+        repo.save_results_batch(&[page("newid", "https://x.com/a", Some("A"), 200, true)])
+            .unwrap();
+
+        let category_rows: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_category_scores WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(category_rows, 0, "stale category rows must be removed on re-crawl");
+
+        let check_rows: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_check_issues WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(check_rows, 0, "stale check rows must be removed on re-crawl");
+
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.audited_pages, 0);
+        assert_eq!(overview.total_pages, 1);
+    }
+
+    #[test]
+    fn test_seo_overview_backfills_legacy_json() {
+        let repo = test_repo();
+        let audit = serde_json::json!({
+            "score": 85.0,
+            "grade": "B",
+            "categories": [{"category": "meta", "score": 80.0, "weight": 0.25, "passed_weight": 16.0, "total_weight": 20.0, "passed_checks": 2, "total_checks": 2}],
+            "checks": [{"id": "h1_present", "category": "meta", "severity": "error", "passed": false,
+                        "weight": 1.0, "message": "Missing h1", "guidance": "Add h1"}],
+            "priority_fixes": [{"id": "h1_present", "priority": "critical", "message": "m", "guidance": "g", "category": "meta"}]
+        });
+        // Simulate a page written by an older engine that ran before migration
+        // 011 existed: the json is present but no normalized rows exist yet.
+        repo.conn
+            .execute(
+                "INSERT INTO crawled_pages (id, config_id, project_id, url, status_code, title, is_indexable, depth, crawl_timestamp, seo_score, seo_audit_json, blocked)
+                 VALUES ('pg1', 'cfg', 'p1', 'https://x.com/a', 200, 'A', 1, 0, datetime('now'), 85.0, ?1, 0)",
+                rusqlite::params![audit.to_string()],
+            )
+            .unwrap();
+
+        // The overview must show no issues/categories yet because the
+        // normalized rows don't exist (they are only created by migration
+        // 011's backfill, which is applied to on-disk DBs on startup).
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.audited_pages, 1);
+        assert!(overview.top_issues.is_empty());
+        assert!(overview.category_averages.is_empty());
+        assert_eq!(overview.total_fixes, 0);
+
+        // Emulate migration 011's backfill for this page.
+        repo.conn
+            .execute_batch(
+                "INSERT INTO seo_category_scores (page_id, project_id, category, score)
+                 SELECT p.id, p.project_id, json_extract(c.value, '$.category'), json_extract(c.value, '$.score')
+                 FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
+                 WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json);
+
+                 INSERT INTO seo_check_issues
+                     (page_id, project_id, category, severity, check_id, message, guidance, evidence, examples_json)
+                 SELECT p.id, p.project_id,
+                        json_extract(c.value, '$.category'), json_extract(c.value, '$.severity'),
+                        json_extract(c.value, '$.id'), json_extract(c.value, '$.message'),
+                        json_extract(c.value, '$.guidance'), json_extract(c.value, '$.evidence'),
+                        json_extract(c.value, '$.examples')
+                 FROM crawled_pages p, json_each(p.seo_audit_json, '$.checks') c
+                 WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+                   AND json_extract(c.value, '$.passed') = 0;
+
+                 UPDATE crawled_pages SET seo_priority_fix_count = (
+                     SELECT COUNT(*) FROM json_each(crawled_pages.seo_audit_json, '$.priority_fixes')
+                 )
+                 WHERE seo_audit_json IS NOT NULL AND json_valid(seo_audit_json);",
+            )
+            .unwrap();
+
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.audited_pages, 1);
+        assert!((overview.avg_score.unwrap() - 85.0).abs() < 1e-9);
+        assert_eq!(overview.total_fixes, 1);
+        assert_eq!(overview.top_issues.len(), 1);
+        assert_eq!(overview.top_issues[0].id, "h1_present");
+    }
+
+    #[test]
     fn test_recrawl_replaces_row_per_url() {
         let repo = test_repo();
         let p1 = page("id1", "https://x.com/a", Some("A v1"), 200, true);
@@ -617,5 +762,36 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_create_crawl_snapshot_prunes_older_ones() {
+        let repo = test_repo();
+        repo.save_results_batch(&[page("pg1", "https://x.com/a", Some("A"), 200, true)])
+            .unwrap();
+
+        // Generate 20 snapshots; only the newest 12 must survive.
+        for _ in 0..20 {
+            repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        }
+
+        let remaining: i64 = repo
+            .conn
+            .query_row("SELECT COUNT(*) FROM crawl_snapshots WHERE project_id = 'p1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(remaining, 12, "snapshots must be pruned to 12 per project");
+
+        let orphaned_data: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM crawl_snapshot_data
+                 WHERE snapshot_id NOT IN (SELECT id FROM crawl_snapshots)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphaned_data, 0, "pruned snapshots must not leak data rows");
     }
 }

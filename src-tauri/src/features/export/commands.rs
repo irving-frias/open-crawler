@@ -5,7 +5,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::db::CrawlRepo;
 use crate::error::AppError;
 use crate::features::with_repo;
 use crate::AppState;
@@ -94,25 +93,27 @@ pub async fn export_full(
         let app_export = app.clone();
         let pid_export = project_id.clone();
         let dest_export = dest_path.clone();
-        with_repo(&state, move |repo| {
-            export_xlsx(
-                repo,
-                &app_export,
-                &pid_export,
-                &dest_export,
-                total_pages,
-                total_links,
-                total_issues,
-            )
-        })
+        export_xlsx(
+            &state,
+            &app_export,
+            &pid_export,
+            &dest_export,
+            total_pages,
+            total_links,
+            total_issues,
+        )
         .await?;
     } else {
         let app_export = app.clone();
         let pid_export = project_id.clone();
         let dest_export = dest_path.clone();
-        with_repo(&state, move |repo| {
-            export_csv_single(repo, &app_export, &pid_export, &dest_export, total_pages)
-        })
+        export_csv_single(
+            &state,
+            &app_export,
+            &pid_export,
+            &dest_export,
+            total_pages,
+        )
         .await?;
     }
 
@@ -266,8 +267,8 @@ fn share_export(app: &AppHandle, path: &str, format: &str) {
 #[cfg(not(mobile))]
 fn share_export(_app: &AppHandle, _path: &str, _format: &str) {}
 
-fn export_csv_single(
-    repo: &CrawlRepo,
+async fn export_csv_single(
+    state: &State<'_, Arc<RwLock<AppState>>>,
     app: &AppHandle,
     project_id: &str,
     file_path: &str,
@@ -296,12 +297,18 @@ fn export_csv_single(
     let mut processed: u64 = 0;
 
     loop {
-        let batch = repo.get_result_batch(
-            project_id,
-            last_timestamp.as_deref(),
-            last_id.as_deref(),
-            PAGE_BATCH_SIZE,
-        )?;
+        let pid = project_id.to_string();
+        let last_ts = last_timestamp.clone();
+        let last_id_cursor = last_id.clone();
+        let batch = with_repo(state, move |repo| {
+            repo.get_result_batch(
+                &pid,
+                last_ts.as_deref(),
+                last_id_cursor.as_deref(),
+                PAGE_BATCH_SIZE,
+            )
+        })
+        .await?;
         if batch.is_empty() {
             break;
         }
@@ -551,8 +558,8 @@ const ISSUE_HEADERS: [&str; 7] = [
 ];
 const LINK_HEADERS: [&str; 5] = ["From URL", "To URL", "Link Type", "Anchor Text", "Follow"];
 
-fn export_xlsx(
-    repo: &CrawlRepo,
+async fn export_xlsx(
+    state: &State<'_, Arc<RwLock<AppState>>>,
     app: &AppHandle,
     project_id: &str,
     file_path: &str,
@@ -598,12 +605,18 @@ fn export_xlsx(
         let mut last_timestamp: Option<String> = None;
         let mut last_id: Option<String> = None;
         loop {
-            let batch = repo.get_result_batch(
-                project_id,
-                last_timestamp.as_deref(),
-                last_id.as_deref(),
-                PAGE_BATCH_SIZE,
-            )?;
+            let pid = project_id.to_string();
+            let last_ts = last_timestamp.clone();
+            let last_id_cursor = last_id.clone();
+            let batch = with_repo(state, move |repo| {
+                repo.get_result_batch(
+                    &pid,
+                    last_ts.as_deref(),
+                    last_id_cursor.as_deref(),
+                    PAGE_BATCH_SIZE,
+                )
+            })
+            .await?;
             if batch.is_empty() {
                 break;
             }
@@ -646,12 +659,18 @@ fn export_xlsx(
         let mut last_timestamp: Option<String> = None;
         let mut last_id: Option<String> = None;
         loop {
-            let batch = repo.get_result_batch(
-                project_id,
-                last_timestamp.as_deref(),
-                last_id.as_deref(),
-                PAGE_BATCH_SIZE,
-            )?;
+            let pid = project_id.to_string();
+            let last_ts = last_timestamp.clone();
+            let last_id_cursor = last_id.clone();
+            let batch = with_repo(state, move |repo| {
+                repo.get_result_batch(
+                    &pid,
+                    last_ts.as_deref(),
+                    last_id_cursor.as_deref(),
+                    PAGE_BATCH_SIZE,
+                )
+            })
+            .await?;
             if batch.is_empty() {
                 break;
             }
@@ -718,7 +737,12 @@ fn export_xlsx(
 
         let mut last_rowid: Option<i64> = None;
         loop {
-            let batch = repo.get_links_batch(project_id, last_rowid, LINK_BATCH_SIZE)?;
+            let pid = project_id.to_string();
+            let cursor = last_rowid;
+            let batch = with_repo(state, move |repo| {
+                repo.get_links_batch(&pid, cursor, LINK_BATCH_SIZE)
+            })
+            .await?;
             if batch.is_empty() {
                 break;
             }

@@ -301,7 +301,7 @@ pub fn compute_css_selector(element: &scraper::ElementRef) -> String {
 pub fn compute_snippet(element: &scraper::ElementRef) -> String {
     let html = element.html();
     if html.len() > 200 {
-        format!("{}...", &html[..200])
+        format!("{}...", super::truncate_bytes(&html, 200))
     } else {
         html
     }

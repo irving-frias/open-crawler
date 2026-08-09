@@ -83,11 +83,7 @@ pub(crate) async fn start_crawl_internal(
 
     // Validate reachability of local URLs before starting the engine.
     if config.scan_type == ScanType::Local {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .user_agent(config.user_agent())
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()?;
+        let client = app.state::<reqwest::Client>().inner().clone();
 
         let mut failures = Vec::new();
         for url in &config.local_urls {
@@ -197,12 +193,21 @@ pub(crate) async fn start_crawl_internal(
 
 async fn validate_url(client: &Client, url_str: &str) -> Result<(), AppError> {
     let _url = Url::parse(url_str)?;
-    let head = client.head(url_str).send().await;
+    let req = |method: &str| {
+        let mut r = if method == "head" {
+            client.head(url_str)
+        } else {
+            client.get(url_str)
+        };
+        r = r.timeout(std::time::Duration::from_secs(5));
+        r
+    };
+    let head = req("head").send().await;
 
     let response = match head {
         Ok(r) => r,
         Err(_) => {
-            let get = client.get(url_str).send().await?;
+            let get = req("get").send().await?;
             if get.status().is_success() || get.status().is_redirection() {
                 return Ok(());
             }
@@ -221,7 +226,7 @@ async fn validate_url(client: &Client, url_str: &str) -> Result<(), AppError> {
     if response.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED
         || response.status() == reqwest::StatusCode::NOT_IMPLEMENTED
     {
-        let get_response = client.get(url_str).send().await?;
+        let get_response = req("get").send().await?;
         if get_response.status().is_success() || get_response.status().is_redirection() {
             return Ok(());
         }

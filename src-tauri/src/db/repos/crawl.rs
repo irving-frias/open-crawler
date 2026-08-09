@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::models::{CrawlConfig, CrawlResult, PageLink};
 
 use super::{compress_html_body, CrawlRepo};
+use super::seo::{delete_seo_normalized, save_seo_normalized};
 
 /// Deletes the normalized `page_issues` rows belonging to the given page ids.
 /// Re-crawls replace page rows per URL, and the replaced rows' ids differ from
@@ -167,6 +168,9 @@ impl<'a> CrawlRepo<'a> {
         }
 
         save_page_issues(&tx, project_id, &result.id, &result.semantic_issues_json)?;
+        delete_seo_normalized(&tx, &old_ids)?;
+        delete_seo_normalized(&tx, std::slice::from_ref(&result.id))?;
+        save_seo_normalized(&tx, project_id, &result.id, &result.seo_audit_json)?;
 
         tx.commit()?;
         self.invalidate_cache_for_project(project_id);
@@ -204,6 +208,7 @@ impl<'a> CrawlRepo<'a> {
             }
         }
         delete_page_issues(&tx, &old_ids)?;
+        delete_seo_normalized(&tx, &old_ids)?;
 
         {
             let mut del =
@@ -288,6 +293,16 @@ impl<'a> CrawlRepo<'a> {
                     ])?;
                 }
             }
+        }
+
+        // Normalized SEO rows for the freshly written pages.
+        for result in unique.values() {
+            save_seo_normalized(
+                &tx,
+                &result.project_id,
+                &result.id,
+                &result.seo_audit_json,
+            )?;
         }
 
         tx.commit()?;

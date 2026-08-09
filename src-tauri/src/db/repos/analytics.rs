@@ -350,6 +350,11 @@ impl<'a> CrawlRepo<'a> {
 
     /// Recomputes duplicate groups for a project using simhash hamming distance
     /// (distance <= 10) on each page's content_hash. Clears previous groups.
+    ///
+    /// Uses LSH bucketing instead of an O(n²) pairwise scan: the 64-bit hash is
+    /// split into 16 bands of 4 bits, and candidates are compared only within
+    /// shared buckets. Two hashes within hamming distance 10 share at least 6
+    /// identical bands, so every near-duplicate pair is still compared exactly.
     pub fn compute_duplicate_groups(&self, project_id: &str) -> Result<u32, AppError> {
         self.conn.execute(
             "UPDATE crawled_pages SET duplicate_group_id = NULL WHERE project_id = ?1",
@@ -396,10 +401,38 @@ impl<'a> CrawlRepo<'a> {
             }
         }
 
-        for i in 0..n {
-            for j in (i + 1)..n {
-                if simhash::hamming_distance(hashes[i].1, hashes[j].1) <= 10 {
-                    union(&mut parent, i, j);
+        // Exact duplicates share the same hash — group them immediately so a
+        // large run of identical pages never forms an O(n²) candidate bucket.
+        let mut exact: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+        for (i, (_, h)) in hashes.iter().enumerate() {
+            if let Some(&prev) = exact.get(h) {
+                union(&mut parent, i, prev);
+            } else {
+                exact.insert(*h, i);
+            }
+        }
+
+        // LSH bucketing over 16 bands of 4 bits. Two hashes at distance <= 10
+        // differ in at most 10 bands, so at least 6 are identical and they land
+        // in at least 6 shared buckets — guaranteed to be compared.
+        let mut buckets: std::collections::HashMap<(usize, u8), Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, (_, h)) in hashes.iter().enumerate() {
+            for band in 0..16u32 {
+                let bits = ((h >> (band * 4)) & 0xF) as u8;
+                buckets.entry((band as usize, bits)).or_default().push(i);
+            }
+        }
+        for indices in buckets.values() {
+            for a in 0..indices.len() {
+                for b in (a + 1)..indices.len() {
+                    let (ia, ib) = (indices[a], indices[b]);
+                    if find(&mut parent, ia) == find(&mut parent, ib) {
+                        continue;
+                    }
+                    if simhash::hamming_distance(hashes[ia].1, hashes[ib].1) <= 10 {
+                        union(&mut parent, ia, ib);
+                    }
                 }
             }
         }
@@ -419,18 +452,24 @@ impl<'a> CrawlRepo<'a> {
             group_count += 1;
             group_map.insert(*root, group_count as i64);
         }
-        for i in 0..n {
-            let root = find(&mut parent, i);
-            let Some(gid) = group_map.get(&root) else {
-                continue;
-            };
-            let url = &rows[hashes[i].0].0;
-            self.conn.execute(
+
+        // Persist groups in a single transaction.
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut update = tx.prepare(
                 "UPDATE crawled_pages SET duplicate_group_id = ?1
                  WHERE project_id = ?2 AND url = ?3",
-                params![gid, project_id, url],
             )?;
+            for i in 0..n {
+                let root = find(&mut parent, i);
+                let Some(gid) = group_map.get(&root) else {
+                    continue;
+                };
+                let url = &rows[hashes[i].0].0;
+                update.execute(params![gid, project_id, url])?;
+            }
         }
+        tx.commit()?;
 
         Ok(group_count)
     }

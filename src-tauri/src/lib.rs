@@ -163,6 +163,17 @@ pub fn run() {
 
             app.manage(Arc::new(RwLock::new(state)));
 
+            // Shared HTTP client (connection pool + DNS reused across commands
+            // instead of building a fresh client per request).
+            let http_client = reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::limited(10))
+                .gzip(true)
+                .brotli(true)
+                .build()
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            app.manage(http_client);
+
             // Start the cron scheduler (background task, one tick per minute).
             {
                 let app_handle = app.handle().clone();

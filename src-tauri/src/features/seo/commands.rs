@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::StreamExt;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -94,8 +95,9 @@ pub async fn run_seo_audit(
     let json = serde_json::to_string(&audit).ok();
     let score = audit.score;
     let pid = page_id.clone();
+    let pid_project = original.project_id.clone();
     with_repo(&state, move |repo| {
-        repo.update_seo_audit(&pid, score, json.as_deref())
+        repo.update_seo_audit(&pid_project, &pid, score, json.as_deref())
     })
     .await?;
 
@@ -115,6 +117,7 @@ pub struct FixSuggestion {
 #[tauri::command]
 pub async fn suggest_fix(
     state: State<'_, Arc<RwLock<AppState>>>,
+    http: State<'_, reqwest::Client>,
     check_id: String,
     check_message: String,
     check_guidance: String,
@@ -167,11 +170,9 @@ pub async fn suggest_fix(
     );
 
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()?;
-    let response = client
+    let response = http
         .post(&endpoint)
+        .timeout(std::time::Duration::from_secs(60))
         .bearer_auth(&api_key)
         .json(&serde_json::json!({
             "model": model,
@@ -350,23 +351,20 @@ pub async fn run_seo_audit_all(
     let mut processed: u32 = 0;
     let mut errors: u32 = 0;
 
-    for (page_id, url) in pages {
-        if token.is_cancelled() {
-            info!("SEO audit cancelled for project: {}", project_id);
-            break;
-        }
-
-        let parsed = match url::Url::parse(&url) {
-            Ok(u) => u,
-            Err(_) => {
-                errors += 1;
-                processed += 1;
-                emit_seo_progress(&app, &state, &project_id, processed, total, errors).await;
-                continue;
-            }
-        };
-
-        let result = async {
+    // Concurrently fetch + parse pages (the slow network part) with a bounded
+    // buffer; DB writes stay serialized through `with_repo` in the consumer.
+    const SEO_AUDIT_CONCURRENCY: usize = 4;
+    let fetcher = Arc::new(fetcher);
+    let work = pages.into_iter().map(|(page_id, url)| {
+        let fetcher = fetcher.clone();
+        let parser = parser.clone();
+        async move {
+            let parsed = match url::Url::parse(&url) {
+                Ok(u) => u,
+                Err(_) => {
+                    return Err(AppError::Crawl(format!("Invalid URL: {url}")));
+                }
+            };
             let response = fetcher.fetch(&parsed).await?;
             let (seo_data, _) = parser.parse(&response.html, &parsed);
             let audit = audit_page(
@@ -381,17 +379,31 @@ pub async fn run_seo_audit_all(
                 },
             );
             let json = serde_json::to_string(&audit).ok();
-            let score = audit.score;
-            let pid = page_id.clone();
-            with_repo(&state, move |repo| {
-                repo.update_seo_audit(&pid, score, json.as_deref())
-            })
-            .await
+            Ok((page_id, audit.score, json))
         }
-        .await;
+    });
 
-        if result.is_err() {
-            errors += 1;
+    let mut stream = futures::stream::iter(work).buffer_unordered(SEO_AUDIT_CONCURRENCY);
+    while let Some(outcome) = stream.next().await {
+        if token.is_cancelled() {
+            info!("SEO audit cancelled for project: {}", project_id);
+            break;
+        }
+
+        match outcome {
+            Ok((page_id, score, json)) => {
+                let pid = page_id;
+                let pid_project = project_id.clone();
+                if with_repo(&state, move |repo| {
+                    repo.update_seo_audit(&pid_project, &pid, score, json.as_deref())
+                })
+                .await
+                .is_err()
+                {
+                    errors += 1;
+                }
+            }
+            Err(_) => errors += 1,
         }
         processed += 1;
         emit_seo_progress(&app, &state, &project_id, processed, total, errors).await;

@@ -69,7 +69,7 @@ pub async fn export_package(
 
     // Silent mode writes into a managed transfers dir (no save dialog on
     // desktop, no share sheet on mobile) — used by the direct-share flow
-    // (WiFi/Bluetooth/P2P) where export happens automatically as step 1.
+    // (WiFi/Bluetooth) where export happens automatically as step 1.
     let (write_path, will_share) = if silent {
         let dir = app
             .path()
@@ -256,16 +256,61 @@ fn emit_transfer_progress(app: &AppHandle, stage: &'static str, processed: u64, 
     );
 }
 
+/// Removes stale temp packages from the managed `transfers` dir (files older
+/// than a day that were left behind by interrupted shares).
+fn sweep_stale_transfers(dir: &Path) {
+    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("ocproj") {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if !meta.is_file() {
+                continue;
+            }
+            if meta
+                .modified()
+                .map(|m| m < cutoff)
+                .unwrap_or(false)
+            {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+}
+
 /// Starts the LAN WiFi server so other devices can download a package file
 /// from the phone/desktop's local address (shown as a QR code / link).
 #[tauri::command]
 pub async fn start_transfer_server(
+    app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
     file_path: String,
     minutes: Option<u64>,
 ) -> Result<TransferInfo, AppError> {
+    // Only the managed transfers dir is cleaned up automatically; files the
+    // user picked via a save dialog are left untouched.
+    let transfers_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join("transfers"));
+    if let Some(dir) = &transfers_dir {
+        let _ = std::fs::create_dir_all(dir);
+        sweep_stale_transfers(dir);
+    }
+
     let state_read = state.read().await;
-    server::start_transfer_server(&state_read, Path::new(&file_path), minutes.unwrap_or(0))
+    server::start_transfer_server(
+        &state_read,
+        Path::new(&file_path),
+        minutes.unwrap_or(0),
+        transfers_dir.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -285,13 +330,13 @@ pub async fn get_active_transfer(
 /// Downloads a package from a transfer URL (typed or scanned from a QR code)
 /// into `dest`, reporting progress via the `transfer-progress` event.
 #[tauri::command]
-pub async fn download_transfer(app: AppHandle, url: String, dest: String) -> Result<(), AppError> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| AppError::Crawl(format!("failed to build HTTP client: {e}")))?;
-
-    let response = client
+pub async fn download_transfer(
+    app: AppHandle,
+    http: State<'_, reqwest::Client>,
+    url: String,
+    dest: String,
+) -> Result<(), AppError> {
+    let response = http
         .get(&url)
         .send()
         .await

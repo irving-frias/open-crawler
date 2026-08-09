@@ -15,12 +15,6 @@ import { m } from '$lib/paraglide/messages.js';
 import { notify } from '$lib/utils';
 import { getContext, setContext } from 'svelte';
 import type { FilterState } from '$lib/features/results/FilterBar.svelte';
-import {
-  parseP2PCode,
-  startP2PSender,
-  receiveP2P as receivePeerPackage,
-  type P2PProgress,
-} from '$lib/features/transfer/p2p';
 
 const APP_SHELL_KEY = Symbol('open-crawler-app-shell');
 
@@ -119,11 +113,6 @@ export interface AppFields {
   activeTransfer: TransferInfo | null;
   shareImporting: boolean;
   shareChecked: boolean;
-  p2pBusy: boolean;
-  p2pPeerId: string;
-  p2pStatus: string;
-  p2pProgress: P2PProgress;
-  p2pError: string;
   btBusy: boolean;
   btStatus: string;
   btError: string;
@@ -179,9 +168,6 @@ export interface AppShell extends AppFields {
     minutes?: number
   ): Promise<void>;
   exportAndShare(includeCredentials: boolean, lightweight: boolean): Promise<void>;
-  exportAndStartP2P(includeCredentials: boolean, lightweight: boolean): Promise<void>;
-  stopP2P(): void;
-  receiveP2P(code: string, mode: ImportConflictMode): Promise<void>;
   sendViaObex(addr: string, includeCredentials: boolean, lightweight: boolean): Promise<void>;
   importPackage(filePath: string, mode: ImportConflictMode): Promise<ImportSummary>;
   importSharedIntent(mode: ImportConflictMode): Promise<ImportSummary | null>;
@@ -201,7 +187,6 @@ export function formatDuration(secs: number): string {
 
 export function createAppShell(projectId: string | null = null, isLauncher = false): AppShell {
   let projectsBase = $state<Project[]>([]);
-  let p2pSender: ReturnType<typeof startP2PSender> | null = null;
   const projects = useOptimistic<Project, OptimisticAction<Project>>(
     () => projectsBase,
     (list, action) => (action.type === 'delete' ? list.filter((p) => p.id !== action.id) : list)
@@ -256,11 +241,6 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     activeTransfer: null as TransferInfo | null,
     shareImporting: false,
     shareChecked: false,
-    p2pBusy: false,
-    p2pPeerId: '',
-    p2pStatus: '',
-    p2pProgress: { transferred: 0, total: 0, percent: 0 } as P2PProgress,
-    p2pError: '',
     btBusy: false,
     btStatus: '',
     btError: '',
@@ -1246,121 +1226,6 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     }
   }
 
-  // Direct share over the internet (P2P): silent export + WebRTC sender peer.
-  async function exportAndStartP2P(includeCredentials: boolean, lightweight: boolean) {
-    if (!state.selectedProjectId || state.p2pBusy) return;
-    state.p2pBusy = true;
-    state.p2pStatus = 'exporting';
-    state.p2pError = '';
-    try {
-      const projectId = state.selectedProjectId;
-      const name = `open-crawler-${projectId}.ocproj`;
-      const info = await api.transferApi.exportPackage(
-        [projectId],
-        name,
-        lightweight,
-        includeCredentials,
-        false,
-        true
-      );
-      state.lastPackage = info;
-      p2pSender = startP2PSender(
-        info.path,
-        info.file_name,
-        info.size_bytes,
-        (status) => (state.p2pStatus = status),
-        (p) => (state.p2pProgress = p),
-        (message) => {
-          state.p2pError = message;
-          state.p2pStatus = 'error';
-          toast.error(message);
-        }
-      );
-      state.p2pPeerId = p2pSender.id;
-      state.p2pStatus = 'ready';
-      // Also serve the `/receive` browser page on the LAN so receivers on the
-      // same network don't need the app.
-      try {
-        const transfer = await api.transferApi.startTransferServer(info.path, 15);
-        state.activeTransfer = transfer;
-      } catch (e) {
-        console.warn('P2P: could not start LAN receiver page:', e);
-      }
-      toast.success(m['transfer.exported']({ name: info.file_name }));
-    } catch (e) {
-      state.p2pError = String(e);
-      state.p2pStatus = 'error';
-      toast.error(String(e));
-    } finally {
-      state.p2pBusy = false;
-    }
-  }
-
-  function stopP2P() {
-    p2pSender?.dispose();
-    p2pSender = null;
-    state.p2pPeerId = '';
-    state.p2pStatus = '';
-    state.p2pError = '';
-    state.p2pProgress = { transferred: 0, total: 0, percent: 0 };
-    if (state.activeTransfer) {
-      void api.transferApi.stopTransferServer().catch(() => {});
-      state.activeTransfer = null;
-    }
-  }
-
-  // Receiver side: connects to the sender's peer id, writes the incoming
-  // package to a temp file and imports it using the chosen conflict mode.
-  async function receiveP2P(code: string, mode: ImportConflictMode) {
-    if (state.p2pBusy) return;
-    const peerId = parseP2PCode(code);
-    if (!peerId) {
-      toast.error(m['transfer.p2p.invalid_code']());
-      return;
-    }
-    state.p2pBusy = true;
-    state.p2pStatus = 'connecting';
-    state.p2pError = '';
-    let dest = '';
-    try {
-      const { appDataDir, join } = await import('@tauri-apps/api/path');
-      const fs = await import('@tauri-apps/plugin-fs');
-      const dir = await appDataDir();
-      const transfersDir = await join(dir, 'transfers');
-      await fs.mkdir(transfersDir, { recursive: true });
-      dest = await join(transfersDir, `p2p-incoming-${Date.now()}.ocproj`);
-      await receivePeerPackage(
-        peerId,
-        dest,
-        (s) => (state.p2pStatus = s),
-        (p) => (state.p2pProgress = p),
-        (message) => {
-          state.p2pError = message;
-          state.p2pStatus = 'error';
-          toast.error(message);
-        }
-      );
-      await importPackage(dest, mode);
-    } catch (e) {
-      state.p2pError = String(e);
-      state.p2pStatus = 'error';
-      toast.error(String(e));
-    } finally {
-      if (dest) {
-        try {
-          const fs = await import('@tauri-apps/plugin-fs');
-          await fs.remove(dest);
-        } catch {
-          // best-effort cleanup
-        }
-      }
-      state.p2pBusy = false;
-      state.p2pStatus = '';
-      state.p2pError = '';
-      state.p2pProgress = { transferred: 0, total: 0, percent: 0 };
-    }
-  }
-
   async function importPackage(filePath: string, mode: ImportConflictMode) {
     if (state.transferBusy) return { imported: [], skipped: [], warnings: [] } as ImportSummary;
     state.transferBusy = true;
@@ -1509,9 +1374,6 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   state.exportPackage = exportPackage;
   state.exportAndStartWifi = exportAndStartWifi;
   state.exportAndShare = exportAndShare;
-  state.exportAndStartP2P = exportAndStartP2P;
-  state.stopP2P = stopP2P;
-  state.receiveP2P = receiveP2P;
   state.sendViaObex = sendViaObex;
   state.importPackage = importPackage;
   state.importSharedIntent = importSharedIntent;

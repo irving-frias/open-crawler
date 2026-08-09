@@ -17,12 +17,11 @@ const PSI_ENDPOINT: &str = "https://www.googleapis.com/pagespeedonline/v5/runPag
 
 /// Fetches a Lighthouse performance audit for `url` via the Google
 /// PageSpeed Insights API. Works without an API key for low volumes.
-pub async fn fetch_pagespeed(url: &str, api_key: Option<&str>) -> Result<PageSpeedData, AppError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
-        .build()
-        .map_err(|e| AppError::Pagespeed(e.to_string()))?;
-
+pub async fn fetch_pagespeed(
+    client: &reqwest::Client,
+    url: &str,
+    api_key: Option<&str>,
+) -> Result<PageSpeedData, AppError> {
     let encoded: String = url::form_urlencoded::byte_serialize(url.as_bytes()).collect();
     let mut request_url =
         format!("{PSI_ENDPOINT}?url={encoded}&strategy=desktop&category=performance");
@@ -33,6 +32,7 @@ pub async fn fetch_pagespeed(url: &str, api_key: Option<&str>) -> Result<PageSpe
 
     let resp = client
         .get(&request_url)
+        .timeout(std::time::Duration::from_secs(90))
         .send()
         .await
         .map_err(|e| AppError::Pagespeed(format!("PageSpeed request failed: {e}")))?;

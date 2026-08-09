@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::StreamExt;
 use std::collections::HashMap;
 use std::time::Duration;
 use url::Url;
@@ -6,6 +7,10 @@ use url::Url;
 use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
 use crate::error::AppError;
 use crate::models::{ProxyConfig, SiteAuth};
+
+/// Hard cap on the number of body bytes we read. Pages larger than this are
+/// truncated so a single huge download can't exhaust memory.
+pub const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct FetchResponse {
@@ -116,10 +121,20 @@ impl HtmlFetcher for HttpFetcher {
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
 
-        let body = response.bytes().await?;
-        let size_bytes = body.len();
+        let mut body_bytes: Vec<u8> = Vec::with_capacity(8192);
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| AppError::Crawl(e.to_string()))?;
+            if body_bytes.len() + chunk.len() > MAX_BODY_BYTES {
+                let remaining = MAX_BODY_BYTES - body_bytes.len();
+                body_bytes.extend_from_slice(&chunk[..remaining]);
+                break;
+            }
+            body_bytes.extend_from_slice(&chunk);
+        }
+        let size_bytes = body_bytes.len();
 
-        let html = String::from_utf8_lossy(&body).to_string();
+        let html = String::from_utf8_lossy(&body_bytes).to_string();
 
         let load_time_ms = start.elapsed().as_millis() as u64;
 

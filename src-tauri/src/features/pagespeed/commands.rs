@@ -11,6 +11,7 @@ use crate::AppState;
 #[tauri::command]
 pub async fn get_pagespeed_score(
     state: State<'_, Arc<RwLock<AppState>>>,
+    http: State<'_, reqwest::Client>,
     project_id: String,
     url: String,
 ) -> Result<PageSpeedData, AppError> {
@@ -35,7 +36,7 @@ pub async fn get_pagespeed_score(
     })
     .await?;
 
-    let data = crate::pagespeed::fetch_pagespeed(&url, api_key.as_deref()).await?;
+    let data = crate::pagespeed::fetch_pagespeed(&http, &url, api_key.as_deref()).await?;
 
     if let Some(pid) = page_id {
         let score = data.score.map(|s| s as f64);

@@ -17,6 +17,16 @@ use crate::models::ProxyConfig;
 
 /// Joins raw cookie strings into a single `Cookie` header value, or `None` if
 /// there is nothing to send.
+/// Truncates a string to at most `max_bytes` bytes, splitting only on a UTF-8
+/// character boundary (never panics on multi-byte characters).
+pub(crate) fn truncate_bytes(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let end = s.floor_char_boundary(max_bytes);
+    s[..end].to_string()
+}
+
 pub(crate) fn cookie_header_value(cookies: &[String]) -> Option<String> {
     let joined = cookies
         .iter()

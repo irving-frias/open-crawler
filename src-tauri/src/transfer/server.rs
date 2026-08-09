@@ -26,8 +26,8 @@ pub struct TransferInfo {
     pub file_size_bytes: u64,
 }
 
-/// Runtime state of the one active transfer server. Dropping it while also
-/// flipping `stop` lets the accept loop exit and the port be released.
+/// Runtime state of the one active transfer server. Dropping it flips `stop`
+/// so the accept loop exits and the port is released.
 pub struct TransferServerState {
     pub path: PathBuf,
     pub token: String,
@@ -38,13 +38,27 @@ pub struct TransferServerState {
     _server: Arc<Server>,
 }
 
+impl Drop for TransferServerState {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+}
+
 /// Starts the LAN file server serving `file_path` for `minutes` (default 15).
 /// Binds `DEFAULT_PORT`, falling back to an ephemeral port if taken.
+///
+/// Semaphore: any previously active server is stopped first, so only one
+/// transfer server runs at a time and its temp file is cleaned up. When
+/// `transfers_dir` is set and `file_path` lives inside it, the file is
+/// removed once the server stops.
 pub fn start_transfer_server(
     state: &AppState,
     file_path: &Path,
     minutes: u64,
+    transfers_dir: Option<&Path>,
 ) -> Result<TransferInfo, AppError> {
+    let _ = stop_transfer_server(state);
+
     let metadata = std::fs::metadata(file_path)?;
     if !metadata.is_file() {
         return Err(AppError::Crawl(format!(
@@ -82,6 +96,9 @@ pub fn start_transfer_server(
 
     let server = Arc::new(server);
     let stop = Arc::new(AtomicBool::new(false));
+    let managed = transfers_dir
+        .map(|dir| file_path.starts_with(dir))
+        .unwrap_or(false);
 
     {
         let server_loop = server.clone();
@@ -108,6 +125,10 @@ pub fn start_transfer_server(
                 }
             }
             info!("transfer server stopped");
+            if managed {
+                let _ = std::fs::remove_file(&path_loop);
+                info!("cleaned up transfer file {}", path_loop.display());
+            }
         });
     }
 
@@ -244,19 +265,6 @@ fn handle_request(
 
     match path_segment.as_str() {
         "/health" => respond_text(request, 200, "ok"),
-        "/receive" => {
-            let peer = url
-                .split('?')
-                .nth(1)
-                .and_then(|q| {
-                    q.split('&')
-                        .find(|kv| kv.starts_with("peer="))
-                        .map(|kv| &kv[5..])
-                })
-                .map(percent_decode)
-                .unwrap_or_default();
-            respond_receive(request, &peer);
-        }
         "/" => {
             let ttl_minutes = expires_at
                 .duration_since(SystemTime::now())
@@ -355,117 +363,6 @@ fn respond_text(request: Request, status: u16, body: &str) {
             Header::from_bytes("Content-Type", "text/plain; charset=utf-8").expect("valid header"),
         );
     let _ = request.respond(response);
-}
-
-/// Browser-only receiver page (`/receive?peer=<peerId>`): connects to the
-/// sender's WebRTC peer and offers the received package as a download. Lets
-/// anyone on the same network receive a package without installing the app.
-fn respond_receive(request: Request, peer: &str) {
-    let peer_js = peer.replace('\\', "\\\\").replace('\'', "\\'");
-    let html = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open Crawler — Receive</title>
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<style>
-  body {{ font-family: system-ui, sans-serif; background:#1e1e2e; color:#e0e0e0;
-         display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }}
-  .card {{ background:#2e3440; padding:2.5rem; border-radius:16px; max-width:420px;
-          text-align:center; box-shadow:0 8px 30px rgba(0,0,0,.4); width:100%; }}
-  h1 {{ margin:0 0 .5rem; font-size:1.4rem; }}
-  p {{ color:#a8b3c5; margin:.25rem 0; }}
-  progress {{ width:100%; height:10px; margin:1.5rem 0 .5rem; appearance:none; border:none;
-             border-radius:5px; overflow:hidden; background:#3b4252; }}
-  progress::-webkit-progress-bar {{ background:#3b4252; }}
-  progress::-webkit-progress-value {{ background:#5e81ac; }}
-  .btn {{ display:none; margin-top:1.5rem; background:#5e81ac; color:#fff;
-         text-decoration:none; padding:.8rem 1.6rem; border-radius:10px; font-weight:600; }}
-  .meta {{ margin-top:1rem; font-size:.85rem; color:#7f8ea3; }}
-</style>
-</head>
-<body>
-  <div class="card">
-    <h1>Open Crawler</h1>
-    <p id="status">Connecting…</p>
-    <progress id="progress" max="100" value="0"></progress>
-    <p id="pct"></p>
-    <a id="download" class="btn">Save package</a>
-    <p class="meta">Receiving a package sent from Open Crawler</p>
-  </div>
-<script>
-(function () {{
-  var peerId = {peer_js_placeholder};
-  var statusEl = document.getElementById('status');
-  var progressEl = document.getElementById('progress');
-  var pctEl = document.getElementById('pct');
-  var downloadEl = document.getElementById('download');
-  function status(msg) {{ statusEl.textContent = msg; }}
-  function setPct(v) {{ progressEl.value = v; pctEl.textContent = v + '%'; }}
-
-  if (!peerId) {{ status('Missing peer id.'); return; }}
-  if (typeof window.Peer === 'undefined') {{ status('This browser cannot connect (needs WebRTC).'); return; }}
-
-  var peer = new Peer('ocp-browser-' + Math.random().toString(36).slice(2, 12));
-  peer.on('error', function (e) {{ status('Error: ' + (e.message || e.type)); }});
-  peer.on('open', function () {{
-    var conn = peer.connect(peerId, {{ reliable: true }});
-    var chunks = [];
-    var received = 0, total = 0, name = 'package.ocproj';
-    conn.on('open', function () {{ status('Connected — receiving…'); }});
-    conn.on('error', function (e) {{ status('Error: ' + (e.message || e.type)); }});
-    conn.on('data', function (data) {{
-      if (data && typeof data === 'object' && data.type === 'header') {{
-        name = data.name || name; total = data.size || 0;
-        conn.send({{ type: 'ack' }});
-      }} else if (data && typeof data === 'object' && data.type === 'done') {{
-        var blob = new Blob(chunks, {{ type: 'application/octet-stream' }});
-        downloadEl.href = URL.createObjectURL(blob);
-        downloadEl.download = name;
-        downloadEl.style.display = 'inline-block';
-        downloadEl.textContent = 'Save ' + name + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)';
-        status('Done — save the package file.');
-        setPct(100);
-        peer.destroy();
-      }} else if (data && typeof data === 'object' && data.type === 'error') {{
-        status('Error: ' + data.message);
-      }} else {{
-        chunks.push(new Uint8Array(data));
-        received += (data.byteLength || 0);
-        setPct(total ? Math.round((received / total) * 100) : 0);
-      }}
-    }});
-    conn.send({{ type: 'request' }});
-  }});
-}})();
-</script>
-</body>
-</html>"#,
-        peer_js_placeholder = if peer_js.is_empty() {
-            "null".to_string()
-        } else {
-            format!("'{peer_js}'")
-        }
-    );
-    respond_html(request, 200, &html);
-}
-
-fn respond_html(request: Request, status: u16, body: &str) {
-    let response = Response::from_string(body.to_string())
-        .with_status_code(StatusCode(status))
-        .with_header(
-            Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("valid header"),
-        );
-    let _ = request.respond(response);
-}
-
-fn percent_decode(s: &str) -> String {
-    percent_encoding::percent_decode_str(s)
-        .decode_utf8()
-        .map(|c| c.into_owned())
-        .unwrap_or_else(|_| s.to_string())
 }
 
 fn percent_encode(s: &str) -> String {
@@ -570,7 +467,7 @@ mod tests {
         std::fs::write(&path, b"package-data").unwrap();
 
         let state = test_state();
-        let info = start_transfer_server(&state, &path, 1).unwrap();
+        let info = start_transfer_server(&state, &path, 1, None).unwrap();
         assert_eq!(info.file_size_bytes, 12);
         assert!(!info.urls.is_empty());
         assert!(info
@@ -608,6 +505,58 @@ mod tests {
 
         stop_transfer_server(&state).unwrap();
         assert!(active_transfer(&state).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_transfer_server_restart_cleans_previous_file() {
+        let dir = std::env::temp_dir().join(format!("oc-transfer-restart-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("first.ocproj");
+        std::fs::write(&first, b"one").unwrap();
+        let second = dir.join("second.ocproj");
+        std::fs::write(&second, b"two").unwrap();
+
+        let state = test_state();
+
+        let info1 = start_transfer_server(&state, &first, 1, Some(&dir)).unwrap();
+        let addr = format!("127.0.0.1:{}", info1.port);
+        let (status, body) = http_get(&addr, &format!("/dl/{}/first.ocproj", info1.token));
+        assert_eq!(status, 200);
+        assert_eq!(body.trim(), "one");
+
+        // Starting a second server must stop the first one and drop its file.
+        let info2 = start_transfer_server(&state, &second, 1, Some(&dir)).unwrap();
+        assert_ne!(info2.token, info1.token);
+
+        // The old server must be gone and its temp file cleaned up.
+        let mut deadline = 0;
+        while std::fs::metadata(&first).is_ok() && deadline < 50 {
+            std::thread::sleep(Duration::from_millis(50));
+            deadline += 1;
+        }
+        assert!(
+            std::fs::metadata(&first).is_err(),
+            "previous transfer file must be removed on restart"
+        );
+        assert!(std::fs::metadata(&second).is_ok());
+
+        let addr2 = format!("127.0.0.1:{}", info2.port);
+        let (status, body) = http_get(&addr2, &format!("/dl/{}/second.ocproj", info2.token));
+        assert_eq!(status, 200);
+        assert_eq!(body.trim(), "two");
+
+        stop_transfer_server(&state).unwrap();
+        let mut deadline = 0;
+        while std::fs::metadata(&second).is_ok() && deadline < 50 {
+            std::thread::sleep(Duration::from_millis(50));
+            deadline += 1;
+        }
+        assert!(
+            std::fs::metadata(&second).is_err(),
+            "served file must be removed on stop"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

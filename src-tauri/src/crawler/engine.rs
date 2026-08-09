@@ -753,7 +753,7 @@ impl CrawlEngine {
             let html = &response.html;
             let max_bytes = 100 * 1024;
             if html.len() > max_bytes {
-                Some(html[..max_bytes].to_string())
+                Some(super::truncate_bytes(html, max_bytes))
             } else {
                 Some(html.clone())
             }

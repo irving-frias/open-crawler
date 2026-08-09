@@ -41,7 +41,7 @@ impl<'a> CrawlRepo<'a> {
             is_404,
         };
 
-        if let Some(ref cache_arc) = self.results_cache {
+        if let Some(cache_arc) = self.results_cache {
             let mut cache = cache_arc.lock().unwrap();
             if let Some(cached) = cache.get(&cache_key) {
                 return Ok(cached.clone());
@@ -236,7 +236,7 @@ impl<'a> CrawlRepo<'a> {
             )?
             .collect::<Result<Vec<_>, _>>()?;
 
-        if let Some(ref cache_arc) = self.results_cache {
+        if let Some(cache_arc) = self.results_cache {
             let mut cache = cache_arc.lock().unwrap();
             cache.put(cache_key, (results.clone(), total));
         }

@@ -118,7 +118,7 @@
     return 'neutral';
   }
 
-  let severityTotals = $derived(() => {
+  let severityTotals = $derived.by(() => {
     const totals: Record<string, number> = { error: 0, warning: 0, info: 0 };
     for (const item of issueCounts) {
       totals[item.severity] = (totals[item.severity] || 0) + item.count;
@@ -126,12 +126,12 @@
     return totals;
   });
 
-  let totalIssues = $derived(() => {
-    const t = severityTotals();
+  let totalIssues = $derived.by(() => {
+    const t = severityTotals;
     return t.error + t.warning + t.info;
   });
 
-  let groupedIssues = $derived(() => {
+  let groupedIssues = $derived.by(() => {
     const map = new Map<
       string,
       { issue_type: string; error: number; warning: number; info: number; total: number }
@@ -176,61 +176,61 @@
     {:else}
       <!-- Severity Summary Bar -->
       <div class="severity-bar">
-        {#if severityTotals().error > 0}
+        {#if severityTotals.error > 0}
           <div
             class="severity-segment error"
-            style="flex: {severityTotals().error}"
-            title="{severityTotals().error} errors"
+            style="flex: {severityTotals.error}"
+            title="{severityTotals.error} errors"
           >
-            {severityTotals().error}
+            {severityTotals.error}
           </div>
         {/if}
-        {#if severityTotals().warning > 0}
+        {#if severityTotals.warning > 0}
           <div
             class="severity-segment warning"
-            style="flex: {severityTotals().warning}"
-            title="{severityTotals().warning} warnings"
+            style="flex: {severityTotals.warning}"
+            title="{severityTotals.warning} warnings"
           >
-            {severityTotals().warning}
+            {severityTotals.warning}
           </div>
         {/if}
-        {#if severityTotals().info > 0}
+        {#if severityTotals.info > 0}
           <div
             class="severity-segment info"
-            style="flex: {severityTotals().info}"
-            title="{severityTotals().info} info"
+            style="flex: {severityTotals.info}"
+            title="{severityTotals.info} info"
           >
-            {severityTotals().info}
+            {severityTotals.info}
           </div>
         {/if}
       </div>
       <div class="severity-legend">
-        {#if severityTotals().error > 0}
+        {#if severityTotals.error > 0}
           <span class="legend-item"
             ><span class="legend-dot error"></span>
-            {m['dashboard.errors']({ count: severityTotals().error.toString() })}</span
+            {m['dashboard.errors']({ count: severityTotals.error.toString() })}</span
           >
         {/if}
-        {#if severityTotals().warning > 0}
+        {#if severityTotals.warning > 0}
           <span class="legend-item"
             ><span class="legend-dot warning"></span>
-            {m['dashboard.warnings']({ count: severityTotals().warning.toString() })}</span
+            {m['dashboard.warnings']({ count: severityTotals.warning.toString() })}</span
           >
         {/if}
-        {#if severityTotals().info > 0}
+        {#if severityTotals.info > 0}
           <span class="legend-item"
             ><span class="legend-dot info"></span>
-            {m['dashboard.info']({ count: severityTotals().info.toString() })}</span
+            {m['dashboard.info']({ count: severityTotals.info.toString() })}</span
           >
         {/if}
         <span class="legend-total"
-          >{m['dashboard.total_issues']({ count: totalIssues().toString() })}</span
+          >{m['dashboard.total_issues']({ count: totalIssues.toString() })}</span
         >
       </div>
 
       <!-- Issue Type Cards -->
       <div class="issue-cards">
-        {#each groupedIssues() as item (item.issue_type)}
+        {#each groupedIssues as item (item.issue_type)}
           {@const sev = getDominantSeverity(item)}
           {@const Icon = getIcon(item.issue_type)}
           <Button

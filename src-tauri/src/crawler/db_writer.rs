@@ -163,17 +163,42 @@ impl DbWriter {
             }
         };
 
-        let repo = CrawlRepo::new(&db, Some(state_read.results_cache.clone()));
+        let repo = CrawlRepo::new(&db, Some(&state_read.results_cache));
 
         // Batch insert pages (this also invalidates the results cache for the project)
         if let Err(e) = repo.save_results_batch(&results) {
-            error!("Failed to batch save {} results: {}", count, e);
+            error!(
+                "Batch save of {} results failed ({}), retrying per page",
+                count, e
+            );
+            // A single offending row must not drop the whole batch: fall back to
+            // saving each page in its own transaction, skipping only the bad ones.
+            for result in &results {
+                if let Err(e) = repo.save_result(result) {
+                    error!(
+                        "Skipping page {} ({}) after batch fallback: {}",
+                        result.url, result.id, e
+                    );
+                    self.total_errors += 1;
+                }
+            }
         }
 
         // Batch insert links
         if !links.is_empty() {
             if let Err(e) = repo.save_links_batch(&links) {
-                error!("Failed to batch save {} links: {}", link_count, e);
+                error!(
+                    "Batch save of {} links failed ({}), retrying per link",
+                    link_count, e
+                );
+                for link in &links {
+                    if let Err(e) = repo.save_links_batch(std::slice::from_ref(link)) {
+                        error!(
+                            "Skipping link {} -> {}: {}",
+                            link.from_url, link.to_url, e
+                        );
+                    }
+                }
             }
         }
 

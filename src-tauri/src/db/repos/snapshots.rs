@@ -5,6 +5,9 @@ use crate::models::{ChangedUrl, CompareResult, CrawlSnapshot, SnapshotStats, Url
 
 use super::CrawlRepo;
 
+/// Keep at most this many snapshots per project; older ones are pruned.
+const MAX_SNAPSHOTS_PER_PROJECT: i64 = 12;
+
 struct SnapshotRow {
     url: String,
     status_code: Option<i32>,
@@ -230,6 +233,27 @@ impl<'a> CrawlRepo<'a> {
                 ])?;
             }
         }
+
+        // Prune snapshots beyond the per-project retention limit.
+        tx.execute(
+            "DELETE FROM crawl_snapshot_data
+             WHERE snapshot_id IN (
+                 SELECT id FROM crawl_snapshots
+                 WHERE project_id = ?1
+                 ORDER BY snapshot_time DESC LIMIT -1 OFFSET ?2
+             )",
+            params![project_id, MAX_SNAPSHOTS_PER_PROJECT],
+        )?;
+        tx.execute(
+            "DELETE FROM crawl_snapshots
+             WHERE project_id = ?1
+               AND id NOT IN (
+                   SELECT id FROM crawl_snapshots
+                   WHERE project_id = ?1
+                   ORDER BY snapshot_time DESC LIMIT ?2
+               )",
+            params![project_id, MAX_SNAPSHOTS_PER_PROJECT],
+        )?;
 
         tx.commit()?;
 
