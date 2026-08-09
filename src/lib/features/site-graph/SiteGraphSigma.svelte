@@ -119,12 +119,12 @@
     const xMax = (bbox.x as any).max ?? (bbox as any).x2 ?? 1;
     const yMin = (bbox.y as any).min ?? (bbox as any).y1 ?? 0;
     const yMax = (bbox.y as any).max ?? (bbox as any).y2 ?? 1;
-    
+
     const cx = (xMin + xMax) / 2;
     const cy = (yMin + yMax) / 2;
     const size = Math.max(xMax - xMin, yMax - yMin, 1);
     const ratio = (Math.min(w, h) / size) * 0.85;
-    
+
     s.getCamera().animate({ x: cx, y: cy, ratio, angle: 0 }, { duration: 250 });
   }
 
