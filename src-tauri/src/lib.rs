@@ -65,10 +65,16 @@ pub struct GraphEdgesCacheValue {
 pub type GraphEdgesCacheArc =
     std::sync::Arc<std::sync::Mutex<lru::LruCache<String, GraphEdgesCacheValue>>>;
 
-/// Cap on how many edges are kept for the graph. Beyond this the edge set is
-/// truncated (and `edges_truncated` is reported to the UI). 250k edges is far
-/// beyond what Cytoscape can render responsively anyway.
-pub const MAX_GRAPH_EDGES: usize = 250_000;
+/// Cap on how many nodes (pages) the interactive graph renders. Beyond this,
+/// only the most-linked pages are kept (ranked by in+out degree, then depth).
+/// Cytoscape stays responsive well under this, so large sites don't freeze the
+/// UI on layout/pan.
+pub const MAX_GRAPH_NODES: usize = 5_000;
+
+/// Cap on how many edges are kept for the graph. Only edges whose BOTH
+/// endpoints are in the rendered node set are counted. Beyond this the edge
+/// set is truncated (and `edges_truncated` is reported to the UI).
+pub const MAX_GRAPH_EDGES: usize = 50_000;
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,

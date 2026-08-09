@@ -127,7 +127,18 @@ export interface SiteGraphEdge {
 
 export interface SiteGraph {
   nodes: SiteGraphNode[];
+  edge_count: number;
+  edges_truncated: boolean;
+  total_nodes: number;
+  nodes_truncated: boolean;
+}
+
+export interface SiteGraphEdgePage {
   edges: SiteGraphEdge[];
+  offset: number;
+  total: number;
+  done: boolean;
+  truncated: boolean;
 }
 
 export interface StatusBucket {

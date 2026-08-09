@@ -6,9 +6,36 @@ use crate::models::{
     DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, SiteGraph,
     SiteGraphEdge, SiteGraphEdgePage, SiteGraphNode, SiteTreeFullNode, SiteTreeNode, StatusBucket,
 };
-use crate::{GraphEdgesCacheValue, MAX_GRAPH_EDGES};
+use crate::{GraphEdgesCacheValue, MAX_GRAPH_EDGES, MAX_GRAPH_NODES};
 
 use super::CrawlRepo;
+
+/// CTE that ranks every crawled page by graph importance (in+out degree, then
+/// depth) and keeps only the top [`MAX_GRAPH_NODES`] URLs. Both the node query
+/// and the edge query reuse this exact same CTE, so every returned edge's
+/// endpoints always exist in the rendered node set.
+const GRAPH_TOP_URLS_CTE: &str = r#"
+in_deg AS (
+    SELECT to_url AS url, COUNT(*) AS c
+    FROM page_links WHERE project_id = ?1 GROUP BY to_url
+),
+out_deg AS (
+    SELECT from_url AS url, COUNT(*) AS c
+    FROM page_links WHERE project_id = ?1 GROUP BY from_url
+),
+top_urls AS (
+    SELECT cp.url AS url,
+           COALESCE(id.c, 0) AS in_degree,
+           COALESCE(od.c, 0) AS out_degree,
+           MIN(cp.depth) AS depth
+    FROM crawled_pages cp
+    LEFT JOIN in_deg id ON id.url = cp.url
+    LEFT JOIN out_deg od ON od.url = cp.url
+    WHERE cp.project_id = ?1
+    GROUP BY cp.url
+    ORDER BY (in_degree + out_degree) DESC, depth ASC, cp.url ASC
+    LIMIT ?2
+)"#;
 
 impl<'a> CrawlRepo<'a> {
     /// Returns the children of a node in the site tree. Internal pages only
@@ -238,10 +265,11 @@ impl<'a> CrawlRepo<'a> {
         Ok(roots)
     }
 
-    /// Computes (or loads from the per-project cache) the full internal edge
-    /// set: links whose source AND target are both crawled pages of this
-    /// project. The set is capped at [`MAX_GRAPH_EDGES`] for sanity; the
-    /// `truncated` flag reports whether anything was dropped.
+    /// Computes (or loads from the per-project cache) the internal edge set
+    /// restricted to the rendered node set (links whose source AND target are
+    /// both among the top [`MAX_GRAPH_NODES`] pages). The set is capped at
+    /// [`MAX_GRAPH_EDGES`] for sanity; the `truncated` flag reports whether
+    /// anything was dropped.
     fn load_graph_edges(&self, project_id: &str) -> Result<Arc<Vec<SiteGraphEdge>>, AppError> {
         let cached = {
             let cache = self.graph_edges_cache.expect("graph cache attached");
@@ -255,40 +283,49 @@ impl<'a> CrawlRepo<'a> {
             return Ok(edges);
         }
 
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT from_url, to_url, link_type, is_follow
-             FROM page_links
-             WHERE project_id = ?1
-               AND from_url <> to_url
-               AND from_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
-               AND to_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
-             ORDER BY from_url ASC, to_url ASC
-             LIMIT ?2",
-        )?;
+        let mut stmt = self.conn.prepare(&format!(
+            "WITH {}
+             SELECT DISTINCT pl.from_url, pl.to_url, pl.link_type, pl.is_follow
+             FROM page_links pl
+             JOIN top_urls tu_s ON tu_s.url = pl.from_url
+             JOIN top_urls tu_t ON tu_t.url = pl.to_url
+             WHERE pl.project_id = ?1 AND pl.from_url <> pl.to_url
+             ORDER BY pl.from_url ASC, pl.to_url ASC
+             LIMIT ?3",
+            GRAPH_TOP_URLS_CTE
+        ))?;
         let rows = stmt
-            .query_map(params![project_id, MAX_GRAPH_EDGES as i64], |row| {
-                Ok(SiteGraphEdge {
-                    source: row.get(0)?,
-                    target: row.get(1)?,
-                    link_type: row.get(2)?,
-                    is_follow: row.get::<_, i32>(3)? != 0,
-                })
-            })?
+            .query_map(
+                params![project_id, MAX_GRAPH_NODES as i64, MAX_GRAPH_EDGES as i64],
+                |row| {
+                    Ok(SiteGraphEdge {
+                        source: row.get(0)?,
+                        target: row.get(1)?,
+                        link_type: row.get(2)?,
+                        is_follow: row.get::<_, i32>(3)? != 0,
+                    })
+                },
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         let truncated = rows.len() >= MAX_GRAPH_EDGES;
         let total = if truncated {
-            // Huge site: count the real total only when the cap was hit so the
-            // UI can report it. This is a rare path (250k+ internal links).
+            // Dense graph: count the real total only when the cap was hit so
+            // the UI can report it. This is a rare path (50k+ internal links
+            // between the rendered nodes).
             self.conn.query_row(
-                "SELECT COUNT(*) FROM (
-                     SELECT DISTINCT from_url, to_url
-                     FROM page_links
-                     WHERE project_id = ?1 AND from_url <> to_url
-                       AND from_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
-                       AND to_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
-                 )",
-                params![project_id],
+                &format!(
+                    "WITH {}
+                     SELECT COUNT(*) FROM (
+                         SELECT DISTINCT pl.from_url, pl.to_url
+                         FROM page_links pl
+                         JOIN top_urls tu_s ON tu_s.url = pl.from_url
+                         JOIN top_urls tu_t ON tu_t.url = pl.to_url
+                         WHERE pl.project_id = ?1 AND pl.from_url <> pl.to_url
+                     )",
+                    GRAPH_TOP_URLS_CTE
+                ),
+                params![project_id, MAX_GRAPH_NODES as i64],
                 |r| r.get(0),
             )?
         } else {
@@ -308,40 +345,51 @@ impl<'a> CrawlRepo<'a> {
         Ok(edges)
     }
 
-    /// Returns the number of internal edges for a project, reusing the cached
-    /// edge set when available (avoids a second DISTINCT scan over page_links).
+    /// Returns the number of internal edges between the rendered nodes,
+    /// reusing the cached edge set when available (avoids a second DISTINCT
+    /// scan over page_links).
     fn graph_edge_count(&self, project_id: &str) -> Result<u32, AppError> {
         if let Some(cache) = self.graph_edges_cache {
-            let mut cache = cache.lock().unwrap();
-            if let Some(v) = cache.get(project_id) {
-                return Ok(v.total);
+            {
+                let mut cache = cache.lock().unwrap();
+                if let Some(v) = cache.get(project_id) {
+                    return Ok(v.total);
+                }
             }
+            self.load_graph_edges(project_id)?;
+            let mut cache = cache.lock().unwrap();
+            let v = cache.get(project_id).expect("graph edges just loaded");
+            return Ok(v.total);
         }
         Ok(self.load_graph_edges(project_id)?.len() as u32)
     }
 
-    /// Loads every crawled page (deduplicated by URL) plus the total internal
-    /// edge count so the frontend can render nodes immediately. The edges
+    /// Loads the interactive site graph: the top crawled pages by importance
+    /// (deduplicated by URL) plus the total internal edge count among those
+    /// pages so the frontend can render nodes immediately. The edges
     /// themselves are streamed via [`Self::get_site_graph_edges`].
+    ///
+    /// The node set is capped at [`MAX_GRAPH_NODES`] for huge sites: only the
+    /// most-linked pages are rendered, which keeps Cytoscape responsive. Edges
+    /// are likewise restricted to pairs of rendered nodes.
     ///
     /// Degrees are computed in CTEs before joining to the pages. Joining
     /// `page_links` twice directly would cross-multiply hub pages (a page with
     /// N in-links and M out-links materializes N×M intermediate rows), which
     /// stalls the shared DB lock for large sites.
     pub fn get_site_graph(&self, project_id: &str) -> Result<SiteGraph, AppError> {
-        let mut page_stmt = self.conn.prepare(
-            "WITH in_deg AS (
-                 SELECT to_url AS url, COUNT(*) AS c
-                 FROM page_links WHERE project_id = ?1 GROUP BY to_url
-             ),
-             out_deg AS (
-                 SELECT from_url AS url, COUNT(*) AS c
-                 FROM page_links WHERE project_id = ?1 GROUP BY from_url
-             )
-             SELECT cp.url,
+        let total_nodes: i64 = self.conn.query_row(
+            "SELECT COUNT(DISTINCT url) FROM crawled_pages WHERE project_id = ?1",
+            params![project_id],
+            |r| r.get(0),
+        )?;
+
+        let mut page_stmt = self.conn.prepare(&format!(
+            "WITH {}
+             SELECT tu.url,
                     MIN(cp.title),
                     MAX(cp.status_code),
-                    MIN(cp.depth),
+                    tu.depth,
                     COALESCE(SUM(
                         CASE WHEN pi.id IS NULL THEN 0 ELSE 1 END
                     ), 0) AS issue_count,
@@ -350,18 +398,17 @@ impl<'a> CrawlRepo<'a> {
                     MAX(cp.blocked),
                     MAX(cp.size_bytes),
                     MAX(cp.load_time_ms),
-                    COALESCE(id.c, 0) AS in_degree,
-                    COALESCE(od.c, 0) AS out_degree
-             FROM crawled_pages cp
+                    tu.in_degree,
+                    tu.out_degree
+             FROM top_urls tu
+             JOIN crawled_pages cp ON cp.url = tu.url AND cp.project_id = ?1
              LEFT JOIN page_issues pi ON pi.page_id = cp.id AND pi.project_id = ?1
-             LEFT JOIN in_deg id ON id.url = cp.url
-             LEFT JOIN out_deg od ON od.url = cp.url
-             WHERE cp.project_id = ?1
-             GROUP BY cp.url
-             ORDER BY MIN(cp.depth) ASC, cp.url ASC",
-        )?;
+             GROUP BY tu.url, tu.in_degree, tu.out_degree, tu.depth
+             ORDER BY (tu.in_degree + tu.out_degree) DESC, tu.depth ASC, tu.url ASC",
+            GRAPH_TOP_URLS_CTE
+        ))?;
         let nodes: Vec<SiteGraphNode> = page_stmt
-            .query_map(params![project_id], |row| {
+            .query_map(params![project_id, MAX_GRAPH_NODES as i64], |row| {
                 Ok(SiteGraphNode {
                     url: row.get(0)?,
                     title: row.get(1)?,
@@ -381,7 +428,7 @@ impl<'a> CrawlRepo<'a> {
         drop(page_stmt);
 
         let edge_count = self.graph_edge_count(project_id)?;
-        let truncated = if let Some(cache) = self.graph_edges_cache {
+        let edges_truncated = if let Some(cache) = self.graph_edges_cache {
             cache
                 .lock()
                 .unwrap()
@@ -395,7 +442,9 @@ impl<'a> CrawlRepo<'a> {
         Ok(SiteGraph {
             nodes,
             edge_count,
-            edges_truncated: truncated,
+            edges_truncated,
+            total_nodes: total_nodes as u32,
+            nodes_truncated: total_nodes as usize > MAX_GRAPH_NODES,
         })
     }
 

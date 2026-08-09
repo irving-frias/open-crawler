@@ -152,15 +152,24 @@ pub struct SiteGraphEdge {
 /// are intentionally NOT included: they are served in pages by
 /// `get_site_graph_edges` so the frontend can render nodes first and stream
 /// links in, keeping the initial IPC payload small.
+///
+/// For very large sites the node set is capped (most-linked pages win) and
+/// only edges between those nodes are returned; `*_truncated` flags tell the
+/// UI to show a warning.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SiteGraph {
     pub nodes: Vec<SiteGraphNode>,
-    /// Total number of internal edges (links between crawled pages), whether
-    /// or not they fit in a single payload.
+    /// Total number of internal edges between the rendered nodes, whether or
+    /// not they fit in a single payload.
     pub edge_count: u32,
-    /// True when the edge set was capped server-side (huge sites), meaning the
-    /// returned pages may not cover every edge.
+    /// True when the edge set was capped server-side (dense graphs), meaning
+    /// the returned pages may not cover every edge.
     pub edges_truncated: bool,
+    /// Total pages crawled for the project (may exceed `nodes.len()` when the
+    /// node set is capped).
+    pub total_nodes: u32,
+    /// True when only the top-N pages are returned (see `total_nodes`).
+    pub nodes_truncated: bool,
 }
 
 /// One page of the internal edge set, served from the in-memory cache.

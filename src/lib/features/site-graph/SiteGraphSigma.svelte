@@ -3,21 +3,38 @@
   import Sigma from 'sigma';
   import Graph from 'graphology';
   import forceAtlas2 from 'graphology-layout-forceatlas2';
-  import { getSiteGraph, getSiteGraphEdges } from '$lib/api/results';
   import type { SiteGraph as GraphData, SiteGraphEdge, SiteGraphNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import * as Select from '$lib/components/ui/select/index.js';
-  import { GitBranch, Play, RefreshCw, ScanSearch, Search, Tag, TriangleAlert, X } from 'lucide-svelte';
+  import {
+    ArrowLeft,
+    GitBranch,
+    Play,
+    RefreshCw,
+    ScanSearch,
+    Search,
+    Tag,
+    TriangleAlert,
+    X,
+  } from 'lucide-svelte';
   import { cn } from '$lib/utils.js';
 
-  let { projectId }: { projectId: string } = $props();
+  let {
+    projectId,
+    graph,
+    edges,
+    onBack,
+  }: {
+    projectId: string;
+    graph: GraphData | null;
+    edges: SiteGraphEdge[];
+    onBack: () => void;
+  } = $props();
 
   type StatusClass = '2xx' | '3xx' | '4xx' | '5xx' | 'blocked' | 'unknown';
-  type LayoutId = 'force' | 'breadthfirst' | 'concentric' | 'grid' | 'circle';
 
   function statusClass(code: number | null, blocked: boolean | null): StatusClass {
     if (blocked) return 'blocked';
@@ -42,25 +59,14 @@
   };
   const edgeColor = cssVar('--border-muted', '#3d4450');
 
-  let graph = $state<GraphData | null>(null);
-  let edges = $state<SiteGraphEdge[]>([]);
-  let loading = $state(false);
-  let error = $state('');
   let containerEl = $state<HTMLDivElement | null>(null);
   let sigma = $state<Sigma | null>(null);
   let selectedNode = $state<SiteGraphNode | null>(null);
-  let selectedEdge = $state<SiteGraphEdge | null>(null);
   let hoveredNode = $state<string | null>(null);
-
   let searchQuery = $state('');
   let statusFilter = $state<StatusClass | 'all'>('all');
   let showLabels = $state(true);
-  let layoutId = $state<LayoutId>('force');
   let layouting = $state(false);
-
-  let graphSeq = 0;
-  let lastGraphRef: GraphData | null = null;
-  let addedEdgeCount = 0;
 
   function shortLabel(node: SiteGraphNode): string {
     const base = node.title || node.url;
@@ -111,111 +117,29 @@
     const bbox = s.getBBox();
     const w = containerEl.clientWidth || 1;
     const h = containerEl.clientHeight || 1;
-    const cx = (bbox.x[0] + bbox.x[1]) / 2;
-    const cy = (bbox.y[0] + bbox.y[1]) / 2;
-    const size = Math.max(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0], 1);
+    const cx = (bbox.x1 + bbox.x2) / 2;
+    const cy = (bbox.y1 + bbox.y2) / 2;
+    const size = Math.max(bbox.x2 - bbox.x1, bbox.y2 - bbox.y1, 1);
     const ratio = (Math.min(w, h) / size) * 0.85;
     s.getCamera().animate({ x: cx, y: cy, ratio, angle: 0 }, { duration: 250 });
   }
 
-  function focusUrl(url: string) {
+  function runLayout() {
     const s = sigma;
-    if (!s) return;
+    if (!s || layouting) return;
+    layouting = true;
     const g = s.getGraph();
-    if (!g.hasNode(url)) return;
-    const p = g.getNodeAttributes(url) as { x: number; y: number };
-    const ratio = Math.max(s.getCamera().getState().ratio, 0.6);
-    s.getCamera().animate({ x: p.x, y: p.y, ratio }, { duration: 250 });
-  }
-
-  function focusEdge(source: string, target: string) {
-    const s = sigma;
-    if (!s) return;
-    const g = s.getGraph();
-    if (!g.hasNode(source) || !g.hasNode(target)) return;
-    const a = g.getNodeAttributes(source) as { x: number; y: number };
-    const b = g.getNodeAttributes(target) as { x: number; y: number };
-    const ratio = Math.max(s.getCamera().getState().ratio, 0.6);
-    s
-      .getCamera()
-      .animate({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, ratio }, { duration: 250 });
-  }
-
-  function applyLayout(id: LayoutId) {
-    const s = sigma;
-    if (!s) return;
-    const g = s.getGraph();
-    const order = g.order;
-    if (order === 0) return;
-
-    if (id === 'force') {
-      layouting = true;
-      const settings = forceAtlas2.inferSettings(g);
-      forceAtlas2.assign(g, { iterations: 60, settings });
-      s.refresh();
-      layouting = false;
-      fitView();
-      return;
-    }
-
-    const spacing = 30;
-    const nodes = g.mapNodes((node, attrs) => ({
-      id: node,
-      degree: attrs.degree as number,
-      depth: attrs.depth as number,
-      x: 0,
-      y: 0,
-    }));
-
-    if (id === 'grid') {
-      const cols = Math.ceil(Math.sqrt(nodes.length));
-      nodes.forEach((node, i) => {
-        node.x = (i % cols) * spacing;
-        node.y = Math.floor(i / cols) * spacing;
-      });
-    } else if (id === 'circle') {
-      const r = (nodes.length * spacing) / (2 * Math.PI);
-      nodes.forEach((node, i) => {
-        const a = (i / nodes.length) * Math.PI * 2;
-        node.x = r * Math.cos(a);
-        node.y = r * Math.sin(a);
-      });
-    } else if (id === 'concentric') {
-      nodes.sort((a, b) => b.degree - a.degree);
-      let ring = 0;
-      let i = 0;
-      while (i < nodes.length) {
-        const count = ring === 0 ? 1 : 8 * ring;
-        for (let j = 0; j < count && i < nodes.length; j++, i++) {
-          const a = (j / count) * Math.PI * 2;
-          nodes[i].x = ring * spacing * 1.6 * Math.cos(a);
-          nodes[i].y = ring * spacing * 1.6 * Math.sin(a);
-        }
-        ring++;
-      }
-    } else if (id === 'breadthfirst') {
-      const depths = [...new Set(nodes.map((n) => n.depth))].sort((a, b) => a - b);
-      const columns = new Map<number, typeof nodes>();
-      for (const d of depths) columns.set(d, nodes.filter((n) => n.depth === d));
-      depths.forEach((d, di) => {
-        const col = columns.get(d)!;
-        col.forEach((node, j) => {
-          node.x = di * spacing * 2.4;
-          node.y = (j - (col.length - 1) / 2) * spacing;
-        });
-      });
-    }
-
-    g.forEachNode((node) => {
-      const pos = nodes.find((n) => n.id === node)!;
-      g.setNodeAttribute(node, 'x', pos.x);
-      g.setNodeAttribute(node, 'y', pos.y);
+    const settings = forceAtlas2.inferSettings(g);
+    forceAtlas2.assign(g, {
+      iterations: 80,
+      settings: { ...settings, gravity: 0.4, scalingRatio: 4 },
     });
     s.refresh();
+    layouting = false;
     fitView();
   }
 
-  function buildGraph(data: GraphData): Graph {
+  function buildGraph(data: GraphData, edgeList: SiteGraphEdge[]): Graph {
     const g = new Graph({ multi: true, type: 'directed' });
     let maxDegree = 1;
     for (const n of data.nodes) {
@@ -223,45 +147,39 @@
     }
     const spread = Math.max(Math.sqrt(data.nodes.length), 10);
     for (const n of data.nodes) {
-      const sc = statusClass(n.status_code, n.blocked);
       const degree = n.in_degree + n.out_degree;
       g.addNode(n.url, {
         label: shortLabel(n),
         url: n.url,
-        statusClass: sc,
-        degree,
-        depth: n.depth,
+        statusClass: statusClass(n.status_code, n.blocked),
         x: (Math.random() - 0.5) * spread,
         y: (Math.random() - 0.5) * spread,
         size: 3 + 12 * Math.sqrt(degree / maxDegree),
-        color: nodeFill[sc],
+        color: nodeFill[statusClass(n.status_code, n.blocked)],
       });
+    }
+    for (const e of edgeList) {
+      if (e.source === e.target) continue;
+      if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
+      g.addEdge(e.source, e.target, { size: 1, color: edgeColor });
     }
     return g;
   }
 
   function mountSigma() {
     if (!containerEl || !graph || sigma) return;
-    const s = new Sigma(buildGraph(graph), containerEl, {
+    const s = new Sigma(buildGraph(graph, edges), containerEl, {
       minCameraRatio: 0.02,
       maxCameraRatio: 8,
       labelRenderedSizeThreshold: 9,
+      renderLabels: true,
     });
     sigma = s;
     s.on('clickNode', ({ node }) => {
       selectedNode = graph?.nodes.find((n) => n.url === node) ?? null;
-      selectedEdge = null;
-    });
-    s.on('clickEdge', ({ edge }) => {
-      const g = s.getGraph();
-      const src = g.source(edge);
-      const tgt = g.target(edge);
-      selectedEdge = edges.find((e) => e.source === src && e.target === tgt) ?? null;
-      selectedNode = null;
     });
     s.on('clickStage', () => {
       selectedNode = null;
-      selectedEdge = null;
     });
     s.on('enterNode', ({ node }) => {
       hoveredNode = node;
@@ -269,95 +187,28 @@
     s.on('leaveNode', () => {
       hoveredNode = null;
     });
+    runLayout();
   }
 
   $effect(() => {
-    if (!containerEl || !graph) return;
-    if (!sigma || graph !== lastGraphRef) {
+    if (containerEl && graph) {
       if (sigma) {
         sigma.kill();
         sigma = null;
+        selectedNode = null;
+        hoveredNode = null;
       }
       mountSigma();
-      lastGraphRef = graph;
-      addedEdgeCount = 0;
-      selectedNode = null;
-      selectedEdge = null;
-      hoveredNode = null;
-      return;
     }
-    const g = sigma.getGraph();
-    let added = 0;
-    for (let i = addedEdgeCount; i < edges.length; i++) {
-      const e = edges[i];
-      if (e.source === e.target) continue;
-      if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
-      g.addEdge(e.source, e.target, { size: 1, color: edgeColor });
-      added++;
-    }
-    addedEdgeCount = edges.length;
-    if (added > 0) sigma.refresh();
   });
 
   $effect(() => {
     refresh();
   });
 
-  $effect(() => {
-    if (sigma && graph) applyLayout(layoutId);
-  });
-
-  $effect(() => {
-    loadGraph();
-  });
-
   onDestroy(() => {
     sigma?.kill();
     sigma = null;
-  });
-
-  async function loadGraph() {
-    if (!projectId) return;
-    const seq = ++graphSeq;
-    loading = true;
-    error = '';
-    graph = null;
-    edges = [];
-    try {
-      const data = await getSiteGraph(projectId);
-      if (seq !== graphSeq) return;
-      graph = data;
-      const pageSize = 20_000;
-      let offset = 0;
-      while (true) {
-        const page = await getSiteGraphEdges(projectId, offset, pageSize);
-        if (seq !== graphSeq) return;
-        edges = [...edges, ...page.edges];
-        offset += page.edges.length;
-        if (page.done || page.edges.length === 0) break;
-      }
-      if (seq === graphSeq && layoutId === 'force') applyLayout(layoutId);
-    } catch (e) {
-      if (seq === graphSeq) error = String(e);
-    } finally {
-      if (seq === graphSeq) loading = false;
-    }
-  }
-
-  const pageCounts = $derived.by(() => {
-    const byStatus: Record<StatusClass, number> = {
-      '2xx': 0,
-      '3xx': 0,
-      '4xx': 0,
-      '5xx': 0,
-      blocked: 0,
-      unknown: 0,
-    };
-    if (!graph) return { total: 0, edges: 0, issues: 0, byStatus };
-    for (const n of graph.nodes) {
-      byStatus[statusClass(n.status_code, n.blocked)] += 1;
-    }
-    return { total: graph.nodes.length, edges: graph.edge_count, issues: 0, byStatus };
   });
 
   function formatBytes(bytes: number | null): string {
@@ -411,21 +262,6 @@
     if (code >= 300) return 'warning';
     return 'default';
   }
-
-  function layoutLabel(id: LayoutId): string {
-    switch (id) {
-      case 'force':
-        return 'Force';
-      case 'breadthfirst':
-        return 'Breadth-first';
-      case 'concentric':
-        return 'Concentric';
-      case 'grid':
-        return 'Grid';
-      case 'circle':
-        return 'Circle';
-    }
-  }
 </script>
 
 <div class="site-graph">
@@ -433,10 +269,11 @@
     <div class="flex items-center gap-2 text-sm font-semibold">
       <GitBranch class="size-4" />
       {m['graph.title']()}
-      <span class="sigma-badge">Sigma</span>
+      <span class="sigma-badge">Sigma (WebGL)</span>
       {#if graph}
         <span class="text-xs font-normal text-muted-foreground">
-          {m['graph.pages']()}: {pageCounts.total} · {m['graph.edges']()}: {pageCounts.edges}
+          {m['graph.pages']()}: {graph.nodes.length.toLocaleString()} · {m['graph.edges']()}:
+          {graph.edge_count.toLocaleString()}
         </span>
       {/if}
     </div>
@@ -475,24 +312,6 @@
           <Select.Item value="unknown">{m['graph.filter_unknown']()}</Select.Item>
         </Select.Content>
       </Select.Root>
-      <Select.Root
-        type="single"
-        value={layoutId}
-        onValueChange={(v) => {
-          if (v) layoutId = v as LayoutId;
-        }}
-      >
-        <Select.Trigger class="h-7 w-32 justify-between text-xs">
-          {layoutLabel(layoutId)}
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Item value="force">Force</Select.Item>
-          <Select.Item value="breadthfirst">Breadth-first</Select.Item>
-          <Select.Item value="concentric">Concentric</Select.Item>
-          <Select.Item value="grid">Grid</Select.Item>
-          <Select.Item value="circle">Circle</Select.Item>
-        </Select.Content>
-      </Select.Root>
       <Button
         variant="outline"
         size="sm"
@@ -506,36 +325,44 @@
         <ScanSearch class="size-3.5" />
         {m['graph.fit']()}
       </Button>
-      <Button variant="outline" size="sm" class="h-7 text-xs" onclick={() => applyLayout(layoutId)} disabled={layouting}>
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        onclick={runLayout}
+        disabled={layouting}
+      >
         <Play class={cn('size-3.5', layouting && 'animate-spin')} />
-        {m['graph.layout']()}
+        Layout
       </Button>
       <Button
         variant="ghost"
-        size="icon"
-        class="size-7"
-        onclick={() => loadGraph()}
-        aria-label={m['graph.refresh']()}
-        title={m['graph.refresh']()}
-        disabled={loading}
+        size="sm"
+        class="h-7 text-xs"
+        onclick={onBack}
+        title="Volver a Cytoscape"
       >
-        <RefreshCw class={cn('size-3.5', loading && 'animate-spin')} />
+        <ArrowLeft class="size-3.5" />
+        Cytoscape
+      </Button>
+      <Button variant="ghost" size="icon" class="size-7" onclick={() => mountSigma()} title={m['graph.refresh']()}>
+        <RefreshCw class="size-3.5" />
       </Button>
     </div>
   </div>
 
   <div class="graph-legend">
-    {#if graph}
-      {#each Object.entries(pageCounts.byStatus) as [sc, count] (sc)}
-        {#if count > 0}
-          <span class="legend-item">
-            <span class="legend-dot" style="background: {legendColor(sc as StatusClass)}"></span>
-            {statusLabel(sc as StatusClass)}
-            <span class="legend-count">{count}</span>
+    {#each (['2xx', '3xx', '4xx', '5xx', 'blocked', 'unknown'] as StatusClass[]) as sc (sc)}
+      {#if graph?.nodes.some((n) => statusClass(n.status_code, n.blocked) === sc)}
+        <span class="legend-item">
+          <span class="legend-dot" style="background: {legendColor(sc)}"></span>
+          {statusLabel(sc)}
+          <span class="legend-count">
+            {graph?.nodes.filter((n) => statusClass(n.status_code, n.blocked) === sc).length}
           </span>
-        {/if}
-      {/each}
-    {/if}
+        </span>
+      {/if}
+    {/each}
   </div>
 
   {#if graph && (graph.nodes_truncated || graph.edges_truncated)}
@@ -562,18 +389,7 @@
 
   <div class="graph-body">
     <div class="graph-canvas-wrap">
-      {#if loading && !graph}
-        <div class="flex flex-col gap-2 p-3">
-          <Skeleton class="h-6 w-full" />
-          <Skeleton class="h-6 w-4/5" />
-          <Skeleton class="h-6 w-3/5" />
-        </div>
-      {:else if error}
-        <div class="flex items-center gap-2 p-3 text-sm text-destructive">
-          <TriangleAlert class="size-4" />
-          {m['graph.error']()}: {error}
-        </div>
-      {:else if !graph || graph.nodes.length === 0}
+      {#if !graph}
         <div class="flex h-full items-center justify-center p-3 text-sm text-muted-foreground">
           {m['graph.empty']()}
         </div>
@@ -583,99 +399,52 @@
       {/if}
     </div>
 
-    {#if selectedNode || selectedEdge}
+    {#if selectedNode}
       <aside class="graph-side">
         <div class="graph-side-head">
           <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {selectedNode ? shortLabel(selectedNode) : m['graph.edge.source']()}
+            {shortLabel(selectedNode)}
           </span>
-          <button
-            class="graph-side-close"
-            onclick={() => {
-              selectedNode = null;
-              selectedEdge = null;
-            }}
-            aria-label={m['graph.close']()}
-          >
+          <button class="graph-side-close" onclick={() => (selectedNode = null)} aria-label={m['graph.close']()}>
             <X class="size-3.5" />
           </button>
         </div>
-
-        {#if selectedNode}
-          <div class="graph-side-body">
-            <p class="graph-url" title={selectedNode.url}>{selectedNode.url}</p>
-            <dl class="graph-dl">
-              <dt>{m['graph.node.status']()}</dt>
-              <dd>
-                <Badge variant={statusVariant(selectedNode.status_code)}>
-                  {selectedNode.blocked
-                    ? m['results.status.blocked']()
-                    : (selectedNode.status_code ?? '—')}
-                </Badge>
-              </dd>
-              <dt>{m['graph.node.depth']()}</dt>
-              <dd>{selectedNode.depth}</dd>
-              <dt>{m['graph.node.issues']()}</dt>
-              <dd class={selectedNode.issue_count > 0 ? 'text-destructive' : ''}>
-                {selectedNode.issue_count}
-              </dd>
-              <dt>{m['graph.node.seo_score']()}</dt>
-              <dd>{selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}</dd>
-              <dt>{m['graph.node.in_degree']()}</dt>
-              <dd>{selectedNode.in_degree}</dd>
-              <dt>{m['graph.node.out_degree']()}</dt>
-              <dd>{selectedNode.out_degree}</dd>
-              <dt>{m['graph.node.size']()}</dt>
-              <dd>{formatBytes(selectedNode.size_bytes)}</dd>
-              <dt>{m['graph.node.load_time']()}</dt>
-              <dd>{formatMs(selectedNode.load_time_ms)}</dd>
-            </dl>
-          </div>
-          <div class="graph-side-foot">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 text-xs"
-              onclick={() => focusUrl(selectedNode!.url)}
-            >
-              <ScanSearch class="size-3.5" />
-              {m['graph.node.focus']()}
+        <div class="graph-side-body">
+          <p class="graph-url" title={selectedNode.url}>{selectedNode.url}</p>
+          <dl class="graph-dl">
+            <dt>{m['graph.node.status']()}</dt>
+            <dd>
+              <Badge variant={statusVariant(selectedNode.status_code)}>
+                {selectedNode.blocked
+                  ? m['results.status.blocked']()
+                  : (selectedNode.status_code ?? '—')}
+              </Badge>
+            </dd>
+            <dt>{m['graph.node.depth']()}</dt>
+            <dd>{selectedNode.depth}</dd>
+            <dt>{m['graph.node.issues']()}</dt>
+            <dd class={selectedNode.issue_count > 0 ? 'text-destructive' : ''}>
+              {selectedNode.issue_count}
+            </dd>
+            <dt>{m['graph.node.seo_score']()}</dt>
+            <dd>{selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}</dd>
+            <dt>{m['graph.node.in_degree']()}</dt>
+            <dd>{selectedNode.in_degree}</dd>
+            <dt>{m['graph.node.out_degree']()}</dt>
+            <dd>{selectedNode.out_degree}</dd>
+            <dt>{m['graph.node.size']()}</dt>
+            <dd>{formatBytes(selectedNode.size_bytes)}</dd>
+            <dt>{m['graph.node.load_time']()}</dt>
+            <dd>{formatMs(selectedNode.load_time_ms)}</dd>
+          </dl>
+        </div>
+        <div class="graph-side-foot">
+          <a href={selectedNode.url} target="_blank" rel="noreferrer">
+            <Button variant="default" size="sm" class="h-7 text-xs">
+              {m['graph.node.open']()}
             </Button>
-            <a href={selectedNode.url} target="_blank" rel="noreferrer">
-              <Button variant="default" size="sm" class="h-7 text-xs">
-                {m['graph.node.open']()}
-              </Button>
-            </a>
-          </div>
-        {/if}
-
-        {#if selectedEdge}
-          <div class="graph-side-body">
-            <dl class="graph-dl">
-              <dt>{m['graph.edge.source']()}</dt>
-              <dd class="graph-url" title={selectedEdge.source}>{selectedEdge.source}</dd>
-              <dt>{m['graph.edge.target']()}</dt>
-              <dd class="graph-url" title={selectedEdge.target}>{selectedEdge.target}</dd>
-              <dt>{m['graph.edge.type']()}</dt>
-              <dd>{selectedEdge.link_type || '—'}</dd>
-              <dt>{m['graph.edge.follow']()}</dt>
-              <dd>
-                {selectedEdge.is_follow ? m['graph.edge.follow']() : m['graph.edge.nofollow']()}
-              </dd>
-            </dl>
-          </div>
-          <div class="graph-side-foot">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 text-xs"
-              onclick={() => focusEdge(selectedEdge!.source, selectedEdge!.target)}
-            >
-              <ScanSearch class="size-3.5" />
-              {m['graph.edge.focus']()}
-            </Button>
-          </div>
-        {/if}
+          </a>
+        </div>
       </aside>
     {/if}
   </div>

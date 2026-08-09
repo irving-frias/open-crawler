@@ -83,6 +83,8 @@
   "graph.fit": "Fit view",
   "graph.pages": "Pages",
   "graph.edges": "Links",
+  "graph.truncated_nodes": "Showing top {shown} of {total} pages. Limit the site size or export the full data for a complete picture.",
+  "graph.truncated_edges": "Edge set truncated to {shown} of {total} links between the rendered pages.",
   "graph.select_hint": "Click a page to inspect it",
   "graph.node.status": "Status",
   "graph.node.depth": "Depth",

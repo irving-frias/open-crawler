@@ -83,6 +83,8 @@
   "graph.fit": "Ajustar vista",
   "graph.pages": "Páginas",
   "graph.edges": "Enlaces",
+  "graph.truncated_nodes": "Mostrando las {shown} páginas más enlazadas de {total}. Limita el tamaño del sitio o exporta los datos completos.",
+  "graph.truncated_edges": "Conjunto de enlaces truncado a {shown} de {total} entre las páginas mostradas.",
   "graph.select_hint": "Haz clic en una página para inspeccionarla",
   "graph.node.status": "Estado",
   "graph.node.depth": "Profundidad",
