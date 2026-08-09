@@ -115,10 +115,16 @@
     const bbox = s.getBBox();
     const w = containerEl.clientWidth || 1;
     const h = containerEl.clientHeight || 1;
-    const cx = (bbox.x1 + bbox.x2) / 2;
-    const cy = (bbox.y1 + bbox.y2) / 2;
-    const size = Math.max(bbox.x2 - bbox.x1, bbox.y2 - bbox.y1, 1);
+    const xMin = (bbox.x as any).min ?? (bbox as any).x1 ?? 0;
+    const xMax = (bbox.x as any).max ?? (bbox as any).x2 ?? 1;
+    const yMin = (bbox.y as any).min ?? (bbox as any).y1 ?? 0;
+    const yMax = (bbox.y as any).max ?? (bbox as any).y2 ?? 1;
+    
+    const cx = (xMin + xMax) / 2;
+    const cy = (yMin + yMax) / 2;
+    const size = Math.max(xMax - xMin, yMax - yMin, 1);
     const ratio = (Math.min(w, h) / size) * 0.85;
+    
     s.getCamera().animate({ x: cx, y: cy, ratio, angle: 0 }, { duration: 250 });
   }
 
