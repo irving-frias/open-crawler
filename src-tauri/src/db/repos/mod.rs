@@ -403,11 +403,8 @@ mod tests {
         // Only the internal edge is rendered; degrees count all links.
         assert_eq!(graph.edges.len(), 1);
 
-        let by_url: std::collections::HashMap<_, _> = graph
-            .nodes
-            .iter()
-            .map(|n| (n.url.clone(), n))
-            .collect();
+        let by_url: std::collections::HashMap<_, _> =
+            graph.nodes.iter().map(|n| (n.url.clone(), n)).collect();
         let a = by_url["https://x.com/a"];
         let b = by_url["https://x.com/b"];
         assert_eq!(a.depth, 0);

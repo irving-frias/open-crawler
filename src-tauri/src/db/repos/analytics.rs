@@ -271,9 +271,7 @@ impl<'a> CrawlRepo<'a> {
                 Ok(SiteGraphNode {
                     url: row.get(0)?,
                     title: row.get(1)?,
-                    status_code: row
-                        .get::<_, Option<i32>>(2)?
-                        .map(|s| s as u16),
+                    status_code: row.get::<_, Option<i32>>(2)?.map(|s| s as u16),
                     depth: row.get::<_, i32>(3)? as u32,
                     issue_count: row.get::<_, i64>(4)? as u32,
                     seo_score: row.get(5)?,
