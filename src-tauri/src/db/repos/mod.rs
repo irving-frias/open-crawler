@@ -11,7 +11,7 @@ pub mod snapshots;
 
 use rusqlite::Connection;
 
-use crate::{ResultsCacheArc, ResultsCacheKey};
+use crate::{GraphEdgesCacheArc, ResultsCacheArc, ResultsCacheKey};
 
 pub fn compress_gzip(data: &[u8]) -> Vec<u8> {
     use flate2::write::GzEncoder;
@@ -58,6 +58,7 @@ pub(crate) fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
     results_cache: Option<&'a ResultsCacheArc>,
+    graph_edges_cache: Option<&'a GraphEdgesCacheArc>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +80,15 @@ impl<'a> CrawlRepo<'a> {
         Self {
             conn,
             results_cache,
+            graph_edges_cache: None,
         }
+    }
+
+    /// Attaches the site-graph edge cache (optional; only the IPC commands use
+    /// it). Kept as a builder so the crawler/engine call sites stay unchanged.
+    pub fn with_graph_cache(mut self, graph_edges_cache: Option<&'a GraphEdgesCacheArc>) -> Self {
+        self.graph_edges_cache = graph_edges_cache;
+        self
     }
 
     /// Exposes the raw SQLite connection for low-level operations (e.g. the
@@ -99,6 +108,9 @@ impl<'a> CrawlRepo<'a> {
             for key in keys_to_remove {
                 cache.pop(&key);
             }
+        }
+        if let Some(cache_arc) = self.graph_edges_cache {
+            cache_arc.lock().unwrap().pop(project_id);
         }
     }
 }

@@ -148,11 +148,29 @@ pub struct SiteGraphEdge {
     pub is_follow: bool,
 }
 
-/// Complete data needed to render the interactive graph of all pages.
+/// Complete data needed to render the interactive graph of all pages. Edges
+/// are intentionally NOT included: they are served in pages by
+/// `get_site_graph_edges` so the frontend can render nodes first and stream
+/// links in, keeping the initial IPC payload small.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SiteGraph {
     pub nodes: Vec<SiteGraphNode>,
+    /// Total number of internal edges (links between crawled pages), whether
+    /// or not they fit in a single payload.
+    pub edge_count: u32,
+    /// True when the edge set was capped server-side (huge sites), meaning the
+    /// returned pages may not cover every edge.
+    pub edges_truncated: bool,
+}
+
+/// One page of the internal edge set, served from the in-memory cache.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SiteGraphEdgePage {
     pub edges: Vec<SiteGraphEdge>,
+    pub offset: u32,
+    pub total: u32,
+    pub done: bool,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

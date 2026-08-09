@@ -8,8 +8,8 @@ use crate::crawler::fetcher::HtmlFetcher;
 use crate::error::AppError;
 use crate::features::with_repo;
 use crate::models::{
-    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteGraph, SiteTreeFullNode,
-    SiteTreeNode,
+    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteGraph, SiteGraphEdgePage,
+    SiteTreeFullNode, SiteTreeNode,
 };
 use crate::AppState;
 
@@ -85,6 +85,16 @@ pub async fn get_site_graph(
     project_id: String,
 ) -> Result<SiteGraph, AppError> {
     with_repo(&state, move |repo| repo.get_site_graph(&project_id)).await
+}
+
+#[tauri::command]
+pub async fn get_site_graph_edges(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    offset: u32,
+    limit: u32,
+) -> Result<SiteGraphEdgePage, AppError> {
+    with_repo(&state, move |repo| repo.get_site_graph_edges(&project_id, offset, limit)).await
 }
 
 #[tauri::command]

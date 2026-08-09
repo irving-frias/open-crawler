@@ -9,7 +9,8 @@ pub use crawl_result::{
     ChangedUrl, CompareResult, CrawlProgress, CrawlResult, CrawlSnapshot, DashboardStats,
     DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, PageDetail, PageLink,
     PaginatedResults, RedirectHop, RedirectRecord, ResultsFilter, SiteGraph, SiteGraphEdge,
-    SiteGraphNode, SiteTreeFullNode, SiteTreeNode, SnapshotStats, StatusBucket, UrlFieldDiff,
+    SiteGraphEdgePage, SiteGraphNode, SiteTreeFullNode, SiteTreeNode, SnapshotStats, StatusBucket,
+    UrlFieldDiff,
 };
 pub use project::{CreateProjectRequest, Project, RenameProjectRequest};
 pub use schedule::{CreateScheduledJobRequest, ScheduledJob, UpdateScheduledJobRequest};
