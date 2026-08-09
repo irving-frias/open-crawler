@@ -299,11 +299,6 @@
       const data = await getSiteGraph(projectId);
       if (seq !== graphSeq) return;
       graph = data;
-      if (cy) {
-        cy.elements().remove();
-        cy.add(buildElements(data));
-        runLayout(true);
-      }
     } catch (e) {
       if (seq === graphSeq) error = String(e);
     } finally {
@@ -331,6 +326,16 @@
 
   $effect(() => {
     initCy();
+  });
+
+  // Populate the instance once both the container and the data exist. The
+  // container is only mounted after the data arrives (it lives in the loaded
+  // branch), so this cannot happen inside `loadGraph`.
+  $effect(() => {
+    if (cy && graph) {
+      cy.elements().remove();
+      cy.add(buildElements(graph));
+    }
   });
 
   $effect(() => {
