@@ -343,14 +343,20 @@
         <ArrowLeft class="size-3.5" />
         Cytoscape
       </Button>
-      <Button variant="ghost" size="icon" class="size-7" onclick={() => mountSigma()} title={m['graph.refresh']()}>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="size-7"
+        onclick={() => mountSigma()}
+        title={m['graph.refresh']()}
+      >
         <RefreshCw class="size-3.5" />
       </Button>
     </div>
   </div>
 
   <div class="graph-legend">
-    {#each (['2xx', '3xx', '4xx', '5xx', 'blocked', 'unknown'] as StatusClass[]) as sc (sc)}
+    {#each ['2xx', '3xx', '4xx', '5xx', 'blocked', 'unknown'] as StatusClass[] as sc (sc)}
       {#if graph?.nodes.some((n) => statusClass(n.status_code, n.blocked) === sc)}
         <span class="legend-item">
           <span class="legend-dot" style="background: {legendColor(sc)}"></span>
@@ -403,7 +409,11 @@
           <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {shortLabel(selectedNode)}
           </span>
-          <button class="graph-side-close" onclick={() => (selectedNode = null)} aria-label={m['graph.close']()}>
+          <button
+            class="graph-side-close"
+            onclick={() => (selectedNode = null)}
+            aria-label={m['graph.close']()}
+          >
             <X class="size-3.5" />
           </button>
         </div>

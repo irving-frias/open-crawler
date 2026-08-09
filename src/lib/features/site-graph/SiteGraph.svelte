@@ -11,7 +11,16 @@
   import { Input } from '$lib/components/ui/input/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import * as Select from '$lib/components/ui/select/index.js';
-  import { GitBranch, Play, RefreshCw, ScanSearch, Search, Tag, TriangleAlert, X } from 'lucide-svelte';
+  import {
+    GitBranch,
+    Play,
+    RefreshCw,
+    ScanSearch,
+    Search,
+    Tag,
+    TriangleAlert,
+    X,
+  } from 'lucide-svelte';
   import { cn } from '$lib/utils.js';
 
   let { projectId }: { projectId: string } = $props();
@@ -136,9 +145,7 @@
     const a = g.getNodeAttributes(source) as { x: number; y: number };
     const b = g.getNodeAttributes(target) as { x: number; y: number };
     const ratio = Math.max(s.getCamera().getState().ratio, 0.6);
-    s
-      .getCamera()
-      .animate({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, ratio }, { duration: 250 });
+    s.getCamera().animate({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, ratio }, { duration: 250 });
   }
 
   function applyLayout(id: LayoutId) {
@@ -196,7 +203,11 @@
     } else if (id === 'breadthfirst') {
       const depths = [...new Set(nodes.map((n) => n.depth))].sort((a, b) => a - b);
       const columns = new Map<number, typeof nodes>();
-      for (const d of depths) columns.set(d, nodes.filter((n) => n.depth === d));
+      for (const d of depths)
+        columns.set(
+          d,
+          nodes.filter((n) => n.depth === d)
+        );
       depths.forEach((d, di) => {
         const col = columns.get(d)!;
         col.forEach((node, j) => {
@@ -506,7 +517,13 @@
         <ScanSearch class="size-3.5" />
         {m['graph.fit']()}
       </Button>
-      <Button variant="outline" size="sm" class="h-7 text-xs" onclick={() => applyLayout(layoutId)} disabled={layouting}>
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        onclick={() => applyLayout(layoutId)}
+        disabled={layouting}
+      >
         <Play class={cn('size-3.5', layouting && 'animate-spin')} />
         {m['graph.layout']()}
       </Button>
@@ -620,7 +637,9 @@
                 {selectedNode.issue_count}
               </dd>
               <dt>{m['graph.node.seo_score']()}</dt>
-              <dd>{selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}</dd>
+              <dd>
+                {selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}
+              </dd>
               <dt>{m['graph.node.in_degree']()}</dt>
               <dd>{selectedNode.in_degree}</dd>
               <dt>{m['graph.node.out_degree']()}</dt>
