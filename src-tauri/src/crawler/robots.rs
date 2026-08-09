@@ -5,7 +5,8 @@ use reqwest::Client;
 use tracing::{info, warn};
 use url::Url;
 
-use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
+use crate::crawler::client_with_proxy;
+use crate::crawler::fetcher::send_with_redirects;
 use crate::error::AppError;
 use crate::models::{ProxyConfig, SiteAuth};
 
@@ -29,16 +30,23 @@ pub struct RobotsChecker {
 }
 
 impl RobotsChecker {
+    /// Reuses the shared `client` when no proxy is configured; otherwise a
+    /// dedicated client (proxies are client-level in reqwest) is built.
     pub fn new(
+        client: Option<Client>,
         user_agent: &str,
         cookies: Vec<String>,
         site_auth: Option<SiteAuth>,
         proxy: Option<&ProxyConfig>,
     ) -> Result<Self, AppError> {
-        let client = client_with_proxy(proxy)?
-            .user_agent(user_agent)
-            .timeout(Duration::from_secs(10))
-            .build()?;
+        let client = match client {
+            Some(shared) if proxy.is_none() => shared,
+            _ => client_with_proxy(proxy)?
+                .user_agent(user_agent)
+                .timeout(Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
+        };
 
         Ok(Self {
             cache: HashMap::new(),
@@ -92,17 +100,10 @@ impl RobotsChecker {
 
     async fn fetch_robots(&self, domain: &str) -> RobotsData {
         let url = format!("https://{}/robots.txt", domain);
-
-        let mut request = self.client.get(&url);
-        if let Some(cookie) = cookie_header_value(&self.cookies) {
-            request = request.header(reqwest::header::COOKIE, cookie);
-        }
-        request = apply_basic_auth(request, &self.site_auth);
-
-        let response = match request.send().await {
-            Ok(r) => r,
+        let parsed = match Url::parse(&url) {
+            Ok(u) => u,
             Err(e) => {
-                warn!("Failed to fetch robots.txt for {}: {}", domain, e);
+                warn!("Invalid robots URL {}: {}", url, e);
                 return RobotsData {
                     disallow_paths: Vec::new(),
                     crawl_delay_ms: DEFAULT_CRAWL_DELAY_MS,
@@ -111,6 +112,22 @@ impl RobotsChecker {
                 };
             }
         };
+
+        let response =
+            match send_with_redirects(&self.client, &parsed, &[], &self.cookies, &self.site_auth)
+                .await
+            {
+                Ok((r, _)) => r,
+                Err(e) => {
+                    warn!("Failed to fetch robots.txt for {}: {}", domain, e);
+                    return RobotsData {
+                        disallow_paths: Vec::new(),
+                        crawl_delay_ms: DEFAULT_CRAWL_DELAY_MS,
+                        sitemaps: Vec::new(),
+                        fetched_at: Instant::now(),
+                    };
+                }
+            };
 
         if !response.status().is_success() {
             info!(
@@ -237,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_parse_robots_basic() {
-        let checker = RobotsChecker::new("TestBot/1.0", vec![], None, None).unwrap();
+        let checker = RobotsChecker::new(None, "TestBot/1.0", vec![], None, None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -261,7 +278,7 @@ Sitemap: https://example.com/sitemap2.xml
 
     #[test]
     fn test_parse_robots_specific_agent() {
-        let checker = RobotsChecker::new("MyBot/1.0", vec![], None, None).unwrap();
+        let checker = RobotsChecker::new(None, "MyBot/1.0", vec![], None, None).unwrap();
         let body = r#"
 User-agent: *
 Disallow: /admin/
@@ -280,7 +297,7 @@ Crawl-delay: 10
 
     #[test]
     fn test_parse_robots_empty() {
-        let checker = RobotsChecker::new("TestBot/1.0", vec![], None, None).unwrap();
+        let checker = RobotsChecker::new(None, "TestBot/1.0", vec![], None, None).unwrap();
         let data = checker.parse_robots("", "example.com");
         assert!(data.disallow_paths.is_empty());
         assert_eq!(data.crawl_delay_ms, DEFAULT_CRAWL_DELAY_MS);

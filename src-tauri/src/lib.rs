@@ -164,10 +164,12 @@ pub fn run() {
             app.manage(Arc::new(RwLock::new(state)));
 
             // Shared HTTP client (connection pool + DNS reused across commands
-            // instead of building a fresh client per request).
+            // instead of building a fresh client per request). Redirects are
+            // followed manually by the crawler so chains can be captured; other
+            // consumers hit fixed endpoints and handle 3xx themselves.
             let http_client = reqwest::Client::builder()
                 .connect_timeout(std::time::Duration::from_secs(10))
-                .redirect(reqwest::redirect::Policy::limited(10))
+                .redirect(reqwest::redirect::Policy::none())
                 .gzip(true)
                 .brotli(true)
                 .build()
@@ -212,6 +214,7 @@ pub fn run() {
             crate::commands::get_results,
             crate::commands::get_site_tree,
             crate::commands::get_site_tree_full,
+            crate::commands::get_site_graph,
             crate::commands::get_page_detail,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,

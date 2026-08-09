@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
+use tracing::info;
 
 use crate::error::AppError;
 use crate::models::{GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview};
@@ -16,10 +17,7 @@ pub struct StoredSeoAudit {
 /// Deletes the normalized `seo_category_scores` / `seo_check_issues` rows for
 /// the given page ids. Re-crawls replace page rows per URL and the replaced
 /// ids differ from the new ones, so stale normalized rows must be removed.
-pub(crate) fn delete_seo_normalized(
-    tx: &Connection,
-    page_ids: &[String],
-) -> Result<(), AppError> {
+pub(crate) fn delete_seo_normalized(tx: &Connection, page_ids: &[String]) -> Result<(), AppError> {
     if page_ids.is_empty() {
         return Ok(());
     }
@@ -139,16 +137,14 @@ impl<'a> CrawlRepo<'a> {
             |r| r.get(0),
         )?;
 
-        let (audited_pages, avg_score, total_fixes): (u32, f64, i64) = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*), COALESCE(AVG(seo_score), 0),
+        let (audited_pages, avg_score, total_fixes): (u32, f64, i64) = self.conn.query_row(
+            "SELECT COUNT(*), COALESCE(AVG(seo_score), 0),
                         COALESCE(SUM(seo_priority_fix_count), 0)
                  FROM crawled_pages
                  WHERE project_id = ?1 AND seo_score IS NOT NULL",
-                params![project_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )?;
+            params![project_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
 
         if audited_pages == 0 {
             return Ok(SeoOverview {
@@ -246,9 +242,9 @@ impl<'a> CrawlRepo<'a> {
                 .query_map(params![project_id, failing.check_id], |row| row.get(0))?
                 .collect::<Result<Vec<_>, _>>()?;
             for json in example_rows {
-                if let Ok(items) = serde_json::from_str::<Vec<crate::crawler::parser::SemanticIssue>>(
-                    &json,
-                ) {
+                if let Ok(items) =
+                    serde_json::from_str::<Vec<crate::crawler::parser::SemanticIssue>>(&json)
+                {
                     examples.extend(items);
                 }
             }
@@ -276,5 +272,181 @@ impl<'a> CrawlRepo<'a> {
             top_issues,
             total_fixes: total_fixes as u32,
         })
+    }
+
+    /// Groups pages that target the same topic (overlapping top keywords) into
+    /// content clusters. Recomputes from scratch for the project: previous
+    /// cluster rows are cleared first. Returns the number of clusters found.
+    ///
+    /// Candidate pairs are only generated between pages that share at least one
+    /// keyword (via keyword bucketing), so this avoids an O(n²) scan on large
+    /// sites. Pages in the same cluster share at least two keywords with Jaccard
+    /// similarity >= 0.6. The canonical URL of each cluster is the page with the
+    /// highest SEO score (shortest URL on ties).
+    pub fn compute_seo_clusters(&self, project_id: &str) -> Result<u32, AppError> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM seo_cluster_members WHERE cluster_id IN (SELECT id FROM seo_clusters WHERE project_id = ?1)", params![project_id])?;
+        tx.execute(
+            "DELETE FROM seo_clusters WHERE project_id = ?1",
+            params![project_id],
+        )?;
+
+        let mut stmt = tx.prepare(
+            "SELECT id, url, keywords_json, seo_score FROM crawled_pages
+             WHERE project_id = ?1 AND keywords_json IS NOT NULL",
+        )?;
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<f64>>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        if rows.len() < 2 {
+            tx.commit()?;
+            return Ok(0);
+        }
+
+        let mut keyword_sets: Vec<Vec<String>> = Vec::with_capacity(rows.len());
+        for (_, _, keywords_json, _) in &rows {
+            let keywords: Vec<String> =
+                serde_json::from_str::<Vec<crate::crawler::parser::Keyword>>(keywords_json)
+                    .map(|items| items.into_iter().map(|k| k.keyword).collect())
+                    .unwrap_or_default();
+            keyword_sets.push(keywords);
+        }
+
+        let n = rows.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+        fn find(parent: &mut Vec<usize>, x: usize) -> usize {
+            if parent[x] != x {
+                parent[x] = find(parent, parent[x]);
+            }
+            parent[x]
+        }
+        fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
+            let ra = find(parent, a);
+            let rb = find(parent, b);
+            if ra != rb {
+                parent[rb] = ra;
+            }
+        }
+
+        // Keyword -> page indices. Pages sharing a keyword become candidates.
+        let mut buckets: std::collections::HashMap<&str, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, keywords) in keyword_sets.iter().enumerate() {
+            for keyword in keywords {
+                buckets.entry(keyword.as_str()).or_default().push(i);
+            }
+        }
+        let mut compared: std::collections::HashSet<(usize, usize)> =
+            std::collections::HashSet::new();
+        for indices in buckets.values() {
+            for a in 0..indices.len() {
+                for b in (a + 1)..indices.len() {
+                    let (ia, ib) = (indices[a], indices[b]);
+                    let (lo, hi) = if ia < ib { (ia, ib) } else { (ib, ia) };
+                    if !compared.insert((lo, hi)) {
+                        continue;
+                    }
+                    let sa = &keyword_sets[ia];
+                    let sb = &keyword_sets[ib];
+                    let mut shared = 0usize;
+                    for kw in sa {
+                        if sb.contains(kw) {
+                            shared += 1;
+                        }
+                    }
+                    if shared < 2 {
+                        continue;
+                    }
+                    let union_size = sa.len() + sb.len() - shared;
+                    if union_size == 0 {
+                        continue;
+                    }
+                    let jaccard = shared as f64 / union_size as f64;
+                    if jaccard >= 0.6 {
+                        union(&mut parent, ia, ib);
+                    }
+                }
+            }
+        }
+
+        let mut roots: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        for i in 0..n {
+            roots.entry(find(&mut parent, i)).or_default().push(i);
+        }
+
+        let mut cluster_count = 0u32;
+        {
+            let mut insert_cluster = tx.prepare(
+                "INSERT INTO seo_clusters (project_id, cluster_key, canonical, member_count, similarity)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            let mut insert_member = tx.prepare(
+                "INSERT INTO seo_cluster_members (cluster_id, page_id, url)
+                 VALUES (?1, ?2, ?3)",
+            )?;
+            for members in roots.values() {
+                if members.len() < 2 {
+                    continue;
+                }
+                cluster_count += 1;
+                // Canonical: highest seo_score, shortest URL on ties.
+                let canonical_idx = *members
+                    .iter()
+                    .max_by(|&&a, &&b| {
+                        let score_a = rows[a].3.unwrap_or(0.0);
+                        let score_b = rows[b].3.unwrap_or(0.0);
+                        score_a
+                            .partial_cmp(&score_b)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then_with(|| rows[b].1.len().cmp(&rows[a].1.len()))
+                    })
+                    .expect("non-empty cluster");
+                let cluster_key = format!("k{}", cluster_count);
+                // Average keyword-overlap (Jaccard) of each member vs canonical.
+                let canonical_keywords = &keyword_sets[canonical_idx];
+                let avg_sim: f64 = {
+                    let mut sum = 0.0;
+                    for &i in members {
+                        let shared = keyword_sets[i]
+                            .iter()
+                            .filter(|kw| canonical_keywords.contains(kw))
+                            .count();
+                        let union_size = keyword_sets[i].len() + canonical_keywords.len() - shared;
+                        if union_size > 0 {
+                            sum += shared as f64 / union_size as f64;
+                        }
+                    }
+                    sum / members.len() as f64
+                };
+                insert_cluster.execute(params![
+                    project_id,
+                    cluster_key,
+                    rows[canonical_idx].1,
+                    members.len() as i64,
+                    avg_sim,
+                ])?;
+                let cluster_id: i64 = tx.last_insert_rowid();
+                for &i in members {
+                    insert_member.execute(params![cluster_id, rows[i].0, rows[i].1])?;
+                }
+            }
+        }
+
+        tx.commit()?;
+        info!(
+            "Computed {} SEO clusters for project {}",
+            cluster_count, project_id
+        );
+        Ok(cluster_count)
     }
 }

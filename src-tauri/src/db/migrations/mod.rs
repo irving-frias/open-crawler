@@ -27,6 +27,8 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ),
     ("007_scheduled_jobs", include_str!("007_scheduled_jobs.sql")),
     ("008_seo_audit", include_str!("008_seo_audit.sql")),
+    ("009_seo_redirects", include_str!("009_seo_redirects.sql")),
+    ("010_seo_clusters", include_str!("010_seo_clusters.sql")),
     ("011_seo_overview", include_str!("011_seo_overview.sql")),
 ];
 
@@ -128,6 +130,26 @@ mod tests {
                 .unwrap();
             assert_eq!(name, table);
         }
+
+        for table in ["page_redirects", "seo_clusters", "seo_cluster_members"] {
+            let name: String = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(name, table);
+        }
+
+        let redirect_from: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('crawled_pages') WHERE name='redirect_from_url'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(redirect_from, 1);
 
         let seo_priority: i64 = conn
             .query_row(

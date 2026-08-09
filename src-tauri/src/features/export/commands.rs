@@ -107,14 +107,7 @@ pub async fn export_full(
         let app_export = app.clone();
         let pid_export = project_id.clone();
         let dest_export = dest_path.clone();
-        export_csv_single(
-            &state,
-            &app_export,
-            &pid_export,
-            &dest_export,
-            total_pages,
-        )
-        .await?;
+        export_csv_single(&state, &app_export, &pid_export, &dest_export, total_pages).await?;
     }
 
     if let (Some(uri), Some(tmp)) = (content_uri, tmp_path) {

@@ -4,7 +4,8 @@ use quick_xml::Reader;
 use std::io::Read;
 use tracing::{info, warn};
 
-use crate::crawler::{apply_basic_auth, client_with_proxy, cookie_header_value};
+use crate::crawler::client_with_proxy;
+use crate::crawler::fetcher::send_with_redirects;
 use crate::error::AppError;
 use crate::models::{ProxyConfig, SiteAuth};
 
@@ -29,17 +30,23 @@ pub struct SitemapParser {
 }
 
 impl SitemapParser {
+    /// Reuses the shared `client` when no proxy is configured; otherwise a
+    /// dedicated client (proxies are client-level in reqwest) is built.
     pub fn new(
+        client: Option<reqwest::Client>,
         user_agent: &str,
         cookies: Vec<String>,
         site_auth: Option<SiteAuth>,
         proxy: Option<&ProxyConfig>,
     ) -> Result<Self, AppError> {
-        let client = client_with_proxy(proxy)?
-            .user_agent(user_agent)
-            .timeout(std::time::Duration::from_secs(15))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()?;
+        let client = match client {
+            Some(shared) if proxy.is_none() => shared,
+            _ => client_with_proxy(proxy)?
+                .user_agent(user_agent)
+                .timeout(std::time::Duration::from_secs(15))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
+        };
         Ok(Self {
             client,
             cookies,
@@ -240,12 +247,10 @@ impl SitemapParser {
     }
 
     async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>, AppError> {
-        let mut request = self.client.get(url);
-        if let Some(cookie) = cookie_header_value(&self.cookies) {
-            request = request.header(reqwest::header::COOKIE, cookie);
-        }
-        request = apply_basic_auth(request, &self.site_auth);
-        let response = request.send().await?.error_for_status()?;
+        let parsed = url::Url::parse(url)?;
+        let (response, _) =
+            send_with_redirects(&self.client, &parsed, &[], &self.cookies, &self.site_auth).await?;
+        let response = response.error_for_status()?;
 
         let is_gzip = response
             .headers()

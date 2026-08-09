@@ -272,11 +272,7 @@ fn sweep_stale_transfers(dir: &Path) {
             if !meta.is_file() {
                 continue;
             }
-            if meta
-                .modified()
-                .map(|m| m < cutoff)
-                .unwrap_or(false)
-            {
+            if meta.modified().map(|m| m < cutoff).unwrap_or(false) {
                 let _ = std::fs::remove_file(&path);
             }
         }

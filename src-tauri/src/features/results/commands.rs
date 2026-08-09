@@ -8,7 +8,8 @@ use crate::crawler::fetcher::HtmlFetcher;
 use crate::error::AppError;
 use crate::features::with_repo;
 use crate::models::{
-    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode, SiteTreeNode,
+    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteGraph, SiteTreeFullNode,
+    SiteTreeNode,
 };
 use crate::AppState;
 
@@ -79,6 +80,14 @@ pub async fn get_site_tree_full(
 }
 
 #[tauri::command]
+pub async fn get_site_graph(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+) -> Result<SiteGraph, AppError> {
+    with_repo(&state, move |repo| repo.get_site_graph(&project_id)).await
+}
+
+#[tauri::command]
 pub async fn get_page_detail(
     state: State<'_, Arc<RwLock<AppState>>>,
     page_id: String,
@@ -114,6 +123,7 @@ pub async fn inline_assets(html: String, base_url: String) -> Result<String, App
 #[tauri::command]
 pub async fn recrawl_page(
     state: State<'_, Arc<RwLock<AppState>>>,
+    http: State<'_, reqwest::Client>,
     page_id: String,
 ) -> Result<CrawlResult, AppError> {
     // Get the original page data
@@ -144,6 +154,7 @@ pub async fn recrawl_page(
     // Fetch the page
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
     let fetcher = crate::crawler::fetcher::HttpFetcher::new(
+        Some(http.inner().clone()),
         user_agent,
         30000,
         Vec::new(),

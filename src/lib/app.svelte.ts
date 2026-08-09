@@ -24,6 +24,7 @@ export type TabValue =
   | 'overview'
   | 'dashboard'
   | 'site_tree'
+  | 'graph'
   | 'comparator'
   | 'duplicates'
   | 'keywords'

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use reqwest::Client;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use url::Url;
@@ -155,10 +155,12 @@ pub(crate) async fn start_crawl_internal(
     let state_clone = state.clone();
     let app_handle = Arc::new(app.clone());
     let project_id_clone = project_id.to_string();
+    let http_client = app.state::<reqwest::Client>().inner().clone();
 
     tokio::spawn(async move {
         let mut engine = CrawlEngine::new();
         engine.set_config(config);
+        engine.set_http_client(http_client);
 
         let result = engine
             .start(

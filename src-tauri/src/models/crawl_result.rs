@@ -49,6 +49,24 @@ pub struct PageLink {
     pub is_follow: bool,
 }
 
+/// One hop of an HTTP redirect chain captured while fetching a page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedirectHop {
+    pub from_url: String,
+    pub to_url: String,
+    pub status_code: u16,
+}
+
+/// Redirect metadata for a single crawled page. The page id references the
+/// `crawled_pages` row that was reached after following `chain`.
+#[derive(Debug, Clone)]
+pub struct RedirectRecord {
+    pub page_id: String,
+    pub project_id: String,
+    pub redirect_from_url: Option<String>,
+    pub chain: Vec<RedirectHop>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlProgress {
     pub project_id: String,
@@ -102,6 +120,39 @@ pub struct SiteTreeFullNode {
     pub issue_count: u32,
     pub has_children: bool,
     pub children: Vec<SiteTreeFullNode>,
+}
+
+/// One node in the interactive site graph: a crawled page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteGraphNode {
+    pub url: String,
+    pub title: Option<String>,
+    pub status_code: Option<u16>,
+    pub depth: u32,
+    pub issue_count: u32,
+    pub seo_score: Option<f64>,
+    pub is_indexable: Option<bool>,
+    pub blocked: Option<bool>,
+    pub size_bytes: Option<u64>,
+    pub load_time_ms: Option<u64>,
+    pub in_degree: u32,
+    pub out_degree: u32,
+}
+
+/// One edge in the interactive site graph: an internal link between pages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteGraphEdge {
+    pub source: String,
+    pub target: String,
+    pub link_type: String,
+    pub is_follow: bool,
+}
+
+/// Complete data needed to render the interactive graph of all pages.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SiteGraph {
+    pub nodes: Vec<SiteGraphNode>,
+    pub edges: Vec<SiteGraphEdge>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

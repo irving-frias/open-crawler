@@ -66,6 +66,8 @@
         return m['tabs.issues_dashboard']();
       case 'site_tree':
         return m['tabs.site_tree']();
+      case 'graph':
+        return m['tabs.graph']();
       case 'comparator':
         return m['tabs.comparator']();
       case 'duplicates':
@@ -183,6 +185,12 @@
     {#if components.site_tree}
       {@const Tree = components.site_tree}
       <Tree projectId={selectedProjectId} />
+    {/if}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'graph'}>
+    {#if components.graph}
+      {@const Graph = components.graph}
+      <Graph projectId={selectedProjectId} />
     {/if}
   </div>
   <div class="tab-panel" hidden={activeTab !== 'comparator'}>

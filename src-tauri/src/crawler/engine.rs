@@ -20,7 +20,7 @@ use crate::crawler::robots::RobotsChecker;
 use crate::crawler::sitemap::SitemapParser;
 use crate::db::CrawlRepo;
 use crate::error::AppError;
-use crate::models::{CrawlConfig, CrawlProgress, CrawlResult, PageLink};
+use crate::models::{CrawlConfig, CrawlProgress, CrawlResult, PageLink, RedirectRecord};
 use crate::AppState;
 
 const LRU_CAPACITY: usize = 500_000;
@@ -33,6 +33,9 @@ pub struct CrawlEngine {
     parser: SeoParser,
     allowed_origins: Vec<String>,
     frontier: Option<Frontier>,
+    /// Shared HTTP client (connection pool reused across crawls). `None` in
+    /// tests or when the caller has no shared client.
+    client: Option<reqwest::Client>,
 }
 
 impl Default for CrawlEngine {
@@ -50,11 +53,18 @@ impl CrawlEngine {
             parser: SeoParser::new(),
             allowed_origins: Vec::new(),
             frontier: None,
+            client: None,
         }
     }
 
     pub fn set_config(&mut self, config: CrawlConfig) {
         self.config = Some(config);
+    }
+
+    /// Reuses the app's shared HTTP client instead of building a fresh
+    /// reqwest::Client (connection pool + DNS + TLS state) per crawl.
+    pub fn set_http_client(&mut self, client: reqwest::Client) {
+        self.client = Some(client);
     }
 
     #[allow(dead_code)]
@@ -146,6 +156,7 @@ impl CrawlEngine {
 
         // Create fetcher with implicit user agent.
         let http_fetcher = HttpFetcher::new(
+            self.client.clone(),
             config.user_agent(),
             config.request_timeout_ms,
             config.custom_headers.clone(),
@@ -222,6 +233,7 @@ impl CrawlEngine {
         // Sitemap discovery
         if config.check_sitemap {
             let sitemap_parser = SitemapParser::new(
+                self.client.clone(),
                 config.user_agent(),
                 config.cookies.clone(),
                 config.site_auth.clone(),
@@ -295,6 +307,7 @@ impl CrawlEngine {
 
         // Create RobotsChecker
         let mut robots_checker = RobotsChecker::new(
+            self.client.clone(),
             config.user_agent(),
             config.cookies.clone(),
             config.site_auth.clone(),
@@ -668,6 +681,35 @@ impl CrawlEngine {
             });
         }
 
+        // Compute SEO content clusters from keyword overlap (non-blocking).
+        {
+            let state = state.clone();
+            let project_id = project_id.clone();
+            tokio::spawn(async move {
+                let state_read = state.read().await;
+                let lock_result = state_read.db.lock();
+                match lock_result {
+                    Ok(db) => {
+                        let repo = CrawlRepo::new(&db, None);
+                        match repo.compute_seo_clusters(&project_id) {
+                            Ok(clusters) => {
+                                info!(
+                                    "SEO clusters for project {}: {} clusters",
+                                    project_id, clusters
+                                );
+                            }
+                            Err(e) => {
+                                error!("Failed to compute SEO clusters: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to lock DB for SEO clusters: {}", e);
+                    }
+                }
+            });
+        }
+
         info!(
             "=== CRAWL COMPLETE for project {}: {} pages, {} errors, {:.1}s ===",
             project_id,
@@ -773,8 +815,9 @@ impl CrawlEngine {
             })
             .collect();
 
+        let result_id = Uuid::new_v4().to_string();
         let result = CrawlResult {
-            id: Uuid::new_v4().to_string(),
+            id: result_id.clone(),
             config_id: config_id.to_string(),
             project_id: project_id.to_string(),
             url: response.url.to_string(),
@@ -816,6 +859,16 @@ impl CrawlEngine {
         let _ = db_tx.send(CrawlResultMsg::Page(Box::new(result))).await;
         if !links.is_empty() {
             let _ = db_tx.send(CrawlResultMsg::Links(links)).await;
+        }
+        if !response.redirect_chain.is_empty() {
+            let _ = db_tx
+                .send(CrawlResultMsg::Redirects(RedirectRecord {
+                    page_id: result_id,
+                    project_id: project_id.to_string(),
+                    redirect_from_url: response.redirect_from_url.clone(),
+                    chain: response.redirect_chain.clone(),
+                }))
+                .await;
         }
 
         // Dedup + enqueue discovered URLs inline (single write-lock pair).
@@ -989,7 +1042,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn sitemap_discovery_empty_without_sitemap() {
         let origin = spawn_no_sitemap_site().await;
-        let parser = SitemapParser::new("OpenCrawler/test", vec![], None, None).unwrap();
+        let parser = SitemapParser::new(None, "OpenCrawler/test", vec![], None, None).unwrap();
         let result = parser.discover(&origin).await;
         assert!(
             result.urls.is_empty(),
@@ -1004,7 +1057,7 @@ mod tests {
         let seed = format!("{}/", origin);
 
         let fetcher =
-            HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
         let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
         let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
@@ -1057,7 +1110,7 @@ mod tests {
         let seed = format!("{}/", origin);
 
         let fetcher =
-            HttpFetcher::new("OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
         let parser = SeoParser::new();
         // Simulate the discovery visited set pre-seeded with the seed URL and a
         // sitemap URL (/a), exactly as CrawlEngine::start now does.

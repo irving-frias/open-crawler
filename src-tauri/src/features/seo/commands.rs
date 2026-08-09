@@ -45,6 +45,7 @@ pub async fn get_seo_audit(
 #[tauri::command]
 pub async fn run_seo_audit(
     state: State<'_, Arc<RwLock<AppState>>>,
+    http: State<'_, reqwest::Client>,
     page_id: String,
 ) -> Result<SeoAuditResult, AppError> {
     let pid = page_id.clone();
@@ -68,6 +69,7 @@ pub async fn run_seo_audit(
 
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
     let fetcher = crate::crawler::fetcher::HttpFetcher::new(
+        Some(http.inner().clone()),
         user_agent,
         30000,
         Vec::new(),
@@ -294,6 +296,7 @@ pub async fn stop_seo_audit(
 pub async fn run_seo_audit_all(
     app: AppHandle,
     state: State<'_, Arc<RwLock<AppState>>>,
+    http: State<'_, reqwest::Client>,
     project_id: String,
 ) -> Result<SeoAuditProgress, AppError> {
     // Guard: only one audit per project at a time.
@@ -324,7 +327,15 @@ pub async fn run_seo_audit_all(
     let site_auth = config.and_then(|c| c.site_auth);
 
     let user_agent = crate::models::crawl_config::IMPLICIT_USER_AGENT;
-    let fetcher = HttpFetcher::new(user_agent, 30000, Vec::new(), cookies, site_auth, None)?;
+    let fetcher = HttpFetcher::new(
+        Some(http.inner().clone()),
+        user_agent,
+        30000,
+        Vec::new(),
+        cookies,
+        site_auth,
+        None,
+    )?;
     let parser = SeoParser::new();
 
     let token = tokio_util::sync::CancellationToken::new();

@@ -2,8 +2,8 @@ use rusqlite::params;
 
 use crate::error::AppError;
 use crate::models::{
-    DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate,
-    SiteTreeFullNode, SiteTreeNode, StatusBucket,
+    DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, SiteGraph,
+    SiteGraphEdge, SiteGraphNode, SiteTreeFullNode, SiteTreeNode, StatusBucket,
 };
 
 use super::CrawlRepo;
@@ -234,6 +234,81 @@ impl<'a> CrawlRepo<'a> {
         }
 
         Ok(roots)
+    }
+
+    /// Loads every crawled page and every internal link for the project so the
+    /// frontend can render an interactive graph. Pages are deduplicated by URL
+    /// (re-crawls can leave repeated rows) and edges keep only links between
+    /// crawled pages of this project.
+    pub fn get_site_graph(&self, project_id: &str) -> Result<SiteGraph, AppError> {
+        let mut page_stmt = self.conn.prepare(
+            "SELECT cp.url,
+                    MIN(cp.title),
+                    MAX(cp.status_code),
+                    MIN(cp.depth),
+                    COALESCE(SUM(
+                        CASE WHEN pi.id IS NULL THEN 0 ELSE 1 END
+                    ), 0) AS issue_count,
+                    MAX(cp.seo_score),
+                    MAX(CASE WHEN cp.is_indexable = 0 THEN 0 ELSE 1 END) AS indexable,
+                    MAX(cp.blocked),
+                    MAX(cp.size_bytes),
+                    MAX(cp.load_time_ms),
+                    COUNT(DISTINCT pl_in.to_url) AS in_degree,
+                    COUNT(DISTINCT pl_out.to_url) AS out_degree
+             FROM crawled_pages cp
+             LEFT JOIN page_issues pi ON pi.page_id = cp.id AND pi.project_id = ?1
+             LEFT JOIN page_links pl_in
+                ON pl_in.to_url = cp.url AND pl_in.project_id = ?1
+             LEFT JOIN page_links pl_out
+                ON pl_out.from_url = cp.url AND pl_out.project_id = ?1
+             WHERE cp.project_id = ?1
+             GROUP BY cp.url
+             ORDER BY MIN(cp.depth) ASC, cp.url ASC",
+        )?;
+        let nodes: Vec<SiteGraphNode> = page_stmt
+            .query_map(params![project_id], |row| {
+                Ok(SiteGraphNode {
+                    url: row.get(0)?,
+                    title: row.get(1)?,
+                    status_code: row
+                        .get::<_, Option<i32>>(2)?
+                        .map(|s| s as u16),
+                    depth: row.get::<_, i32>(3)? as u32,
+                    issue_count: row.get::<_, i64>(4)? as u32,
+                    seo_score: row.get(5)?,
+                    is_indexable: row.get::<_, Option<i32>>(6)?.map(|v| v == 1),
+                    blocked: row.get(7)?,
+                    size_bytes: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
+                    load_time_ms: row.get::<_, Option<i64>>(9)?.map(|v| v as u64),
+                    in_degree: row.get::<_, i64>(10)? as u32,
+                    out_degree: row.get::<_, i64>(11)? as u32,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(page_stmt);
+
+        let mut edge_stmt = self.conn.prepare(
+            "SELECT DISTINCT from_url, to_url, link_type, is_follow
+             FROM page_links
+             WHERE project_id = ?1
+               AND from_url <> to_url
+               AND from_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
+               AND to_url IN (SELECT url FROM crawled_pages WHERE project_id = ?1)
+             ORDER BY from_url ASC, to_url ASC",
+        )?;
+        let edges = edge_stmt
+            .query_map(params![project_id], |row| {
+                Ok(SiteGraphEdge {
+                    source: row.get(0)?,
+                    target: row.get(1)?,
+                    link_type: row.get(2)?,
+                    is_follow: row.get::<_, i32>(3)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(SiteGraph { nodes, edges })
     }
 
     pub fn get_semantic_issue_counts(&self, project_id: &str) -> Result<Vec<IssueCount>, AppError> {

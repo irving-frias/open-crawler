@@ -383,6 +383,48 @@ mod tests {
     }
 
     #[test]
+    fn test_site_graph_nodes_and_internal_edges() {
+        let repo = test_repo();
+        let mut p_a = page("a", "https://x.com/a", Some("A"), 200, true);
+        p_a.depth = 0;
+        p_a.seo_score = Some(88.5);
+        let mut p_b = page("b", "https://x.com/b", Some("B"), 200, true);
+        p_b.depth = 1;
+        p_b.status_code = Some(404);
+        repo.save_results_batch(&[p_a, p_b]).unwrap();
+        repo.save_links_batch(&[
+            link("https://x.com/a", "https://x.com/b"),
+            link("https://x.com/a", "https://external.com/x"),
+        ])
+        .unwrap();
+
+        let graph = repo.get_site_graph("p1").unwrap();
+        assert_eq!(graph.nodes.len(), 2);
+        // Only the internal edge is rendered; degrees count all links.
+        assert_eq!(graph.edges.len(), 1);
+
+        let by_url: std::collections::HashMap<_, _> = graph
+            .nodes
+            .iter()
+            .map(|n| (n.url.clone(), n))
+            .collect();
+        let a = by_url["https://x.com/a"];
+        let b = by_url["https://x.com/b"];
+        assert_eq!(a.depth, 0);
+        assert_eq!(a.seo_score, Some(88.5));
+        assert_eq!(a.out_degree, 2);
+        assert_eq!(a.in_degree, 0);
+        assert_eq!(b.status_code, Some(404));
+        assert_eq!(b.in_degree, 1);
+        assert_eq!(b.out_degree, 0);
+
+        let edge = &graph.edges[0];
+        assert_eq!(edge.source, "https://x.com/a");
+        assert_eq!(edge.target, "https://x.com/b");
+        assert!(edge.is_follow);
+    }
+
+    #[test]
     fn test_duplicate_groups() {
         let repo = test_repo();
         let mut p_a = page("a", "https://x.com/a", Some("A"), 200, true);
@@ -627,7 +669,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(category_rows, 0, "stale category rows must be removed on re-crawl");
+        assert_eq!(
+            category_rows, 0,
+            "stale category rows must be removed on re-crawl"
+        );
 
         let check_rows: i64 = repo
             .conn
@@ -637,7 +682,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(check_rows, 0, "stale check rows must be removed on re-crawl");
+        assert_eq!(
+            check_rows, 0,
+            "stale check rows must be removed on re-crawl"
+        );
 
         let overview = repo.get_seo_overview("p1").unwrap();
         assert_eq!(overview.audited_pages, 0);
@@ -777,9 +825,11 @@ mod tests {
 
         let remaining: i64 = repo
             .conn
-            .query_row("SELECT COUNT(*) FROM crawl_snapshots WHERE project_id = 'p1'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM crawl_snapshots WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(remaining, 12, "snapshots must be pruned to 12 per project");
 

@@ -103,6 +103,33 @@ export interface SiteTreeFullNode {
   children: SiteTreeFullNode[];
 }
 
+export interface SiteGraphNode {
+  url: string;
+  title: string | null;
+  status_code: number | null;
+  depth: number;
+  issue_count: number;
+  seo_score: number | null;
+  is_indexable: boolean | null;
+  blocked: boolean | null;
+  size_bytes: number | null;
+  load_time_ms: number | null;
+  in_degree: number;
+  out_degree: number;
+}
+
+export interface SiteGraphEdge {
+  source: string;
+  target: string;
+  link_type: string;
+  is_follow: boolean;
+}
+
+export interface SiteGraph {
+  nodes: SiteGraphNode[];
+  edges: SiteGraphEdge[];
+}
+
 export interface StatusBucket {
   status: number;
   count: number;

@@ -8,8 +8,8 @@ pub use crawl_config::{CrawlConfig, ProxyConfig, ScanType, SiteAuth};
 pub use crawl_result::{
     ChangedUrl, CompareResult, CrawlProgress, CrawlResult, CrawlSnapshot, DashboardStats,
     DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate, PageDetail, PageLink,
-    PaginatedResults, ResultsFilter, SiteTreeFullNode, SiteTreeNode, SnapshotStats, StatusBucket,
-    UrlFieldDiff,
+    PaginatedResults, RedirectHop, RedirectRecord, ResultsFilter, SiteGraph, SiteGraphEdge,
+    SiteGraphNode, SiteTreeFullNode, SiteTreeNode, SnapshotStats, StatusBucket, UrlFieldDiff,
 };
 pub use project::{CreateProjectRequest, Project, RenameProjectRequest};
 pub use schedule::{CreateScheduledJobRequest, ScheduledJob, UpdateScheduledJobRequest};

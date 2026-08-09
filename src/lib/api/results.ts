@@ -4,6 +4,7 @@ import type {
   IssueCount,
   PageDetail,
   PaginatedResults,
+  SiteGraph,
   SiteTreeFullNode,
   SiteTreeNode,
 } from './types';
@@ -68,4 +69,8 @@ export function getSiteTree(
 
 export function getSiteTreeFull(projectId: string): Promise<SiteTreeFullNode[]> {
   return invoke<SiteTreeFullNode[]>('get_site_tree_full', { projectId });
+}
+
+export function getSiteGraph(projectId: string): Promise<SiteGraph> {
+  return invoke<SiteGraph>('get_site_graph', { projectId });
 }

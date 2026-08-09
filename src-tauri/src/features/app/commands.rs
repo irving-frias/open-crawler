@@ -1,5 +1,5 @@
 use scraper::{Html, Selector};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
 use crate::crawler::fetcher::{HtmlFetcher, HttpFetcher};
@@ -117,13 +117,17 @@ pub fn get_platform() -> String {
 /// falling back to `/favicon.ico` at the site origin. Returns `None` when the
 /// URL is invalid or the icon cannot be resolved.
 #[tauri::command]
-pub async fn get_favicon(url: String) -> Result<Option<String>, AppError> {
+pub async fn get_favicon(
+    http: State<'_, reqwest::Client>,
+    url: String,
+) -> Result<Option<String>, AppError> {
     let page_url = match Url::parse(&url) {
         Ok(u) if matches!(u.scheme(), "http" | "https") => u,
         _ => return Ok(None),
     };
 
     let fetcher = HttpFetcher::new(
+        Some(http.inner().clone()),
         IMPLICIT_USER_AGENT,
         10_000,
         Vec::new(),

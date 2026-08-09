@@ -5,10 +5,10 @@ use tracing::info;
 use crate::crawler::parser::SemanticIssue;
 use crate::db::CrawlSessionInfo;
 use crate::error::AppError;
-use crate::models::{CrawlConfig, CrawlResult, PageLink};
+use crate::models::{CrawlConfig, CrawlResult, PageLink, RedirectRecord};
 
-use super::{compress_html_body, CrawlRepo};
 use super::seo::{delete_seo_normalized, save_seo_normalized};
+use super::{compress_html_body, CrawlRepo};
 
 /// Deletes the normalized `page_issues` rows belonging to the given page ids.
 /// Re-crawls replace page rows per URL, and the replaced rows' ids differ from
@@ -297,12 +297,7 @@ impl<'a> CrawlRepo<'a> {
 
         // Normalized SEO rows for the freshly written pages.
         for result in unique.values() {
-            save_seo_normalized(
-                &tx,
-                &result.project_id,
-                &result.id,
-                &result.seo_audit_json,
-            )?;
+            save_seo_normalized(&tx, &result.project_id, &result.id, &result.seo_audit_json)?;
         }
 
         tx.commit()?;
@@ -348,6 +343,50 @@ impl<'a> CrawlRepo<'a> {
 
         let project_ids: std::collections::HashSet<String> =
             links.iter().map(|l| l.project_id.clone()).collect();
+        for project_id in project_ids {
+            self.invalidate_cache_for_project(&project_id);
+        }
+
+        Ok(())
+    }
+
+    /// Persists redirect chains captured by the fetcher. Also back-fills the
+    /// `redirect_from_url` column on the reached page so the redirect origin is
+    /// queryable without joining `page_redirects`.
+    pub fn save_redirect_batch(&self, redirects: &[RedirectRecord]) -> Result<(), AppError> {
+        if redirects.is_empty() {
+            return Ok(());
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut update_page =
+                tx.prepare("UPDATE crawled_pages SET redirect_from_url = ?1 WHERE id = ?2")?;
+            let mut insert_hop = tx.prepare(
+                "INSERT INTO page_redirects (project_id, page_id, hop_index, from_url, to_url, status_code)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for record in redirects {
+                if let Some(from) = &record.redirect_from_url {
+                    update_page.execute(params![from, record.page_id])?;
+                }
+                for (index, hop) in record.chain.iter().enumerate() {
+                    insert_hop.execute(params![
+                        record.project_id,
+                        record.page_id,
+                        index as i64,
+                        hop.from_url,
+                        hop.to_url,
+                        hop.status_code as i64,
+                    ])?;
+                }
+            }
+        }
+        tx.commit()?;
+        info!("Batch saved {} redirect records", redirects.len());
+
+        let project_ids: std::collections::HashSet<String> =
+            redirects.iter().map(|r| r.project_id.clone()).collect();
         for project_id in project_ids {
             self.invalidate_cache_for_project(&project_id);
         }

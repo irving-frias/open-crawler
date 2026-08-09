@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 
 use crate::db::CrawlRepo;
-use crate::models::{CrawlResult, PageLink};
+use crate::models::{CrawlResult, PageLink, RedirectRecord};
 use crate::AppState;
 
 const DEFAULT_BATCH_SIZE: usize = 50;
@@ -16,6 +16,7 @@ const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2000;
 pub enum CrawlResultMsg {
     Page(Box<CrawlResult>),
     Links(Vec<PageLink>),
+    Redirects(RedirectRecord),
     Error {
         url: String,
         config_id: String,
@@ -31,6 +32,7 @@ pub struct DbWriter {
     rx: mpsc::Receiver<CrawlResultMsg>,
     batch_results: Vec<CrawlResult>,
     batch_links: Vec<PageLink>,
+    batch_redirects: Vec<RedirectRecord>,
     batch_size: usize,
     flush_interval: Duration,
     last_flush: Instant,
@@ -52,6 +54,7 @@ impl DbWriter {
             rx,
             batch_results: Vec::with_capacity(DEFAULT_BATCH_SIZE),
             batch_links: Vec::with_capacity(DEFAULT_BATCH_SIZE * 5),
+            batch_redirects: Vec::with_capacity(DEFAULT_BATCH_SIZE),
             batch_size: DEFAULT_BATCH_SIZE,
             flush_interval: Duration::from_millis(DEFAULT_FLUSH_INTERVAL_MS),
             last_flush: Instant::now(),
@@ -73,9 +76,14 @@ impl DbWriter {
 
         loop {
             let should_flush = self.last_flush.elapsed() >= self.flush_interval
-                || self.batch_results.len() >= self.batch_size;
+                || self.batch_results.len() >= self.batch_size
+                || self.batch_links.len() >= self.batch_size * 5;
 
-            if should_flush && (!self.batch_results.is_empty() || !self.batch_links.is_empty()) {
+            if should_flush
+                && (!self.batch_results.is_empty()
+                    || !self.batch_links.is_empty()
+                    || !self.batch_redirects.is_empty())
+            {
                 self.flush().await;
             }
 
@@ -95,17 +103,20 @@ impl DbWriter {
                                 self.flush().await;
                             }
                         }
+                        Some(CrawlResultMsg::Redirects(record)) => {
+                            self.batch_redirects.push(record);
+                        }
                         Some(CrawlResultMsg::Error { url, config_id, project_id, error_type, message }) => {
                             self.total_errors += 1;
                             self.save_error(&url, &config_id, &project_id, &error_type, &message).await;
                         }
                         Some(CrawlResultMsg::Flush) => {
-                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() {
+                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() || !self.batch_redirects.is_empty() {
                                 self.flush().await;
                             }
                         }
                         Some(CrawlResultMsg::Done) => {
-                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() {
+                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() || !self.batch_redirects.is_empty() {
                                 self.flush().await;
                             }
                             info!(
@@ -115,7 +126,7 @@ impl DbWriter {
                             break;
                         }
                         None => {
-                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() {
+                            if !self.batch_results.is_empty() || !self.batch_links.is_empty() || !self.batch_redirects.is_empty() {
                                 self.flush().await;
                             }
                             info!("DbWriter channel closed for project: {}", self.project_id);
@@ -125,7 +136,7 @@ impl DbWriter {
                 }
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {
                     if self.last_flush.elapsed() >= self.flush_interval
-                        && (!self.batch_results.is_empty() || !self.batch_links.is_empty()) {
+                        && (!self.batch_results.is_empty() || !self.batch_links.is_empty() || !self.batch_redirects.is_empty()) {
                         self.flush().await;
                     }
                 }
@@ -136,10 +147,12 @@ impl DbWriter {
     async fn flush(&mut self) {
         let results = std::mem::take(&mut self.batch_results);
         let links = std::mem::take(&mut self.batch_links);
+        let redirects = std::mem::take(&mut self.batch_redirects);
         let count = results.len();
         let link_count = links.len();
+        let redirect_count = redirects.len();
 
-        if count == 0 && link_count == 0 {
+        if count == 0 && link_count == 0 && redirect_count == 0 {
             return;
         }
 
@@ -149,6 +162,7 @@ impl DbWriter {
                 error!("Failed to acquire state read lock: {}", e);
                 self.batch_results = results;
                 self.batch_links = links;
+                self.batch_redirects = redirects;
                 return;
             }
         };
@@ -159,6 +173,7 @@ impl DbWriter {
                 error!("Failed to acquire DB lock: {}", e);
                 self.batch_results = results;
                 self.batch_links = links;
+                self.batch_redirects = redirects;
                 return;
             }
         };
@@ -193,9 +208,27 @@ impl DbWriter {
                 );
                 for link in &links {
                     if let Err(e) = repo.save_links_batch(std::slice::from_ref(link)) {
+                        error!("Skipping link {} -> {}: {}", link.from_url, link.to_url, e);
+                    }
+                }
+            }
+        }
+
+        // Batch insert redirects
+        if !redirects.is_empty() {
+            if let Err(e) = repo.save_redirect_batch(&redirects) {
+                error!(
+                    "Batch save of {} redirects failed ({}), retrying per record",
+                    redirect_count, e
+                );
+                for record in &redirects {
+                    if let Err(e) = repo.save_redirect_batch(std::slice::from_ref(record)) {
                         error!(
-                            "Skipping link {} -> {}: {}",
-                            link.from_url, link.to_url, e
+                            "Skipping redirect for page {} ({} -> {:?}): {}",
+                            record.page_id,
+                            record.redirect_from_url.as_deref().unwrap_or("<none>"),
+                            record.chain.first().map(|h| &h.to_url),
+                            e
                         );
                     }
                 }
