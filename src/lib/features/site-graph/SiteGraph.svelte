@@ -1,9 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
-  import Sigma from 'sigma';
-  import Graph from 'graphology';
-  import forceAtlas2 from 'graphology-layout-forceatlas2';
-  import { getSiteGraph, getSiteGraphEdges } from '$lib/api/results';
+  import { onDestroy as onDestroyLifecycle } from 'svelte';
+  import { Graph as CosmosGraph, type GraphConfig } from '@cosmos.gl/graph';
   import type { SiteGraph as GraphData, SiteGraphEdge, SiteGraphNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
@@ -13,6 +10,7 @@
   import * as Select from '$lib/components/ui/select/index.js';
   import {
     GitBranch,
+    Network,
     Play,
     RefreshCw,
     ScanSearch,
@@ -22,309 +20,608 @@
     X,
   } from 'lucide-svelte';
   import { cn } from '$lib/utils.js';
+  import { getSiteGraph, getSiteGraphEdges } from '$lib/api/results';
+  import {
+    cssVar,
+    followEdgeRgba,
+    formatBytes,
+    formatMs,
+    hexToRgba,
+    languageOf,
+    legendColor,
+    nofollowEdgeRgba,
+    nodeFill,
+    shortLabel,
+    statusClass,
+    statusLabel,
+    statusVariant,
+    type StatusClass,
+  } from '$lib/features/site-map/shared.js';
+  import { requestFocusInTree, siteMapNav } from '$lib/features/site-map/nav.svelte.js';
+  import {
+    resetSiteMapFilters,
+    siteMapFilters,
+    type StatusFilter,
+  } from '$lib/features/site-map/filters.svelte.js';
+  import { resolveColor } from '$lib/components/charts/chart-theme.js';
 
   let { projectId }: { projectId: string } = $props();
 
-  type StatusClass = '2xx' | '3xx' | '4xx' | '5xx' | 'blocked' | 'unknown';
+  // Performance limits for large graphs
+  const MAX_NODES = 50000;
+  const MAX_EDGES = 100000;
+  const SPACE_SIZE = 4096;
+  const MAX_LABELS = 2500;
+  const LABEL_MIN_ZOOM = 1;
+
   type LayoutId = 'force' | 'breadthfirst' | 'concentric' | 'grid' | 'circle';
 
-  function statusClass(code: number | null, blocked: boolean | null): StatusClass {
-    if (blocked) return 'blocked';
-    if (code == null) return 'unknown';
-    if (code < 300) return '2xx';
-    if (code < 400) return '3xx';
-    if (code < 500) return '4xx';
-    return '5xx';
+  interface NodeMeta {
+    title: string;
+    status: StatusClass;
+    lang: string | null;
+    degree: number;
   }
-
-  function cssVar(name: string, fallback: string): string {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  }
-
-  const nodeFill: Record<StatusClass, string> = {
-    '2xx': cssVar('--success', '#51cf66'),
-    '3xx': cssVar('--warning', '#ffd43b'),
-    '4xx': cssVar('--danger', '#ff6b6b'),
-    '5xx': cssVar('--danger', '#ff6b6b'),
-    blocked: cssVar('--info', '#74c0fc'),
-    unknown: cssVar('--text-muted', '#6b7079'),
-  };
-  const edgeColor = cssVar('--border-muted', '#3d4450');
 
   let graph = $state<GraphData | null>(null);
   let edges = $state<SiteGraphEdge[]>([]);
   let loading = $state(false);
   let error = $state('');
   let containerEl = $state<HTMLDivElement | null>(null);
-  let sigma = $state<Sigma | null>(null);
-  let selectedNode = $state<SiteGraphNode | null>(null);
-  let selectedEdge = $state<SiteGraphEdge | null>(null);
-  let hoveredNode = $state<string | null>(null);
 
-  let searchQuery = $state('');
-  let statusFilter = $state<StatusClass | 'all'>('all');
+  let cosmos = $state<CosmosGraph | null>(null);
+  let selectedNode = $state<SiteGraphNode | null>(null);
+  let hoveredUrl = $state<string | null>(null);
+
+  let languageFilter = $state<'all' | 'default' | string>('all');
   let showLabels = $state(true);
   let layoutId = $state<LayoutId>('force');
   let layouting = $state(false);
 
   let graphSeq = 0;
-  let lastGraphRef: GraphData | null = null;
-  let addedEdgeCount = 0;
+  let urls: string[] = [];
+  let indexByUrl = new Map<string, number>();
+  let meta: NodeMeta[] = [];
+  let posCache: Float32Array = new Float32Array(0);
+  let baseColors = new Float32Array(0);
+  let baseSizes = new Float32Array(0);
+  let initialLayoutDone = false;
+  let lastLayout: LayoutId | null = null;
+  let hadSize = false;
+  let resizeObs: ResizeObserver | null = null;
 
-  function shortLabel(node: SiteGraphNode): string {
-    const base = node.title || node.url;
-    const trimmed = base.trim();
-    if (trimmed.length <= 24) return trimmed;
-    return trimmed.slice(0, 23) + '…';
-  }
+  // DOM label overlay (Cosmograph does not render text labels natively).
+  let labelsContainer: HTMLDivElement | null = null;
+  let labelEls = new Map<number, HTMLDivElement>();
+  let labelIndices: number[] = [];
+  let labelsReady = false;
+  let labelsFrame = 0;
 
-  function nodeHidden(id: string): boolean {
-    const s = sigma;
-    if (!s) return false;
-    const g = s.getGraph();
-    const sc = g.getNodeAttribute(id, 'statusClass') as StatusClass;
-    if (statusFilter !== 'all' && sc !== statusFilter) return true;
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      const url = g.getNodeAttribute(id, 'url') as string;
-      const label = g.getNodeAttribute(id, 'label') as string;
-      if (!url.toLowerCase().includes(q) && !label.toLowerCase().includes(q)) return true;
+  const edgeFollowColor = `rgb(${followEdgeRgba[0]}, ${followEdgeRgba[1]}, ${followEdgeRgba[2]})`;
+  const highlightColor = resolveColor(cssVar('--accent', '#667eea'));
+
+  function visibleAtFilter(i: number): boolean {
+    const md = meta[i];
+    if (!md) return false;
+    if (siteMapFilters.status !== 'all' && md.status !== siteMapFilters.status) return false;
+    if (languageFilter !== 'all') {
+      const lang = md.lang ?? null;
+      if (languageFilter === 'default' ? lang !== null : lang !== languageFilter) return false;
     }
-    return false;
+    const q = siteMapFilters.search.trim().toLowerCase();
+    if (q) {
+      const url = urls[i].toLowerCase();
+      const label = md.title.toLowerCase();
+      if (!url.includes(q) && !label.includes(q)) return false;
+    }
+    return true;
   }
 
-  function refresh() {
-    const s = sigma;
-    if (!s) return;
-    s.setSetting('nodeReducer', (node, data) => {
-      if (nodeHidden(node)) return { ...data, hidden: true };
-      return {
-        ...data,
-        size: hoveredNode === node ? data.size * 1.7 : data.size,
-        label: showLabels ? data.label : '',
-      };
+  function applyFilter() {
+    const g = cosmos;
+    if (!g || urls.length === 0 || !g.isReady) return;
+    const current = g.getPointPositions();
+    for (let i = 0; i < urls.length; i++) {
+      if (visibleAtFilter(i)) {
+        posCache[i * 2] = current[i * 2];
+        posCache[i * 2 + 1] = current[i * 2 + 1];
+      }
+    }
+    const filtered = posCache.slice();
+    for (let i = 0; i < urls.length; i++) {
+      if (!visibleAtFilter(i)) {
+        filtered[i * 2] = NaN;
+        filtered[i * 2 + 1] = NaN;
+      }
+    }
+    g.setPointPositions(new Float32Array(filtered));
+    g.render();
+    if (layoutId === 'force') g.unpause();
+    requestLabelUpdate();
+  }
+
+  function requestLabelUpdate() {
+    if (labelsFrame) return;
+    labelsFrame = requestAnimationFrame(() => {
+      labelsFrame = 0;
+      updateLabels();
     });
-    s.setSetting('edgeReducer', (edge, data) => {
-      const g = s.getGraph();
-      const src = g.source(edge);
-      const tgt = g.target(edge);
-      if (nodeHidden(src) || nodeHidden(tgt)) return { ...data, hidden: true };
-      return data;
-    });
-    s.refresh();
+  }
+
+  function updateLabels() {
+    const g = cosmos;
+    if (!g || !labelsReady) return;
+    if (!labelsContainer) return;
+    if (!showLabels) {
+      labelsContainer.style.display = 'none';
+      return;
+    }
+    labelsContainer.style.display = '';
+    const map = g.getTrackedPointPositionsMap();
+    const zoom = g.getZoomLevel();
+    const showAll = zoom >= LABEL_MIN_ZOOM;
+    for (const idx of labelIndices) {
+      const div = labelEls.get(idx);
+      if (!div) continue;
+      if (!showAll) {
+        div.style.display = 'none';
+        continue;
+      }
+      const p = map.get(idx);
+      if (!p) {
+        div.style.display = 'none';
+        continue;
+      }
+      const [sx, sy] = g.spaceToScreenPosition(p);
+      div.style.display = '';
+      div.style.transform = `translate(-50%, -100%) translate(${sx}px, ${sy}px)`;
+    }
+  }
+
+  function ensureLabel(idx: number) {
+    const g = cosmos;
+    if (!g || !labelsContainer || !showLabels) return;
+    if (labelEls.has(idx)) return;
+    const div = document.createElement('div');
+    div.className = 'graph-label';
+    div.textContent = shortLabel(meta[idx]?.title ?? urls[idx] ?? '');
+    labelsContainer.appendChild(div);
+    labelEls.set(idx, div);
+    labelIndices.push(idx);
+    g.trackPointPositionsByIndices(labelIndices);
+    requestLabelUpdate();
+  }
+
+  function initLabels() {
+    const g = cosmos;
+    const el = containerEl;
+    if (!g || !el || labelsReady) return;
+    labelsReady = true;
+    labelsContainer = document.createElement('div');
+    labelsContainer.className = 'graph-labels';
+    el.appendChild(labelsContainer);
+    const order = urls
+      .map((_, i) => i)
+      .sort((a, b) => (meta[b]?.degree ?? 0) - (meta[a]?.degree ?? 0));
+    const selected = order.slice(0, MAX_LABELS);
+    for (const idx of selected) {
+      const div = document.createElement('div');
+      div.className = 'graph-label';
+      div.textContent = shortLabel(meta[idx]?.title ?? urls[idx] ?? '');
+      labelsContainer.appendChild(div);
+      labelEls.set(idx, div);
+    }
+    labelIndices = selected;
+    g.trackPointPositionsByIndices(labelIndices);
+    updateLabels();
   }
 
   function fitView() {
-    const s = sigma;
-    if (!s || !containerEl) return;
-    const bbox = s.getBBox();
-    const w = containerEl.clientWidth || 1;
-    const h = containerEl.clientHeight || 1;
-    const cx = (bbox.x[0] + bbox.x[1]) / 2;
-    const cy = (bbox.y[0] + bbox.y[1]) / 2;
-    const size = Math.max(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0], 1);
-    const ratio = (Math.min(w, h) / size) * 0.85;
-    s.getCamera().animate({ x: cx, y: cy, ratio, angle: 0 }, { duration: 250 });
+    const g = cosmos;
+    if (!g || urls.length === 0) return;
+    g.fitView();
+    requestLabelUpdate();
   }
 
   function focusUrl(url: string) {
-    const s = sigma;
-    if (!s) return;
-    const g = s.getGraph();
-    if (!g.hasNode(url)) return;
-    const p = g.getNodeAttributes(url) as { x: number; y: number };
-    const ratio = Math.max(s.getCamera().getState().ratio, 0.6);
-    s.getCamera().animate({ x: p.x, y: p.y, ratio }, { duration: 250 });
+    const g = cosmos;
+    if (!g) return;
+    const idx = indexByUrl.get(url);
+    if (idx === undefined) return;
+    g.zoomToPointByIndex(idx, 400, 3);
+    requestLabelUpdate();
   }
 
-  function focusEdge(source: string, target: string) {
-    const s = sigma;
-    if (!s) return;
-    const g = s.getGraph();
-    if (!g.hasNode(source) || !g.hasNode(target)) return;
-    const a = g.getNodeAttributes(source) as { x: number; y: number };
-    const b = g.getNodeAttributes(target) as { x: number; y: number };
-    const ratio = Math.max(s.getCamera().getState().ratio, 0.6);
-    s.getCamera().animate({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, ratio }, { duration: 250 });
+  function selectNode(idx: number) {
+    const g = cosmos;
+    const nd = graph?.nodes[idx];
+    if (!g || !nd) return;
+    selectedNode = nd;
+    hoveredUrl = null;
+    g.setConfigPartial({ focusedPointIndex: idx });
+    ensureLabel(idx);
   }
 
-  function applyLayout(id: LayoutId) {
-    const s = sigma;
-    if (!s) return;
-    const g = s.getGraph();
-    const order = g.order;
-    if (order === 0) return;
+  function clearSelection() {
+    const g = cosmos;
+    if (!g) return;
+    selectedNode = null;
+    g.setConfigPartial({ focusedPointIndex: undefined });
+  }
 
-    if (id === 'force') {
-      layouting = true;
-      const settings = forceAtlas2.inferSettings(g);
-      forceAtlas2.assign(g, { iterations: 60, settings });
-      s.refresh();
-      layouting = false;
-      fitView();
-      return;
+  function handlePointClick(index: number) {
+    selectNode(index);
+  }
+
+  function handleBackgroundClick() {
+    clearSelection();
+  }
+
+  function handlePointMouseOver(index: number) {
+    hoveredUrl = urls[index] ?? null;
+    ensureLabel(index);
+  }
+
+  function handlePointMouseOut() {
+    hoveredUrl = null;
+  }
+
+  function handleSimulationTick() {
+    requestLabelUpdate();
+  }
+
+  function handleZoom() {
+    requestLabelUpdate();
+  }
+
+  const cosmosConfig: GraphConfig = {
+    spaceSize: SPACE_SIZE,
+    rescalePositions: false,
+    backgroundColor: resolveColor(cssVar('--bg-card', '#0b0f1a')),
+    pointDefaultSize: 4,
+    pointSizeScale: 1,
+    scalePointsOnZoom: true,
+    hoveredPointCursor: 'pointer',
+    renderHoveredPointRing: true,
+    hoveredPointRingColor: highlightColor,
+    focusedPointRingColor: highlightColor,
+    renderLinks: true,
+    linkDefaultColor: edgeFollowColor,
+    linkOpacity: 0.5,
+    linkGreyoutOpacity: 0.06,
+    linkDefaultWidth: 1,
+    linkWidthScale: 1,
+    linkBlending: false,
+    curvedLinks: true,
+    linkDefaultArrows: true,
+    linkArrowsSizeScale: 0.7,
+    linkDashLength: 4,
+    linkDashGap: 3,
+    enableZoom: true,
+    enableDrag: true,
+    enableSimulation: true,
+    enableSimulationDuringZoom: false,
+    fitViewOnInit: true,
+    fitViewDelay: 500,
+    fitViewPadding: 0.1,
+    transitionDuration: 500,
+    simulationFriction: 0.85,
+    simulationLinkSpring: 1,
+    simulationLinkDistance: 15,
+    simulationRepulsion: 1,
+    simulationGravity: 0.1,
+    simulationDecay: 50000,
+    onPointClick: handlePointClick,
+    onBackgroundClick: handleBackgroundClick,
+    onPointMouseOver: handlePointMouseOver,
+    onPointMouseOut: handlePointMouseOut,
+    onSimulationTick: handleSimulationTick,
+    onZoom: handleZoom,
+  };
+
+  function layoutLabel(id: LayoutId): string {
+    switch (id) {
+      case 'force':
+        return 'Force';
+      case 'breadthfirst':
+        return 'Breadthfirst';
+      case 'concentric':
+        return 'Concentric';
+      case 'grid':
+        return 'Grid';
+      case 'circle':
+        return 'Circle';
     }
+  }
 
+  function computePositions(id: LayoutId): Float32Array | null {
+    const data = graph;
+    if (!data) return null;
+    const order = data.nodes.length;
+    const positions = new Float32Array(order * 2);
     const spacing = 30;
-    const nodes = g.mapNodes((node, attrs) => ({
-      id: node,
-      degree: attrs.degree as number,
-      depth: attrs.depth as number,
-      x: 0,
-      y: 0,
-    }));
 
     if (id === 'grid') {
-      const cols = Math.ceil(Math.sqrt(nodes.length));
-      nodes.forEach((node, i) => {
-        node.x = (i % cols) * spacing;
-        node.y = Math.floor(i / cols) * spacing;
-      });
+      const cols = Math.ceil(Math.sqrt(order));
+      for (let i = 0; i < order; i++) {
+        positions[i * 2] = (i % cols) * spacing;
+        positions[i * 2 + 1] = Math.floor(i / cols) * spacing;
+      }
     } else if (id === 'circle') {
-      const r = (nodes.length * spacing) / (2 * Math.PI);
-      nodes.forEach((node, i) => {
-        const a = (i / nodes.length) * Math.PI * 2;
-        node.x = r * Math.cos(a);
-        node.y = r * Math.sin(a);
-      });
+      const radius = (order * spacing) / (2 * Math.PI);
+      for (let i = 0; i < order; i++) {
+        const a = (i / order) * Math.PI * 2;
+        positions[i * 2] = radius * Math.cos(a);
+        positions[i * 2 + 1] = radius * Math.sin(a);
+      }
     } else if (id === 'concentric') {
-      nodes.sort((a, b) => b.degree - a.degree);
+      const indexList = data.nodes.map((_, i) => i);
+      indexList.sort((a, b) => {
+        const da = data.nodes[a].in_degree + data.nodes[a].out_degree;
+        const db = data.nodes[b].in_degree + data.nodes[b].out_degree;
+        return db - da;
+      });
       let ring = 0;
       let i = 0;
-      while (i < nodes.length) {
+      while (i < indexList.length) {
         const count = ring === 0 ? 1 : 8 * ring;
-        for (let j = 0; j < count && i < nodes.length; j++, i++) {
+        for (let j = 0; j < count && i < indexList.length; j++, i++) {
           const a = (j / count) * Math.PI * 2;
-          nodes[i].x = ring * spacing * 1.6 * Math.cos(a);
-          nodes[i].y = ring * spacing * 1.6 * Math.sin(a);
+          const idx = indexList[i];
+          positions[idx * 2] = ring * spacing * 1.6 * Math.cos(a);
+          positions[idx * 2 + 1] = ring * spacing * 1.6 * Math.sin(a);
         }
         ring++;
       }
     } else if (id === 'breadthfirst') {
-      const depths = [...new Set(nodes.map((n) => n.depth))].sort((a, b) => a - b);
-      const columns = new Map<number, typeof nodes>();
-      for (const d of depths)
-        columns.set(
-          d,
-          nodes.filter((n) => n.depth === d)
-        );
+      const depthOf = (i: number) => data.nodes[i].depth ?? 0;
+      const depths = [...new Set(Array.from({ length: order }, (_, i) => depthOf(i)))].sort(
+        (a, b) => a - b
+      );
       depths.forEach((d, di) => {
-        const col = columns.get(d)!;
-        col.forEach((node, j) => {
-          node.x = di * spacing * 2.4;
-          node.y = (j - (col.length - 1) / 2) * spacing;
+        const col: number[] = [];
+        for (let i = 0; i < order; i++) if (depthOf(i) === d) col.push(i);
+        col.forEach((idx, j) => {
+          positions[idx * 2] = di * spacing * 2.4;
+          positions[idx * 2 + 1] = (j - (col.length - 1) / 2) * spacing;
         });
       });
     }
 
-    g.forEachNode((node) => {
-      const pos = nodes.find((n) => n.id === node)!;
-      g.setNodeAttribute(node, 'x', pos.x);
-      g.setNodeAttribute(node, 'y', pos.y);
-    });
-    s.refresh();
-    fitView();
+    // Scale the computed layout so it fits inside the simulation space.
+    let maxAbs = 1;
+    for (let i = 0; i < order; i++) {
+      maxAbs = Math.max(maxAbs, Math.abs(positions[i * 2]), Math.abs(positions[i * 2 + 1]));
+    }
+    const s = ((SPACE_SIZE / 2) * 0.9) / maxAbs;
+    for (let i = 0; i < order; i++) {
+      positions[i * 2] *= s;
+      positions[i * 2 + 1] *= s;
+    }
+    return positions;
   }
 
-  function buildGraph(data: GraphData): Graph {
-    const g = new Graph({ multi: true, type: 'directed' });
-    let maxDegree = 1;
-    for (const n of data.nodes) {
-      maxDegree = Math.max(maxDegree, n.in_degree + n.out_degree);
+  function applyLayout(id: LayoutId) {
+    const g = cosmos;
+    if (!g || urls.length === 0) return;
+    if (layouting) return;
+    layouting = true;
+    try {
+      if (id === 'force') {
+        g.setConfigPartial({ enableSimulation: true });
+        g.start();
+        requestLabelUpdate();
+      } else {
+        const layoutPositions = computePositions(id);
+        if (!layoutPositions) return;
+        for (let i = 0; i < urls.length; i++) {
+          if (visibleAtFilter(i)) {
+            posCache[i * 2] = layoutPositions[i * 2];
+            posCache[i * 2 + 1] = layoutPositions[i * 2 + 1];
+          }
+        }
+        const filtered = posCache.slice();
+        for (let i = 0; i < urls.length; i++) {
+          if (!visibleAtFilter(i)) {
+            filtered[i * 2] = NaN;
+            filtered[i * 2 + 1] = NaN;
+          }
+        }
+        g.setConfigPartial({ enableSimulation: false });
+        g.setPointPositions(new Float32Array(filtered));
+        g.pause();
+        g.render();
+        requestLabelUpdate();
+      }
+    } finally {
+      layouting = false;
     }
-    const spread = Math.max(Math.sqrt(data.nodes.length), 10);
-    for (const n of data.nodes) {
-      const sc = statusClass(n.status_code, n.blocked);
-      const degree = n.in_degree + n.out_degree;
-      g.addNode(n.url, {
-        label: shortLabel(n),
-        url: n.url,
-        statusClass: sc,
-        degree,
-        depth: n.depth,
-        x: (Math.random() - 0.5) * spread,
-        y: (Math.random() - 0.5) * spread,
-        size: 3 + 12 * Math.sqrt(degree / maxDegree),
-        color: nodeFill[sc],
-      });
-    }
-    return g;
   }
 
-  function mountSigma() {
-    if (!containerEl || !graph || sigma) return;
-    const s = new Sigma(buildGraph(graph), containerEl, {
-      minCameraRatio: 0.02,
-      maxCameraRatio: 8,
-      labelRenderedSizeThreshold: 9,
-    });
-    sigma = s;
-    s.on('clickNode', ({ node }) => {
-      selectedNode = graph?.nodes.find((n) => n.url === node) ?? null;
-      selectedEdge = null;
-    });
-    s.on('clickEdge', ({ edge }) => {
-      const g = s.getGraph();
-      const src = g.source(edge);
-      const tgt = g.target(edge);
-      selectedEdge = edges.find((e) => e.source === src && e.target === tgt) ?? null;
-      selectedNode = null;
-    });
-    s.on('clickStage', () => {
-      selectedNode = null;
-      selectedEdge = null;
-    });
-    s.on('enterNode', ({ node }) => {
-      hoveredNode = node;
-    });
-    s.on('leaveNode', () => {
-      hoveredNode = null;
-    });
+  function buildLinks() {
+    const g = cosmos;
+    if (!g || urls.length === 0) return;
+    const valid = edges.filter(
+      (e) => e.source !== e.target && indexByUrl.has(e.source) && indexByUrl.has(e.target)
+    );
+    const n = valid.length;
+    const links = new Float32Array(n * 2);
+    const linkColors = new Float32Array(n * 4);
+    const linkStyles = new Float32Array(n);
+    const linkArrows: boolean[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const e = valid[i];
+      links[i * 2] = indexByUrl.get(e.source)!;
+      links[i * 2 + 1] = indexByUrl.get(e.target)!;
+      const [r, gg, b] = e.is_follow ? followEdgeRgba : nofollowEdgeRgba;
+      linkColors[i * 4] = r;
+      linkColors[i * 4 + 1] = gg;
+      linkColors[i * 4 + 2] = b;
+      linkColors[i * 4 + 3] = 0.6;
+      linkStyles[i] = e.is_follow ? 0 : 1;
+      linkArrows[i] = true;
+    }
+    g.setLinks(links);
+    g.setLinkColors(linkColors);
+    g.setLinkStyles(linkStyles);
+    g.setLinkArrows(linkArrows);
+    g.render();
+  }
+
+  function destroyGraph() {
+    if (cosmos) {
+      try {
+        cosmos.destroy();
+      } catch (e) {
+        console.error('Error destroying graph:', e);
+      }
+      cosmos = null;
+    }
+    resizeObs?.disconnect();
+    resizeObs = null;
+    const el = containerEl;
+    if (el) el.innerHTML = '';
+    labelsReady = false;
+    labelsContainer = null;
+    labelEls.clear();
+    labelIndices = [];
+    urls = [];
+    indexByUrl = new Map();
+    meta = [];
+    selectedNode = null;
+    hoveredUrl = null;
+    initialLayoutDone = false;
+    lastLayout = null;
+    hadSize = false;
   }
 
   $effect(() => {
-    if (!containerEl || !graph) return;
-    if (!sigma || graph !== lastGraphRef) {
-      if (sigma) {
-        sigma.kill();
-        sigma = null;
+    const el = containerEl;
+    const data = graph;
+
+    destroyGraph();
+    if (!el || !data) return;
+
+    const nodes = data.nodes;
+    const n = nodes.length;
+
+    let maxDegree = 1;
+    for (const nd of nodes) {
+      maxDegree = Math.max(maxDegree, nd.in_degree + nd.out_degree);
+    }
+    const spread = SPACE_SIZE * 0.3;
+    urls = new Array(n);
+    indexByUrl = new Map();
+    meta = new Array(n);
+    const positions = new Float32Array(n * 2);
+    const colors = new Float32Array(n * 4);
+    const sizes = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const nd = nodes[i];
+      const sc = statusClass(nd.status_code, nd.blocked);
+      const degree = nd.in_degree + nd.out_degree;
+      urls[i] = nd.url;
+      indexByUrl.set(nd.url, i);
+      meta[i] = {
+        title: nd.title || nd.url,
+        status: sc,
+        lang: languageOf(nd.url),
+        degree,
+      };
+      positions[i * 2] = (Math.random() - 0.5) * 2 * spread;
+      positions[i * 2 + 1] = (Math.random() - 0.5) * 2 * spread;
+      const [r, gg, b] = hexToRgba(nodeFill[sc]);
+      colors[i * 4] = r;
+      colors[i * 4 + 1] = gg;
+      colors[i * 4 + 2] = b;
+      colors[i * 4 + 3] = 1;
+      sizes[i] = 4 + 14 * Math.sqrt(degree / maxDegree);
+    }
+    posCache = positions;
+    baseColors = colors;
+    baseSizes = sizes;
+
+    const instance = new CosmosGraph(el, cosmosConfig);
+    cosmos = instance;
+
+    instance.ready.then(() => {
+      if (cosmos !== instance) return;
+      instance.setPointPositions(posCache);
+      instance.setPointColors(baseColors);
+      instance.setPointSizes(baseSizes);
+      instance.render();
+      buildLinks();
+      if (showLabels) initLabels();
+      tryFocusPending();
+    });
+
+    resizeObs = new ResizeObserver(() => {
+      const g = cosmos;
+      if (!g || !el) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) {
+        hadSize = false;
+        return;
       }
-      mountSigma();
-      lastGraphRef = graph;
-      addedEdgeCount = 0;
-      selectedNode = null;
-      selectedEdge = null;
-      hoveredNode = null;
+      if (!hadSize) {
+        hadSize = true;
+        setTimeout(() => g.fitView(), 60);
+      }
+      requestLabelUpdate();
+    });
+    resizeObs.observe(el);
+  });
+
+  $effect(() => {
+    const g = cosmos;
+    if (!g || urls.length === 0) return;
+    buildLinks();
+  });
+
+  $effect(() => {
+    const g = cosmos;
+    if (!g || urls.length === 0) return;
+    applyFilter();
+  });
+
+  $effect(() => {
+    const g = cosmos;
+    if (!g) return;
+    if (showLabels) {
+      initLabels();
+    } else if (labelsContainer) {
+      labelsContainer.style.display = 'none';
+    }
+  });
+
+  // Run the selected layout once, after all edges have finished loading.
+  $effect(() => {
+    const g = cosmos;
+    const data = graph;
+    if (!g || !data) return;
+    if (loading) return;
+    if (!initialLayoutDone) {
+      initialLayoutDone = true;
+      applyLayout(layoutId);
+    }
+  });
+
+  // Re-apply a layout when the selected layout changes.
+  $effect(() => {
+    if (!cosmos) return;
+    if (lastLayout === null) {
+      lastLayout = layoutId;
       return;
     }
-    const g = sigma.getGraph();
-    let added = 0;
-    for (let i = addedEdgeCount; i < edges.length; i++) {
-      const e = edges[i];
-      if (e.source === e.target) continue;
-      if (!g.hasNode(e.source) || !g.hasNode(e.target)) continue;
-      g.addEdge(e.source, e.target, { size: 1, color: edgeColor });
-      added++;
+    if (lastLayout !== layoutId) {
+      lastLayout = layoutId;
+      applyLayout(layoutId);
     }
-    addedEdgeCount = edges.length;
-    if (added > 0) sigma.refresh();
   });
 
-  $effect(() => {
-    refresh();
-  });
-
-  $effect(() => {
-    if (sigma && graph) applyLayout(layoutId);
-  });
-
-  $effect(() => {
-    loadGraph();
-  });
-
-  onDestroy(() => {
-    sigma?.kill();
-    sigma = null;
+  onDestroyLifecycle(() => {
+    destroyGraph();
   });
 
   async function loadGraph() {
@@ -337,23 +634,49 @@
     try {
       const data = await getSiteGraph(projectId);
       if (seq !== graphSeq) return;
+
+      // Limit nodes for performance
+      if (data.nodes.length > MAX_NODES) {
+        console.warn(
+          `Graph too large (${data.nodes.length} nodes). Limiting to ${MAX_NODES} nodes for performance.`
+        );
+        data.nodes = data.nodes.slice(0, MAX_NODES);
+        data.edge_count = Math.min(data.edge_count, MAX_EDGES);
+      }
+
       graph = data;
       const pageSize = 20_000;
       let offset = 0;
+      let totalEdges = 0;
       while (true) {
         const page = await getSiteGraphEdges(projectId, offset, pageSize);
         if (seq !== graphSeq) return;
+
+        // Limit edges for performance
+        if (totalEdges + page.edges.length > MAX_EDGES) {
+          const remaining = MAX_EDGES - totalEdges;
+          if (remaining > 0) {
+            edges = [...edges, ...page.edges.slice(0, remaining)];
+          }
+          break;
+        }
+
         edges = [...edges, ...page.edges];
+        totalEdges += page.edges.length;
         offset += page.edges.length;
-        if (page.done || page.edges.length === 0) break;
+
+        if (page.done || page.edges.length === 0 || totalEdges >= MAX_EDGES) break;
       }
-      if (seq === graphSeq && layoutId === 'force') applyLayout(layoutId);
     } catch (e) {
       if (seq === graphSeq) error = String(e);
     } finally {
       if (seq === graphSeq) loading = false;
     }
   }
+
+  $effect(() => {
+    loadGraph();
+  });
 
   const pageCounts = $derived.by(() => {
     const byStatus: Record<StatusClass, number> = {
@@ -364,79 +687,59 @@
       blocked: 0,
       unknown: 0,
     };
-    if (!graph) return { total: 0, edges: 0, issues: 0, byStatus };
+    if (!graph) return { total: 0, edges: 0, byStatus };
     for (const n of graph.nodes) {
       byStatus[statusClass(n.status_code, n.blocked)] += 1;
     }
-    return { total: graph.nodes.length, edges: graph.edge_count, issues: 0, byStatus };
+    return { total: graph.nodes.length, edges: graph.edge_count, byStatus };
   });
 
-  function formatBytes(bytes: number | null): string {
-    if (bytes == null) return '—';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function formatMs(ms: number | null): string {
-    if (ms == null) return '—';
-    return `${ms} ms`;
-  }
-
-  function statusLabel(sc: StatusClass): string {
-    switch (sc) {
-      case '2xx':
-        return m['graph.filter_2xx']();
-      case '3xx':
-        return m['graph.filter_3xx']();
-      case '4xx':
-        return m['graph.filter_4xx']();
-      case '5xx':
-        return m['graph.filter_5xx']();
-      case 'blocked':
-        return m['graph.filter_blocked']();
-      case 'unknown':
-        return m['graph.filter_unknown']();
+  const languages = $derived.by(() => {
+    const set = new Set<string>();
+    let hasDefault = false;
+    if (graph) {
+      for (const n of graph.nodes) {
+        const lang = languageOf(n.url);
+        if (lang) set.add(lang);
+        else hasDefault = true;
+      }
     }
+    return { codes: [...set].sort(), hasDefault };
+  });
+
+  // Cross-navigation: when the site tree asks to show a page in the graph,
+  // reset filters so the node is visible, select it and center the camera.
+  let pendingFocusUrl: string | null = null;
+  let lastNavSeq = 0;
+
+  function tryFocusPending() {
+    const url = pendingFocusUrl;
+    const g = cosmos;
+    if (!url || !g || urls.length === 0) return;
+    const idx = indexByUrl.get(url);
+    if (idx === undefined) return;
+    pendingFocusUrl = null;
+    resetSiteMapFilters();
+    hoveredUrl = null;
+    selectedNode = graph?.nodes[idx] ?? null;
+    g.setConfigPartial({ focusedPointIndex: idx });
+    g.zoomToPointByIndex(idx, 400, 3);
+    ensureLabel(idx);
+    requestLabelUpdate();
   }
 
-  function legendColor(sc: StatusClass): string {
-    switch (sc) {
-      case '2xx':
-        return cssVar('--success', '#51cf66');
-      case '3xx':
-        return cssVar('--warning', '#ffd43b');
-      case '4xx':
-      case '5xx':
-        return cssVar('--danger', '#ff6b6b');
-      case 'blocked':
-        return cssVar('--info', '#74c0fc');
-      case 'unknown':
-        return cssVar('--text-muted', '#6b7079');
-    }
-  }
+  $effect(() => {
+    const nav = siteMapNav;
+    if (!nav.url || nav.projectId !== projectId || nav.action !== 'graph') return;
+    if (nav.seq === lastNavSeq) return;
+    lastNavSeq = nav.seq;
+    pendingFocusUrl = nav.url;
+    tryFocusPending();
+  });
 
-  function statusVariant(code: number | null): 'default' | 'warning' | 'destructive' {
-    if (code == null) return 'default';
-    if (code >= 400) return 'destructive';
-    if (code >= 300) return 'warning';
-    return 'default';
-  }
-
-  function layoutLabel(id: LayoutId): string {
-    switch (id) {
-      case 'force':
-        return 'Force';
-      case 'breadthfirst':
-        return 'Breadth-first';
-      case 'concentric':
-        return 'Concentric';
-      case 'grid':
-        return 'Grid';
-      case 'circle':
-        return 'Circle';
-    }
-  }
+  $effect(() => {
+    if (cosmos && graph) tryFocusPending();
+  });
 </script>
 
 <div class="site-graph">
@@ -444,10 +747,11 @@
     <div class="flex items-center gap-2 text-sm font-semibold">
       <GitBranch class="size-4" />
       {m['graph.title']()}
-      <span class="sigma-badge">Sigma</span>
+      <span class="engine-badge">Cosmos</span>
       {#if graph}
         <span class="text-xs font-normal text-muted-foreground">
-          {m['graph.pages']()}: {pageCounts.total} · {m['graph.edges']()}: {pageCounts.edges}
+          {m['graph.pages']()}: {pageCounts.total.toLocaleString()} · {m['graph.edges']()}:
+          {pageCounts.edges.toLocaleString()}
         </span>
       {/if}
     </div>
@@ -456,25 +760,29 @@
         <Search class="size-3.5 text-muted-foreground" />
         <Input
           type="text"
-          bind:value={searchQuery}
+          bind:value={siteMapFilters.search}
           placeholder={m['graph.search_placeholder']()}
           class="h-7"
         />
-        {#if searchQuery}
-          <button class="graph-search-clear" onclick={() => (searchQuery = '')} aria-label="clear">
+        {#if siteMapFilters.search}
+          <button
+            class="graph-search-clear"
+            onclick={() => (siteMapFilters.search = '')}
+            aria-label="clear"
+          >
             <X class="size-3" />
           </button>
         {/if}
       </div>
       <Select.Root
         type="single"
-        value={statusFilter}
+        value={siteMapFilters.status}
         onValueChange={(v) => {
-          if (v) statusFilter = v as StatusClass | 'all';
+          if (v) siteMapFilters.status = v as StatusFilter;
         }}
       >
         <Select.Trigger class="h-7 w-36 justify-between text-xs">
-          {statusFilter === 'all' ? m['graph.filter_all']() : statusLabel(statusFilter)}
+          {siteMapFilters.status === 'all' ? m['graph.filter_all']() : statusLabel(siteMapFilters.status)}
         </Select.Trigger>
         <Select.Content>
           <Select.Item value="all">{m['graph.filter_all']()}</Select.Item>
@@ -484,6 +792,33 @@
           <Select.Item value="5xx">{m['graph.filter_5xx']()}</Select.Item>
           <Select.Item value="blocked">{m['graph.filter_blocked']()}</Select.Item>
           <Select.Item value="unknown">{m['graph.filter_unknown']()}</Select.Item>
+        </Select.Content>
+      </Select.Root>
+      <Select.Root
+        type="single"
+        value={languageFilter}
+        onValueChange={(v) => {
+          if (v) languageFilter = v as 'all' | 'default' | string;
+        }}
+      >
+        <Select.Trigger
+          class="h-7 w-28 justify-between text-xs"
+          aria-label={m['graph.filter_language']()}
+        >
+          {languageFilter === 'all'
+            ? m['graph.language_all']()
+            : languageFilter === 'default'
+              ? m['graph.language_default']()
+              : languageFilter}
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value="all">{m['graph.language_all']()}</Select.Item>
+          {#if languages.hasDefault}
+            <Select.Item value="default">{m['graph.language_default']()}</Select.Item>
+          {/if}
+          {#each languages.codes as lang (lang)}
+            <Select.Item value={lang}>{lang}</Select.Item>
+          {/each}
         </Select.Content>
       </Select.Root>
       <Select.Root
@@ -597,104 +932,82 @@
       {:else}
         <div class="graph-canvas" bind:this={containerEl}></div>
         <div class="graph-hint">{m['graph.select_hint']()}</div>
+        {#if hoveredUrl}
+          <div class="graph-hover" title={hoveredUrl}>{hoveredUrl}</div>
+        {/if}
       {/if}
     </div>
 
-    {#if selectedNode || selectedEdge}
+    {#if selectedNode}
       <aside class="graph-side">
         <div class="graph-side-head">
           <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {selectedNode ? shortLabel(selectedNode) : m['graph.edge.source']()}
+            {shortLabel(selectedNode.title || selectedNode.url)}
           </span>
           <button
             class="graph-side-close"
-            onclick={() => {
-              selectedNode = null;
-              selectedEdge = null;
-            }}
+            onclick={() => clearSelection()}
             aria-label={m['graph.close']()}
           >
             <X class="size-3.5" />
           </button>
         </div>
-
-        {#if selectedNode}
-          <div class="graph-side-body">
-            <p class="graph-url" title={selectedNode.url}>{selectedNode.url}</p>
-            <dl class="graph-dl">
-              <dt>{m['graph.node.status']()}</dt>
-              <dd>
-                <Badge variant={statusVariant(selectedNode.status_code)}>
-                  {selectedNode.blocked
-                    ? m['results.status.blocked']()
-                    : (selectedNode.status_code ?? '—')}
-                </Badge>
-              </dd>
-              <dt>{m['graph.node.depth']()}</dt>
-              <dd>{selectedNode.depth}</dd>
-              <dt>{m['graph.node.issues']()}</dt>
-              <dd class={selectedNode.issue_count > 0 ? 'text-destructive' : ''}>
-                {selectedNode.issue_count}
-              </dd>
-              <dt>{m['graph.node.seo_score']()}</dt>
-              <dd>
-                {selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}
-              </dd>
-              <dt>{m['graph.node.in_degree']()}</dt>
-              <dd>{selectedNode.in_degree}</dd>
-              <dt>{m['graph.node.out_degree']()}</dt>
-              <dd>{selectedNode.out_degree}</dd>
-              <dt>{m['graph.node.size']()}</dt>
-              <dd>{formatBytes(selectedNode.size_bytes)}</dd>
-              <dt>{m['graph.node.load_time']()}</dt>
-              <dd>{formatMs(selectedNode.load_time_ms)}</dd>
-            </dl>
-          </div>
-          <div class="graph-side-foot">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 text-xs"
-              onclick={() => focusUrl(selectedNode!.url)}
-            >
-              <ScanSearch class="size-3.5" />
-              {m['graph.node.focus']()}
+        <div class="graph-side-body">
+          <p class="graph-url" title={selectedNode.url}>{selectedNode.url}</p>
+          <dl class="graph-dl">
+            <dt>{m['graph.node.status']()}</dt>
+            <dd>
+              <Badge variant={statusVariant(selectedNode.status_code)}>
+                {selectedNode.blocked
+                  ? m['results.status.blocked']()
+                  : (selectedNode.status_code ?? '—')}
+              </Badge>
+            </dd>
+            <dt>{m['graph.node.depth']()}</dt>
+            <dd>{selectedNode.depth}</dd>
+            <dt>{m['graph.node.issues']()}</dt>
+            <dd class={selectedNode.issue_count > 0 ? 'text-destructive' : ''}>
+              {selectedNode.issue_count}
+            </dd>
+            <dt>{m['graph.node.seo_score']()}</dt>
+            <dd>
+              {selectedNode.seo_score != null ? `${selectedNode.seo_score.toFixed(1)}` : '—'}
+            </dd>
+            <dt>{m['graph.node.in_degree']()}</dt>
+            <dd>{selectedNode.in_degree}</dd>
+            <dt>{m['graph.node.out_degree']()}</dt>
+            <dd>{selectedNode.out_degree}</dd>
+            <dt>{m['graph.node.size']()}</dt>
+            <dd>{formatBytes(selectedNode.size_bytes)}</dd>
+            <dt>{m['graph.node.load_time']()}</dt>
+            <dd>{formatMs(selectedNode.load_time_ms)}</dd>
+          </dl>
+        </div>
+        <div class="graph-side-foot">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs"
+            onclick={() => requestFocusInTree(projectId, selectedNode!.url)}
+          >
+            <Network class="size-3.5" />
+            {m['graph.view_in_tree']()}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs"
+            onclick={() => focusUrl(selectedNode!.url)}
+          >
+            <ScanSearch class="size-3.5" />
+            {m['graph.node.focus']()}
+          </Button>
+          <a href={selectedNode.url} target="_blank" rel="noreferrer">
+            <Button variant="default" size="sm" class="h-7 text-xs">
+              {m['graph.node.open']()}
             </Button>
-            <a href={selectedNode.url} target="_blank" rel="noreferrer">
-              <Button variant="default" size="sm" class="h-7 text-xs">
-                {m['graph.node.open']()}
-              </Button>
-            </a>
-          </div>
-        {/if}
-
-        {#if selectedEdge}
-          <div class="graph-side-body">
-            <dl class="graph-dl">
-              <dt>{m['graph.edge.source']()}</dt>
-              <dd class="graph-url" title={selectedEdge.source}>{selectedEdge.source}</dd>
-              <dt>{m['graph.edge.target']()}</dt>
-              <dd class="graph-url" title={selectedEdge.target}>{selectedEdge.target}</dd>
-              <dt>{m['graph.edge.type']()}</dt>
-              <dd>{selectedEdge.link_type || '—'}</dd>
-              <dt>{m['graph.edge.follow']()}</dt>
-              <dd>
-                {selectedEdge.is_follow ? m['graph.edge.follow']() : m['graph.edge.nofollow']()}
-              </dd>
-            </dl>
-          </div>
-          <div class="graph-side-foot">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 text-xs"
-              onclick={() => focusEdge(selectedEdge!.source, selectedEdge!.target)}
-            >
-              <ScanSearch class="size-3.5" />
-              {m['graph.edge.focus']()}
-            </Button>
-          </div>
-        {/if}
+          </a>
+        </div>
       </aside>
     {/if}
   </div>
@@ -707,7 +1020,7 @@
     gap: 8px;
   }
 
-  .sigma-badge {
+  .engine-badge {
     font-size: 0.65rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -838,6 +1151,7 @@
   }
 
   .graph-canvas {
+    position: relative;
     width: 100%;
     height: 100%;
   }
@@ -846,12 +1160,52 @@
     outline: none;
   }
 
+  :global(.graph-labels) {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.graph-label) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 0.68rem;
+    line-height: 1.3;
+    color: var(--text);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+    will-change: transform;
+  }
+
   .graph-hint {
     position: absolute;
     bottom: 8px;
     left: 10px;
     font-size: 0.7rem;
     color: var(--text-muted);
+    pointer-events: none;
+    background: var(--bg-card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .graph-hover {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     pointer-events: none;
     background: var(--bg-card);
     padding: 2px 6px;

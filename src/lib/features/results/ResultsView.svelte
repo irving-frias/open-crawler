@@ -13,6 +13,7 @@
   import { translateIssueName } from '$lib/i18n-issues';
   import { TAB_DEFS, loadTabComponent, type LazyTabId } from '$lib/tabs';
   import type { ResultsState, TabValue } from '$lib/app.svelte';
+  import { siteMapNav } from '$lib/features/site-map/nav.svelte.js';
 
   let {
     activeTab = $bindable('results' as TabValue),
@@ -86,6 +87,13 @@
     if (id !== 'results' && !components[id]) {
       loadTabComponent(id).then((c) => (components[id] = c));
     }
+  });
+
+  // Cross-navigation: a site-map focus request switches to the matching tab.
+  $effect(() => {
+    const nav = siteMapNav;
+    if (nav.action === 'graph') activeTab = 'graph';
+    else if (nav.action === 'tree') activeTab = 'site_tree';
   });
 </script>
 

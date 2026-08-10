@@ -1035,16 +1035,13 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       const path = mobile || picked.toLowerCase().endsWith(`.${ext}`) ? picked : `${picked}.${ext}`;
 
       state.exportProgress = { running: true, percent: 0, stage: '' };
-      const unlisten = await listen<{ stage: string; percent: number }>(
-        'export-progress',
-        (event) => {
-          state.exportProgress = {
-            running: true,
-            percent: Math.min(event.payload.percent, 100),
-            stage: event.payload.stage,
-          };
-        }
-      );
+      const unlisten = await listen<{ stage: string; percent: number }>('export-progress', (event) => {
+        state.exportProgress = {
+          running: true,
+          percent: Math.min(event.payload.percent, 100),
+          stage: event.payload.stage,
+        };
+      });
 
       try {
         await api.exportApi.exportFull(state.selectedProjectId, path, format);

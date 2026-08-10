@@ -83,17 +83,14 @@
         if (event.payload.project_id !== projectId) return;
         rerunProgress = event.payload;
       });
-      const unComplete = await listen<{ project_id: string; cancelled: boolean }>(
-        'seo-audit-complete',
-        (event) => {
-          if (event.payload.project_id !== projectId) return;
-          rerunning = false;
-          setTimeout(() => {
-            rerunProgress = null;
-          }, 800);
-          loadOverview(++overviewSeq);
-        }
-      );
+      const unComplete = await listen<{ project_id: string; cancelled: boolean }>('seo-audit-complete', (event) => {
+        if (event.payload.project_id !== projectId) return;
+        rerunning = false;
+        setTimeout(() => {
+          rerunProgress = null;
+        }, 800);
+        loadOverview(++overviewSeq);
+      });
       if (disposed) {
         unProgress();
         unComplete();
