@@ -951,7 +951,10 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     } catch (e) {
       if (seq === resultsRequestSeq) console.error('[Crawler] Failed to load results:', e);
     } finally {
-      if (seq === resultsRequestSeq && !opts.silent) state.resultsLoading = false;
+      // Always clear the spinner for the latest request, even a silent one: a
+      // silent stream-refresh superseding an explicit load otherwise leaves
+      // `resultsLoading` stuck forever (its `finally` never runs the reset).
+      if (seq === resultsRequestSeq) state.resultsLoading = false;
     }
   }
 

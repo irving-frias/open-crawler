@@ -71,10 +71,38 @@ export function brightenRgb(r: number, g: number, b: number, f: number): [number
   ];
 }
 
-export function legendColor(sc: StatusClass): string {
+export function shortLabel(text: string, max = 24): string {
   const trimmed = text.trim();
   if (trimmed.length <= max) return trimmed;
   return trimmed.slice(0, max - 1) + '…';
+}
+
+export const nodeFill: Record<StatusClass, string> = {
+  '2xx': cssVar('--success', '#51cf66'),
+  '3xx': cssVar('--warning', '#ffd43b'),
+  '4xx': cssVar('--danger', '#ff6b6b'),
+  '5xx': cssVar('--danger', '#ff6b6b'),
+  blocked: cssVar('--info', '#74c0fc'),
+  unknown: cssVar('--text-muted', '#6b7079'),
+};
+
+export const followEdgeRgba = hexToRgba(cssVar('--border-muted', '#3d4450'));
+export const nofollowEdgeRgba = hexToRgba(cssVar('--text-muted', '#6b7079'));
+
+export function legendColor(sc: StatusClass): string {
+  switch (sc) {
+    case '2xx':
+      return cssVar('--success', '#51cf66');
+    case '3xx':
+      return cssVar('--warning', '#ffd43b');
+    case '4xx':
+    case '5xx':
+      return cssVar('--danger', '#ff6b6b');
+    case 'blocked':
+      return cssVar('--info', '#74c0fc');
+    case 'unknown':
+      return cssVar('--text-muted', '#6b7079');
+  }
 }
 
 export function formatBytes(bytes: number | null): string {
