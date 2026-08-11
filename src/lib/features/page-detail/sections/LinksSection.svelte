@@ -42,7 +42,7 @@
           </TableRow>
         </TableHeader>
         <TableBody>
-          {#each links as link (link.to_url)}
+          {#each links as link, i (i)}
             <TableRow>
               <TableCell>
                 <Badge variant="secondary" class="text-xs">{link.link_type}</Badge>

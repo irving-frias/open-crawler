@@ -410,6 +410,7 @@ fn url_decode(s: &str) -> String {
 #[tauri::command]
 pub async fn import_shared_intent(
     app: AppHandle,
+    http: State<'_, reqwest::Client>,
     state: State<'_, Arc<RwLock<AppState>>>,
     mode: String,
 ) -> Result<Option<ImportSummary>, AppError> {
@@ -441,7 +442,8 @@ pub async fn import_shared_intent(
                 let url_dl = url.clone();
                 let app_dl = app.clone();
                 let dest_dl = dest.clone();
-                download_transfer(app_dl, url_dl, dest_dl.to_string_lossy().into_owned()).await?;
+                download_transfer(app_dl, http, url_dl, dest_dl.to_string_lossy().into_owned())
+                    .await?;
                 let summary =
                     import_package(app, state, dest.to_string_lossy().into_owned(), mode).await?;
                 let _ = std::fs::remove_file(&dest);
@@ -453,7 +455,7 @@ pub async fn import_shared_intent(
 
     #[cfg(not(mobile))]
     {
-        let _ = (app, state, mode);
+        let _ = (app, http, state, mode);
         Ok(None)
     }
 }

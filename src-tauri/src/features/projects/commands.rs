@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(not(mobile))]
+use tauri::Manager;
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -87,8 +89,8 @@ pub async fn delete_project(
         }
     }
 
-    let label = format!("project-{id}");
-    let result = with_repo(&state, move |repo| repo.delete_project(&id)).await;
+    let id_for_repo = id.clone();
+    let result = with_repo(&state, move |repo| repo.delete_project(&id_for_repo)).await;
 
     if result.is_ok() {
         projects_changed(&app);
@@ -101,6 +103,7 @@ pub async fn delete_project(
     if result.is_ok() {
         #[cfg(not(mobile))]
         {
+            let label = format!("project-{id}");
             let app_for_main = app.clone();
             app.run_on_main_thread(move || {
                 if let Some(win) = app_for_main.get_webview_window(&label) {

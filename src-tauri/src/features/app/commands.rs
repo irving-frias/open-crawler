@@ -1,5 +1,9 @@
 use scraper::{Html, Selector};
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+#[cfg(mobile)]
+use tauri::AppHandle;
+use tauri::State;
+#[cfg(not(mobile))]
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
 use crate::crawler::fetcher::{HtmlFetcher, HttpFetcher};
@@ -17,6 +21,8 @@ pub async fn open_project_window(
     project_id: String,
     title: String,
 ) -> Result<(), AppError> {
+    #[cfg(mobile)]
+    let _ = (&app, &project_id, &title);
     #[cfg(not(mobile))]
     {
         let label = format!("project-{project_id}");
@@ -49,6 +55,8 @@ pub async fn open_project_window(
 /// Closes the dedicated window for a project, if open.
 #[tauri::command]
 pub async fn close_project_window(app: AppHandle, project_id: String) -> Result<(), AppError> {
+    #[cfg(mobile)]
+    let _ = (&app, &project_id);
     #[cfg(not(mobile))]
     {
         let label = format!("project-{project_id}");

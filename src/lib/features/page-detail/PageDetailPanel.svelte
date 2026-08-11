@@ -299,7 +299,17 @@
   function parseHreflang(json: string | null): { lang: string; href: string }[] {
     if (!json) return [];
     try {
-      return JSON.parse(json);
+      const parsed = JSON.parse(json);
+      if (!Array.isArray(parsed)) return [];
+      const seen = new Set<string>();
+      const out: { lang: string; href: string }[] = [];
+      for (const hl of parsed) {
+        if (!hl || typeof hl.href !== 'string') continue;
+        if (seen.has(hl.href)) continue;
+        seen.add(hl.href);
+        out.push({ lang: String(hl.lang ?? ''), href: hl.href });
+      }
+      return out;
     } catch {
       return [];
     }
