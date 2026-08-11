@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
-use reqwest::Client;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
-use url::Url;
 
 use crate::crawler::engine::CrawlEngine;
 use crate::error::AppError;
 use crate::features::with_repo;
-use crate::models::{CrawlConfig, CrawlProgress, ScanType};
+use crate::models::{CrawlConfig, CrawlProgress};
 use crate::{AppState, CrawlState};
 
 #[tauri::command]
@@ -69,37 +67,6 @@ pub(crate) async fn start_crawl_internal(
         "start_crawl called for project: {} with config: {:?}",
         project_id, config
     );
-
-    if config.scan_type == ScanType::Local {
-        let local_urls: Vec<String> = config.local_urls.clone();
-        if local_urls.is_empty() {
-            return Err(AppError::InvalidConfig(
-                "Local scan selected but no local URLs provided".to_string(),
-            ));
-        }
-        config.seed_urls.extend(local_urls);
-        config.respect_robots = false;
-    }
-
-    // Validate reachability of local URLs before starting the engine.
-    if config.scan_type == ScanType::Local {
-        let client = app.state::<reqwest::Client>().inner().clone();
-
-        let mut failures = Vec::new();
-        for url in &config.local_urls {
-            match validate_url(&client, url).await {
-                Ok(_) => info!("Validated local URL: {}", url),
-                Err(e) => failures.push((url.clone(), e.to_string())),
-            }
-        }
-        if !failures.is_empty() {
-            let mut msg = String::from("Could not reach the following local URLs:\n");
-            for (url, reason) in &failures {
-                msg.push_str(&format!("- {}: {}\n", url, reason));
-            }
-            return Err(AppError::Crawl(msg));
-        }
-    }
 
     // Check if already running for this project
     {
@@ -191,63 +158,6 @@ pub(crate) async fn start_crawl_internal(
     });
 
     Ok(())
-}
-
-async fn validate_url(client: &Client, url_str: &str) -> Result<(), AppError> {
-    let _url = Url::parse(url_str)?;
-    let req = |method: &str| {
-        let mut r = if method == "head" {
-            client.head(url_str)
-        } else {
-            client.get(url_str)
-        };
-        r = r.timeout(std::time::Duration::from_secs(5));
-        r
-    };
-    let head = req("head").send().await;
-
-    let response = match head {
-        Ok(r) => r,
-        Err(_) => {
-            let get = req("get").send().await?;
-            if get.status().is_success() || get.status().is_redirection() {
-                return Ok(());
-            }
-            return Err(AppError::Crawl(format!(
-                "HTTP {} for {}",
-                get.status(),
-                url_str
-            )));
-        }
-    };
-
-    if response.status().is_success() {
-        return Ok(());
-    }
-
-    if response.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED
-        || response.status() == reqwest::StatusCode::NOT_IMPLEMENTED
-    {
-        let get_response = req("get").send().await?;
-        if get_response.status().is_success() || get_response.status().is_redirection() {
-            return Ok(());
-        }
-        return Err(AppError::Crawl(format!(
-            "HTTP {} for {}",
-            get_response.status(),
-            url_str
-        )));
-    }
-
-    if response.status().is_redirection() {
-        return Ok(());
-    }
-
-    Err(AppError::Crawl(format!(
-        "HTTP {} for {}",
-        response.status(),
-        url_str
-    )))
 }
 
 #[tauri::command]

@@ -103,44 +103,6 @@ export interface SiteTreeFullNode {
   children: SiteTreeFullNode[];
 }
 
-export interface SiteGraphNode {
-  url: string;
-  title: string | null;
-  status_code: number | null;
-  depth: number;
-  issue_count: number;
-  seo_score: number | null;
-  is_indexable: boolean | null;
-  blocked: boolean | null;
-  size_bytes: number | null;
-  load_time_ms: number | null;
-  in_degree: number;
-  out_degree: number;
-}
-
-export interface SiteGraphEdge {
-  source: string;
-  target: string;
-  link_type: string;
-  is_follow: boolean;
-}
-
-export interface SiteGraph {
-  nodes: SiteGraphNode[];
-  edge_count: number;
-  edges_truncated: boolean;
-  total_nodes: number;
-  nodes_truncated: boolean;
-}
-
-export interface SiteGraphEdgePage {
-  edges: SiteGraphEdge[];
-  offset: number;
-  total: number;
-  done: boolean;
-  truncated: boolean;
-}
-
 export interface StatusBucket {
   status: number;
   count: number;
@@ -264,8 +226,6 @@ export interface CrawlConfig {
   site_auth?: SiteAuth | null;
   request_timeout_ms?: number;
   proxy?: ProxyConfig | null;
-  scan_type?: 'web' | 'local';
-  local_urls?: string[];
 }
 
 export interface ResumableCrawlInfo {
@@ -342,6 +302,8 @@ export interface SeoPriorityFix {
   message: string;
   guidance: string;
   category: string;
+  evidence?: string | null;
+  examples?: SemanticIssue[];
 }
 
 export interface SeoAuditResult {

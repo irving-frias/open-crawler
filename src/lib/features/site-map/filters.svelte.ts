@@ -2,8 +2,8 @@ import type { StatusClass } from './shared.js';
 
 export type StatusFilter = StatusClass | 'all';
 
-// Filter state shared by the site tree and the site graph, so switching tabs
-// keeps the current status and search context instead of starting from zero.
+// Filter state for the site tree, keeping the current status and search
+// context across reloads instead of starting from zero.
 export const siteMapFilters = $state<{ status: StatusFilter; search: string }>({
   status: 'all',
   search: '',

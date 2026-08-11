@@ -653,6 +653,109 @@ impl SeoParser {
         let nesting_issues = self.check_element_nesting(document);
         issues.extend(nesting_issues);
 
+        // 18. Multiple <main> elements (one issue per extra <main>)
+        let main_count = self.count_elements(document, "main");
+        if main_count > 1 {
+            let mains = self.iter_elements(document, "main");
+            for main in mains.into_iter().skip(1).take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "multiple_main",
+                    "error",
+                    "<main>",
+                    &format!(
+                        "Page has {} <main> elements; only one is recommended",
+                        main_count
+                    ),
+                    Some("main".to_string()),
+                    Some(main),
+                ));
+            }
+        }
+
+        // 19. Missing skip link (only meaningful when a <main> landmark exists)
+        if self.count_elements(document, "main") > 0 && !self.skip_link_present(document) {
+            issues.push(SemanticIssue {
+                issue_type: "skip_link_missing".to_string(),
+                severity: "info".to_string(),
+                element: "<a>".to_string(),
+                message: "Page has no skip link pointing to the main content".to_string(),
+                selector: Some(r##"a[href^="#"]"##.to_string()),
+                ..Default::default()
+            });
+        }
+
+        // 20. <section> without an accessible name (not a usable landmark)
+        let sections = self.sections_without_accessible_name(document);
+        if !sections.is_empty() {
+            for el in sections.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "section_no_accessible_name",
+                    "warning",
+                    "<section>",
+                    "<section> has no accessible name",
+                    Some("section".to_string()),
+                    Some(el),
+                ));
+            }
+        }
+
+        // 21. <form> without an accessible name
+        let forms = self.forms_without_accessible_name(document);
+        if !forms.is_empty() {
+            for el in forms.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "form_no_accessible_name",
+                    "warning",
+                    "<form>",
+                    "<form> has no accessible name",
+                    Some("form".to_string()),
+                    Some(el),
+                ));
+            }
+        }
+
+        // 22. <button> without an accessible name
+        let buttons = self.buttons_without_name(document);
+        if !buttons.is_empty() {
+            for el in buttons.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "button_no_name",
+                    "warning",
+                    "<button>",
+                    "<button> has no text and no accessible name",
+                    Some("button".to_string()),
+                    Some(el),
+                ));
+            }
+        }
+
+        // 23. Duplicate id attributes (one issue per duplicated element)
+        let duplicates = self.duplicate_ids(document);
+        if !duplicates.is_empty() {
+            for (id, el) in duplicates.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+                issues.push(issue(
+                    "duplicate_id",
+                    "error",
+                    &format!("<{} id=\"...\">", el.value().name()),
+                    &format!("Duplicate id attribute \"{}\"", id),
+                    Some("[id]".to_string()),
+                    Some(el),
+                ));
+            }
+        }
+
+        // 24. Navigation without an aria-current indicator
+        if self.count_elements(document, "nav") > 0 && !self.nav_has_aria_current(document) {
+            issues.push(SemanticIssue {
+                issue_type: "aria_current_nav".to_string(),
+                severity: "info".to_string(),
+                element: "<nav>".to_string(),
+                message: "Navigation has no aria-current indicator for the active page".to_string(),
+                selector: Some("nav".to_string()),
+                ..Default::default()
+            });
+        }
+
         issues
     }
 
@@ -835,8 +938,110 @@ impl SeoParser {
         result
     }
 
+    fn skip_link_present(&self, document: &Html) -> bool {
+        let selector = match Selector::parse("a[href^='#']") {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        for link in document.select(&selector) {
+            let text = link.text().collect::<Vec<_>>().join(" ").to_lowercase();
+            let label = link
+                .value()
+                .attr("aria-label")
+                .unwrap_or("")
+                .to_lowercase();
+            let class = link.value().attr("class").unwrap_or("").to_lowercase();
+            if text.contains("skip") || label.contains("skip") || class.contains("skip") {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn sections_without_accessible_name<'a>(
+        &self,
+        document: &'a Html,
+    ) -> Vec<scraper::ElementRef<'a>> {
+        let selector = match Selector::parse("section") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let heading = Selector::parse("h1, h2, h3, h4, h5, h6").unwrap();
+        let mut result = Vec::new();
+        for section in document.select(&selector) {
+            let has_aria = section.value().attr("aria-label").is_some()
+                || section.value().attr("aria-labelledby").is_some();
+            let has_heading = section.select(&heading).next().is_some();
+            if !has_aria && !has_heading {
+                result.push(section);
+            }
+        }
+        result
+    }
+
+    fn forms_without_accessible_name<'a>(
+        &self,
+        document: &'a Html,
+    ) -> Vec<scraper::ElementRef<'a>> {
+        let selector = match Selector::parse("form") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let mut result = Vec::new();
+        for form in document.select(&selector) {
+            let has_aria = form.value().attr("aria-label").is_some()
+                || form.value().attr("aria-labelledby").is_some()
+                || form.value().attr("title").is_some();
+            if !has_aria {
+                result.push(form);
+            }
+        }
+        result
+    }
+
+    fn buttons_without_name<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
+        let selector = match Selector::parse("button") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let mut result = Vec::new();
+        for button in document.select(&selector) {
+            let has_aria = button.value().attr("aria-label").is_some()
+                || button.value().attr("aria-labelledby").is_some()
+                || button.value().attr("title").is_some();
+            let text = button.text().collect::<Vec<_>>().join("").trim().to_string();
+            if !has_aria && text.is_empty() {
+                result.push(button);
+            }
+        }
+        result
+    }
+
+    fn duplicate_ids<'a>(&self, document: &'a Html) -> Vec<(String, scraper::ElementRef<'a>)> {
+        let selector = match Selector::parse("[id]") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        for el in document.select(&selector) {
+            let id = el.value().attr("id").unwrap_or("");
+            if id.is_empty() {
+                continue;
+            }
+            if !seen.insert(id.to_string()) {
+                result.push((id.to_string(), el));
+            }
+        }
+        result
+    }
+
+    fn nav_has_aria_current(&self, document: &Html) -> bool {
+        self.count_elements(document, "[aria-current]") > 0
+    }
+
     /// Check for invalid element nesting using the static caninclude table.
-    /// Reports "cant" as error, "doubt" as warning.
+    /// Reports "cant" as error, "doubt" as info (context-dependent nesting).
     fn check_element_nesting(&self, document: &Html) -> Vec<SemanticIssue> {
         let mut issues = Vec::new();
         let mut seen_pairs: std::collections::HashSet<(String, String)> =
@@ -1793,5 +1998,208 @@ mod tests {
         );
         assert_eq!(data.og_meta.twitter_title.as_deref(), Some("Tweet Title"));
         assert!(!data.og_meta.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_main_detected() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>One</main>
+    <main>Two</main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let main_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "multiple_main")
+            .collect();
+        assert_eq!(main_issues.len(), 1);
+        assert_eq!(main_issues[0].severity, "error");
+    }
+
+    #[test]
+    fn test_skip_link_detection() {
+        let parser = SeoParser::new();
+        let with_skip = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <a href="#main">Skip to content</a>
+    <main><h1>Title</h1></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(with_skip));
+        assert!(
+            !issues.iter().any(|i| i.issue_type == "skip_link_missing"),
+            "skip link present, no issue expected"
+        );
+
+        let without_skip = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main><h1>Title</h1></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(without_skip));
+        assert!(
+            issues.iter().any(|i| i.issue_type == "skip_link_missing"),
+            "missing skip link should be reported"
+        );
+    }
+
+    #[test]
+    fn test_section_requires_accessible_name() {
+        let parser = SeoParser::new();
+        let unnamed = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main><h1>Title</h1><section>content</section></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(unnamed));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.issue_type == "section_no_accessible_name"),
+            "unnamed section should be reported"
+        );
+
+        let named = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main><h1>Title</h1><section aria-label="Pricing"><h2>Plans</h2></section></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(named));
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.issue_type == "section_no_accessible_name"),
+            "named section should pass"
+        );
+    }
+
+    #[test]
+    fn test_form_requires_accessible_name() {
+        let parser = SeoParser::new();
+        let unnamed = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <form><input type="text" id="a"><label for="a">A</label></form>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(unnamed));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.issue_type == "form_no_accessible_name"),
+            "unnamed form should be reported"
+        );
+
+        let named = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <form aria-label="Contact"><input type="text" id="a"><label for="a">A</label></form>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(named));
+        assert!(
+            !issues
+                .iter()
+                .any(|i| i.issue_type == "form_no_accessible_name"),
+            "named form should pass"
+        );
+    }
+
+    #[test]
+    fn test_button_requires_accessible_name() {
+        let parser = SeoParser::new();
+        let unnamed = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <button></button>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(unnamed));
+        assert!(
+            issues.iter().any(|i| i.issue_type == "button_no_name"),
+            "empty button should be reported"
+        );
+
+        let icon_button = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <button aria-label="Close"><svg></svg></button>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(icon_button));
+        assert!(
+            !issues.iter().any(|i| i.issue_type == "button_no_name"),
+            "aria-label button should pass"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_ids_detected() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <div id="dup">a</div>
+    <div id="dup">b</div>
+    <div id="unique">c</div>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let dups: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "duplicate_id")
+            .collect();
+        assert_eq!(dups.len(), 1, "one duplicate occurrence beyond the first");
+        assert!(dups[0].message.contains("dup"), "message names the id");
+        assert_eq!(dups[0].severity, "error");
+    }
+
+    #[test]
+    fn test_aria_current_nav() {
+        let parser = SeoParser::new();
+        let with_current = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <nav><a href="/" aria-current="page">Home</a><a href="/about">About</a></nav>
+    <main><h1>Title</h1></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(with_current));
+        assert!(
+            !issues.iter().any(|i| i.issue_type == "aria_current_nav"),
+            "aria-current present, no issue expected"
+        );
+
+        let without_current = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <nav><a href="/">Home</a><a href="/about">About</a></nav>
+    <main><h1>Title</h1></main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(without_current));
+        assert!(
+            issues.iter().any(|i| i.issue_type == "aria_current_nav"),
+            "nav without aria-current should be reported"
+        );
     }
 }

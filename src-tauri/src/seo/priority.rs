@@ -27,6 +27,8 @@ pub fn build(checks: &[CheckResult]) -> Vec<PriorityFix> {
                 message: c.message.clone(),
                 guidance: c.guidance.clone(),
                 category: c.category.clone(),
+                evidence: c.evidence.clone(),
+                examples: c.examples.clone(),
             }
         })
         .collect();

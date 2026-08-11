@@ -18,6 +18,7 @@
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { parseIssues, getIssueCounts } from '$lib/features/results/issue-cache';
+  import { seoVariant as seoUiVariant, seoGrade as seoUiGrade } from '$lib/seo-ui';
 
   let {
     items,
@@ -106,17 +107,11 @@
   }
 
   function seoVariant(score: number): 'default' | 'warning' | 'destructive' {
-    if (score >= 80) return 'default';
-    if (score >= 60) return 'warning';
-    return 'destructive';
+    return seoUiVariant(score);
   }
 
   function seoGrade(score: number): string {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
-    return 'F';
+    return seoUiGrade(score);
   }
 
   interface RowModel {

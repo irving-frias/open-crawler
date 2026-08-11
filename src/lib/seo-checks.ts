@@ -685,6 +685,270 @@ const READABILITY_NO_TEXT = {
   },
 } as const;
 
+/**
+ * Why each check matters, in one clear sentence per language. Shown next to a
+ * failing check so the user understands the impact, complementing the DICT
+ * guidance (what to do) and CHECK_FIXES (how to do it).
+ */
+const WHY: Record<string, { en: string; es: string }> = {
+  title_present: {
+    en: 'The title is the primary on-page signal for search engines and the first text users see in the tab and in results.',
+    es: 'El título es la principal señal en página para los buscadores y el primer texto que ven los usuarios en la pestaña y en los resultados.',
+  },
+  title_length: {
+    en: 'Titles outside 30-65 characters are truncated in search results, hiding the most relevant part.',
+    es: 'Los títulos fuera de 30-65 caracteres se cortan en los resultados, ocultando la parte más relevante.',
+  },
+  meta_description_present: {
+    en: 'Without a description, search engines auto-pick irrelevant text as the snippet, hurting the click-through rate.',
+    es: 'Sin descripción, los buscadores eligen automáticamente texto irrelevante como fragmento, perjudicando el porcentaje de clics.',
+  },
+  meta_description_length: {
+    en: 'Descriptions outside 50-160 characters get truncated in results, cutting off the compelling part.',
+    es: 'Las descripciones fuera de 50-160 caracteres se cortan en los resultados, perdiendo la parte más atractiva.',
+  },
+  h1_present: {
+    en: 'The H1 is the strongest on-page topic signal; without it, engines and AI must guess the page subject.',
+    es: 'El H1 es la señal en página más fuerte del tema; sin él, los buscadores y la IA tienen que adivinar el asunto.',
+  },
+  h1_count: {
+    en: 'Several H1 elements dilute the topic signal and break the heading outline used by assistive tech.',
+    es: 'Varios elementos H1 diluyen la señal del tema y rompen el esquema de encabezados de las tecnologías de asistencia.',
+  },
+  heading_hierarchy: {
+    en: 'Skipped heading levels break the document outline used by assistive tech and AI extractors.',
+    es: 'Saltar niveles de encabezado rompe el esquema del documento que usan las tecnologías de asistencia y los extractores de IA.',
+  },
+  h1_title_match: {
+    en: 'A mismatch between the title and H1 confuses engines about the page main topic.',
+    es: 'La falta de coincidencia entre el título y el H1 confunde a los buscadores sobre el tema principal de la página.',
+  },
+  word_count: {
+    en: 'Thin content gives engines too little to understand and rarely matches user queries in depth.',
+    es: 'El contenido escaso da a los buscadores muy poco que entender y rara vez responde a fondo las consultas.',
+  },
+  keyword_density: {
+    en: 'Extreme keyword density triggers spam filters; too little loses topical relevance.',
+    es: 'La densidad excesiva de palabras clave activa los filtros de spam; demasiado poca pierde relevancia temática.',
+  },
+  internal_links: {
+    en: 'Internal links let crawlers discover the rest of your site and pass authority between pages.',
+    es: 'Los enlaces internos permiten a los rastreadores descubrir el resto del sitio y transmitir autoridad entre páginas.',
+  },
+  outbound_links: {
+    en: 'Outbound links add context and authority and help engines understand your page topic.',
+    es: 'Los enlaces externos aportan contexto y autoridad y ayudan a los buscadores a entender el tema de la página.',
+  },
+  https_used: {
+    en: 'Browsers mark non-HTTPS sites as unsafe and engines rank HTTPS sites higher.',
+    es: 'Los navegadores marcan como inseguros los sitios sin HTTPS y los buscadores posicionan mejor los que lo usan.',
+  },
+  status_ok: {
+    en: 'Error status codes stop the page from being indexed and render it unusable.',
+    es: 'Los códigos de estado de error impiden que la página se indexe y la dejan inutilizable.',
+  },
+  viewport: {
+    en: 'Without a viewport tag, mobile browsers render the desktop layout, making the page unusable on phones.',
+    es: 'Sin la etiqueta viewport, los navegadores móviles muestran el diseño de escritorio, dejando la página inutilizable en el móvil.',
+  },
+  favicon: {
+    en: 'A missing favicon leaves a generic icon in tabs and bookmarks, hurting brand recognition.',
+    es: 'Sin favicon, las pestañas y marcadores muestran un icono genérico, perjudicando el reconocimiento de la marca.',
+  },
+  charset: {
+    en: 'Without a declared charset, non-ASCII characters can render as gibberish.',
+    es: 'Sin un charset declarado, los caracteres no ASCII pueden mostrarse como texto ilegible.',
+  },
+  doctype: {
+    en: 'A missing doctype pushes the browser into quirks mode with unpredictable rendering.',
+    es: 'Sin doctype, el navegador entra en modo quirks con un renderizado impredecible.',
+  },
+  canonical_present: {
+    en: 'Without a canonical, duplicate URLs split ranking signals across versions of the same page.',
+    es: 'Sin canonical, las URL duplicadas dividen las señales de posicionamiento entre versiones de la misma página.',
+  },
+  indexable: {
+    en: 'The noindex directive excludes the page from search results entirely.',
+    es: 'La directiva noindex excluye la página por completo de los resultados de búsqueda.',
+  },
+  html_lang: {
+    en: 'A missing lang attribute blocks language-aware ranking and correct pronunciation for screen readers.',
+    es: 'Sin atributo lang se pierde el posicionamiento por idioma y la pronunciación correcta de los lectores de pantalla.',
+  },
+  url_length: {
+    en: 'Very long URLs are harder to share and can be truncated in results.',
+    es: 'Las URL muy largas son difíciles de compartir y pueden cortarse en los resultados.',
+  },
+  url_underscores: {
+    en: 'Underscores are treated as word-joining characters by many engines, making URLs harder to read.',
+    es: 'Muchos buscadores tratan los guiones bajos como caracteres que unen palabras, haciendo las URL más difíciles de leer.',
+  },
+  og_title: {
+    en: 'Without og:title, social platforms fall back to the page title or nothing when sharing.',
+    es: 'Sin og:title, las redes sociales usan el título de la página o nada al compartir.',
+  },
+  og_description: {
+    en: 'Without og:description, shares show auto-picked text that rarely converts clicks.',
+    es: 'Sin og:description, los compartidos muestran texto automático que rara vez consigue clics.',
+  },
+  og_image: {
+    en: 'Without og:image, social cards render with no visual, sharply reducing engagement.',
+    es: 'Sin og:image, las tarjetas sociales se muestran sin imagen, reduciendo mucho la interacción.',
+  },
+  og_image_alt: {
+    en: 'og:image:alt describes the shared image for accessibility and some social platforms.',
+    es: 'og:image:alt describe la imagen compartida para la accesibilidad y algunas redes sociales.',
+  },
+  og_url: {
+    en: 'og:url controls which URL appears in shares, avoiding duplicate tracking URLs.',
+    es: 'og:url controla qué URL aparece al compartir, evitando URL duplicadas con parámetros de seguimiento.',
+  },
+  og_type: {
+    en: 'og:type tells platforms what kind of content is shared, such as an article or a website.',
+    es: 'og:type indica a las plataformas qué tipo de contenido se comparte, como un artículo o un sitio web.',
+  },
+  og_site_name: {
+    en: 'og:site_name shows your brand name on shared cards.',
+    es: 'og:site_name muestra el nombre de tu marca en las tarjetas compartidas.',
+  },
+  twitter_card: {
+    en: 'twitter:card controls how the card renders when shared on X (Twitter).',
+    es: 'twitter:card controla cómo se muestra la tarjeta al compartir en X (Twitter).',
+  },
+  twitter_title: {
+    en: 'twitter:title lets you tailor the title shown for X shares.',
+    es: 'twitter:title permite ajustar el título que se muestra en los compartidos de X.',
+  },
+  twitter_description: {
+    en: 'twitter:description tailors the description shown on X.',
+    es: 'twitter:description ajusta la descripción que se muestra en X.',
+  },
+  twitter_image: {
+    en: 'twitter:image sets the image used in X cards.',
+    es: 'twitter:image define la imagen que se usa en las tarjetas de X.',
+  },
+  img_alt: {
+    en: 'Images without alt are invisible to screen readers and AI image understanding.',
+    es: 'Las imágenes sin alt son invisibles para los lectores de pantalla y para la comprensión de imágenes por IA.',
+  },
+  img_dimensions: {
+    en: 'Missing dimensions cause layout shift (CLS), a Core Web Vital that hurts ranking and user experience.',
+    es: 'La falta de dimensiones causa desplazamiento de layout (CLS), una métrica Core Web Vitals que perjudica el posicionamiento y la experiencia.',
+  },
+  form_labels: {
+    en: 'Unlabeled fields cannot be announced by screen readers, making forms unusable.',
+    es: 'Los campos sin etiqueta no pueden anunciarse con lectores de pantalla, dejando los formularios inutilizables.',
+  },
+  input_ids: {
+    en: 'Inputs without an id cannot be linked to a label, breaking form accessibility.',
+    es: 'Los inputs sin id no pueden vincularse a una etiqueta, rompiendo la accesibilidad del formulario.',
+  },
+  aria_controls: {
+    en: 'Controls without an accessible name cannot be identified by assistive technology.',
+    es: 'Los controles sin nombre accesible no pueden identificarse con tecnologías de asistencia.',
+  },
+  empty_link_text: {
+    en: 'Links without text give screen readers and engines no signal about the destination.',
+    es: 'Los enlaces sin texto no dan a los lectores de pantalla ni a los buscadores ninguna señal sobre el destino.',
+  },
+  main_landmark: {
+    en: 'A single <main> landmark defines where the unique page content begins.',
+    es: 'Un landmark <main> único define dónde empieza el contenido exclusivo de la página.',
+  },
+  header_landmark: {
+    en: 'A <header> landmark marks the page banner so users can skip straight to it or past it.',
+    es: 'El landmark <header> marca el banner para que los usuarios puedan saltar directamente a él o pasarlo.',
+  },
+  footer_landmark: {
+    en: 'A <footer> landmark groups site-wide information predictably.',
+    es: 'El landmark <footer> agrupa la información general del sitio de forma predecible.',
+  },
+  nav_landmark: {
+    en: 'A <nav> landmark exposes the navigation to screen reader users for fast jumps.',
+    es: 'El landmark <nav> expone la navegación a los usuarios de lectores de pantalla para saltos rápidos.',
+  },
+  nesting_valid: {
+    en: 'Invalid nesting makes browsers auto-correct the DOM in unpredictable ways.',
+    es: 'El anidamiento inválido hace que el navegador corrija el DOM automáticamente de forma impredecible.',
+  },
+  page_weight: {
+    en: 'Heavy pages download slowly, hurting LCP and users on slow connections.',
+    es: 'Las páginas pesadas descargan lentamente, perjudicando el LCP y a los usuarios con conexiones lentas.',
+  },
+  load_time: {
+    en: 'Slow server response delays LCP beyond the 2.5 s target.',
+    es: 'La respuesta lenta del servidor retrasa el LCP más allá del objetivo de 2.5 s.',
+  },
+  image_optimization: {
+    en: 'Unoptimized images inflate page weight and delay loading of below-the-fold content.',
+    es: 'Las imágenes sin optimizar engordan la página y retrasan la carga del contenido bajo el pliegue.',
+  },
+  resource_hints: {
+    en: 'Without preconnect/preload, critical round trips add latency to key resources.',
+    es: 'Sin preconnect/preload, los recorridos críticos añaden latencia a los recursos clave.',
+  },
+  pagespeed: {
+    en: 'A low Lighthouse score predicts poor real-world Core Web Vitals.',
+    es: 'Una puntuación baja de Lighthouse predice malas métricas Core Web Vitals reales.',
+  },
+  readability_score: {
+    en: 'Low readability makes content harder for both users and AI models to parse.',
+    es: 'Una legibilidad baja hace el contenido más difícil de procesar para usuarios y modelos de IA.',
+  },
+  flesch_kincaid_grade: {
+    en: 'A high reading grade excludes part of your audience.',
+    es: 'Un nivel de lectura alto excluye a parte de tu audiencia.',
+  },
+  sentence_length: {
+    en: 'Long sentences are harder to understand and less likely to be quoted by AI.',
+    es: 'Las frases largas son más difíciles de entender y menos citables por la IA.',
+  },
+  paragraph_structure: {
+    en: 'Solid paragraphs with subheadings make content scannable and quote-friendly.',
+    es: 'Párrafos sólidos con subtítulos hacen el contenido fácil de escanear y de citar.',
+  },
+  semantic_html: {
+    en: 'Semantic landmarks help AI and assistive tools map the page structure.',
+    es: 'Los landmarks semánticos ayudan a la IA y a las herramientas de asistencia a mapear la estructura de la página.',
+  },
+  content_present: {
+    en: 'With too little text there is nothing for engines or AI to understand.',
+    es: 'Con muy poco texto, no hay nada que los buscadores o la IA puedan entender.',
+  },
+  structured_data: {
+    en: 'JSON-LD structured data helps engines and AI understand and cite the page entities.',
+    es: 'Los datos estructurados JSON-LD ayudan a los buscadores y a la IA a entender y citar las entidades de la página.',
+  },
+  faq_schema: {
+    en: 'FAQ schema can surface your answers directly in rich results and AI answers.',
+    es: 'El esquema FAQ puede mostrar tus respuestas directamente en los resultados enriquecidos y en las respuestas de IA.',
+  },
+  howto_schema: {
+    en: 'HowTo schema can surface step-by-step instructions in rich results.',
+    es: 'El esquema HowTo puede mostrar las instrucciones paso a paso en los resultados enriquecidos.',
+  },
+  breadcrumb_schema: {
+    en: 'Breadcrumb schema improves the navigation display and internal link understanding.',
+    es: 'El esquema Breadcrumb mejora la visualización de la navegación y la comprensión de los enlaces internos.',
+  },
+  article_schema: {
+    en: 'Article schema marks the content type and improves rich results eligibility.',
+    es: 'El esquema Article marca el tipo de contenido y mejora la elegibilidad para resultados enriquecidos.',
+  },
+  organization_schema: {
+    en: 'Organization/WebSite schema defines your entity and brand for engines and AI.',
+    es: 'El esquema Organization/WebSite define tu entidad y marca para los buscadores y la IA.',
+  },
+  question_headings: {
+    en: 'Question headings match how users phrase their searches, aligning content with queries.',
+    es: 'Los encabezados en forma de pregunta coinciden con cómo formulan los usuarios sus búsquedas, alineando el contenido con las consultas.',
+  },
+  direct_answer: {
+    en: 'A direct answer up front lets engines and AI quote the page in featured snippets.',
+    es: 'Una respuesta directa al inicio permite a los buscadores y a la IA citar la página en los fragmentos destacados.',
+  },
+};
+
 interface CheckFixEntry {
   en: { fix: string; expected: string };
   es: { fix: string; expected: string };
@@ -1336,6 +1600,7 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
 export interface LocalizedCheck {
   message: string;
   guidance: string;
+  why?: string;
   fix?: string;
   expected?: string;
 }
@@ -1357,6 +1622,8 @@ export function localizeSeoCheck(
   evidence?: string | null
 ): LocalizedCheck {
   const entry = DICT[id];
+  const whyText = WHY[id];
+  const why = whyText ? (getLocale().startsWith('es') ? whyText.es : whyText.en) : undefined;
   if (id === 'readability_score' && !/Flesch reading ease/i.test(message)) {
     const noText = READABILITY_NO_TEXT;
     const tr = getLocale().startsWith('es') ? noText.es : noText.en;
@@ -1365,6 +1632,7 @@ export function localizeSeoCheck(
     return {
       message: tr.message,
       guidance: tr.guidance,
+      ...(why ? { why } : {}),
       ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
     };
   }
@@ -1376,6 +1644,7 @@ export function localizeSeoCheck(
   return {
     message: applyParams(tr.message, params),
     guidance: applyParams(tr.guidance, params),
+    ...(why ? { why } : {}),
     ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
   };
 }

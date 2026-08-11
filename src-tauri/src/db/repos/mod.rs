@@ -11,7 +11,7 @@ pub mod snapshots;
 
 use rusqlite::Connection;
 
-use crate::{GraphEdgesCacheArc, ResultsCacheArc, ResultsCacheKey};
+use crate::{ResultsCacheArc, ResultsCacheKey};
 
 pub fn compress_gzip(data: &[u8]) -> Vec<u8> {
     use flate2::write::GzEncoder;
@@ -58,7 +58,6 @@ pub(crate) fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
     results_cache: Option<&'a ResultsCacheArc>,
-    graph_edges_cache: Option<&'a GraphEdgesCacheArc>,
 }
 
 #[derive(Debug, Clone)]
@@ -80,15 +79,7 @@ impl<'a> CrawlRepo<'a> {
         Self {
             conn,
             results_cache,
-            graph_edges_cache: None,
         }
-    }
-
-    /// Attaches the site-graph edge cache (optional; only the IPC commands use
-    /// it). Kept as a builder so the crawler/engine call sites stay unchanged.
-    pub fn with_graph_cache(mut self, graph_edges_cache: Option<&'a GraphEdgesCacheArc>) -> Self {
-        self.graph_edges_cache = graph_edges_cache;
-        self
     }
 
     /// Exposes the raw SQLite connection for low-level operations (e.g. the
@@ -109,9 +100,6 @@ impl<'a> CrawlRepo<'a> {
                 cache.pop(&key);
             }
         }
-        if let Some(cache_arc) = self.graph_edges_cache {
-            cache_arc.lock().unwrap().pop(project_id);
-        }
     }
 }
 
@@ -120,7 +108,6 @@ mod tests {
     use super::*;
     use crate::db::schema::run_migrations;
     use crate::models::{CrawlResult, PageLink};
-    use std::sync::Arc;
 
     fn test_repo() -> CrawlRepo<'static> {
         let conn = Box::leak(Box::new(Connection::open_in_memory().unwrap()));
@@ -393,61 +380,6 @@ mod tests {
         let roots = repo.get_site_tree("p1", None, 100).unwrap();
         assert_eq!(roots.len(), 1);
         assert!(roots[0].has_children);
-    }
-
-    #[test]
-    fn test_site_graph_nodes_and_internal_edges() {
-        // Create the test data
-        let mut p_a = page("a", "https://x.com/a", Some("A"), 200, true);
-        p_a.depth = 0;
-        p_a.seo_score = Some(88.5);
-        let mut p_b = page("b", "https://x.com/b", Some("B"), 200, true);
-        p_b.depth = 1;
-        p_b.status_code = Some(404);
-        
-        // Set up the repo with cache
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        conn.execute_batch(
-            "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1', 'P1', datetime('now'), datetime('now'));
-            INSERT INTO crawl_config (id, project_id, seed_urls, created_at) VALUES ('cfg', 'p1', '[]', datetime('now'));",
-        )
-        .unwrap();
-        
-        // Create the graph edges cache
-        use lru::LruCache;
-        use std::num::NonZeroUsize;
-        let graph_edges_cache: LruCache<String, crate::GraphEdgesCacheValue> =
-            LruCache::new(NonZeroUsize::new(32).unwrap());
-        let graph_edges_cache_arc = Arc::new(std::sync::Mutex::new(graph_edges_cache));
-        
-        // Create repo with graph cache attached
-        let repo = CrawlRepo::new(&conn, None).with_graph_cache(Some(&graph_edges_cache_arc));
-        
-        // Save the test data
-        repo.save_results_batch(&[p_a, p_b]).unwrap();
-        repo.save_links_batch(&[
-            link("https://x.com/a", "https://x.com/b"),
-            link("https://x.com/a", "https://external.com/x"),
-        ])
-        .unwrap();
-
-        // Now get the graph - this should work with the cache attached
-        let graph = repo.get_site_graph("p1").unwrap();
-        assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.edge_count, 1);
-
-        let by_url: std::collections::HashMap<_, _> =
-            graph.nodes.iter().map(|n| (n.url.clone(), n)).collect();
-        let a = by_url["https://x.com/a"];
-        let b = by_url["https://x.com/b"];
-        assert_eq!(a.depth, 0);
-        assert_eq!(a.seo_score, Some(88.5));
-        assert_eq!(a.out_degree, 2);
-        assert_eq!(a.in_degree, 0);
-        assert_eq!(b.status_code, Some(404));
-        assert_eq!(b.in_degree, 1);
-        assert_eq!(b.out_degree, 0);
     }
 
     #[test]

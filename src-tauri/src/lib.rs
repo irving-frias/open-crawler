@@ -52,36 +52,11 @@ type ResultsCacheArc = std::sync::Arc<
     std::sync::Mutex<lru::LruCache<ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)>>,
 >;
 
-/// Cached internal edge set per project for the interactive site graph. The
-/// full edge set is computed once (a DISTINCT query over page_links) and then
-/// served in pages to the frontend without re-querying SQLite.
-#[derive(Clone)]
-pub struct GraphEdgesCacheValue {
-    pub edges: std::sync::Arc<Vec<crate::models::SiteGraphEdge>>,
-    pub total: u32,
-    pub truncated: bool,
-}
-
-pub type GraphEdgesCacheArc =
-    std::sync::Arc<std::sync::Mutex<lru::LruCache<String, GraphEdgesCacheValue>>>;
-
-/// Cap on how many nodes (pages) the interactive graph renders. Beyond this,
-/// only the most-linked pages are kept (ranked by in+out degree, then depth).
-/// Cytoscape stays responsive well under this, so large sites don't freeze the
-/// UI on layout/pan.
-pub const MAX_GRAPH_NODES: usize = 5_000;
-
-/// Cap on how many edges are kept for the graph. Only edges whose BOTH
-/// endpoints are in the rendered node set are counted. Beyond this the edge
-/// set is truncated (and `edges_truncated` is reported to the UI).
-pub const MAX_GRAPH_EDGES: usize = 50_000;
-
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub crawls: Arc<RwLock<HashMap<String, CrawlState>>>,
     pub seo_audits: Arc<RwLock<HashMap<String, SeoAuditState>>>,
     pub results_cache: ResultsCacheArc,
-    pub graph_edges_cache: GraphEdgesCacheArc,
     pub transfer_server: std::sync::Mutex<Option<crate::transfer::server::TransferServerState>>,
 }
 
@@ -183,9 +158,6 @@ pub fn run() {
                 results_cache: Arc::new(Mutex::new(lru::LruCache::new(
                     NonZeroUsize::new(512).unwrap(),
                 ))),
-                graph_edges_cache: Arc::new(Mutex::new(lru::LruCache::new(
-                    NonZeroUsize::new(32).unwrap(),
-                ))),
                 transfer_server: std::sync::Mutex::new(None),
             };
 
@@ -242,8 +214,6 @@ pub fn run() {
             crate::commands::get_results,
             crate::commands::get_site_tree,
             crate::commands::get_site_tree_full,
-            crate::commands::get_site_graph,
-            crate::commands::get_site_graph_edges,
             crate::commands::get_page_detail,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,

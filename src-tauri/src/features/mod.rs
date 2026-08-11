@@ -44,8 +44,7 @@ where
             .db
             .lock()
             .map_err(|e| AppError::Crawl(e.to_string()))?;
-        let repo = CrawlRepo::new(&db, Some(&state_read.results_cache))
-            .with_graph_cache(Some(&state_read.graph_edges_cache));
+        let repo = CrawlRepo::new(&db, Some(&state_read.results_cache));
         f(&repo)
     })
     .await

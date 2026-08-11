@@ -12,10 +12,15 @@
   import {
     translateIssueName,
     translateIssueMessage,
+    translateIssueWhy,
+    translateIssueFix,
+    translateIssueExpected,
     parseIssueParams,
     translateSeverity,
   } from '$lib/i18n-issues';
   import { localizeSeoCheck } from '$lib/seo-checks';
+  import type { LocalizedCheck } from '$lib/seo-checks';
+  import { seoScoreColor, seoCategoryGains } from '$lib/seo-ui';
   import {
     ArrowLeft,
     X,
@@ -104,7 +109,7 @@
       const result = await getPageDetail(pageId);
       if (seq !== detailSeq) return;
       detail = result.page;
-      links = result.links;
+      links = dedupeLinks(result.links);
       pagespeed = parsePagespeed(detail?.pagespeed_json);
       if (detail?.seo_audit_json) seoAudit = parseSeoAudit(detail.seo_audit_json);
     } catch (e) {
@@ -112,6 +117,15 @@
     } finally {
       if (seq === detailSeq) loading = false;
     }
+  }
+
+  function dedupeLinks(linkList: PageLink[]): PageLink[] {
+    const seen = new Set<string>();
+    return linkList.filter((l) => {
+      if (seen.has(l.to_url)) return false;
+      seen.add(l.to_url);
+      return true;
+    });
   }
 
   function parseSeoAudit(json: string): SeoAuditResult | null {
@@ -242,7 +256,7 @@
     try {
       const settings = await getSettings();
       if (settings.ai_enabled !== 'true') {
-        throw 'AI suggestions are not enabled. Turn them on in Settings → AI Assistant.';
+        throw m['detail.ai_not_enabled']();
       }
       const result = await suggestFix({
         checkId: check.id,
@@ -338,12 +352,6 @@
     return 'default';
   }
 
-  function seoScoreColor(score: number): string {
-    if (score >= 80) return 'var(--success)';
-    if (score >= 60) return 'var(--warning)';
-    return 'var(--danger)';
-  }
-
   function seoCategoryLabel(category: string): string {
     const labels: Record<string, () => string> = {
       meta: m['seo.category.meta'],
@@ -366,13 +374,13 @@
     return labels[priority]?.() ?? priority;
   }
 
-  function localizeFix(fix: { id: string; message: string; guidance: string }): {
+  function localizeFix(fix: {
+    id: string;
     message: string;
     guidance: string;
-    fix?: string;
-    expected?: string;
-  } {
-    return localizeSeoCheck(fix.id, fix.message, fix.guidance);
+    evidence?: string | null;
+  }): LocalizedCheck {
+    return localizeSeoCheck(fix.id, fix.message, fix.guidance, fix.evidence);
   }
 
   const failedChecksByCategory = $derived(
@@ -384,6 +392,8 @@
         }, {})
       : {}
   );
+
+  const categoryGains = $derived(seoAudit ? seoCategoryGains(seoAudit.categories) : {});
 </script>
 
 {#if pageId}
@@ -683,6 +693,43 @@
                   <div class="seo-fix-body">
                     <span class="seo-fix-message">{localized.message}</span>
                     <span class="seo-fix-guidance">{localized.guidance}</span>
+                    {#if localized.why}
+                      <div class="seo-fix-line">
+                        <span class="seo-fix-label">{m['seo.why']()}</span>
+                        <span class="seo-fix-text">{localized.why}</span>
+                      </div>
+                    {/if}
+                    {#if localized.fix}
+                      <div class="seo-fix-line">
+                        <span class="seo-fix-label">{m['seo.fix']()}</span>
+                        <span class="seo-fix-text">{localized.fix}</span>
+                      </div>
+                    {/if}
+                    {#if fix.examples?.length}
+                      <div class="seo-examples">
+                        {#each fix.examples.slice(0, 3) as ex, i (i)}
+                          <div class="seo-example">
+                            {#if ex.element}
+                              <code class="seo-example-element">{ex.element}</code>
+                            {/if}
+                            {#if ex.snippet}
+                              <pre class="seo-example-snippet"><code>{ex.snippet}</code></pre>
+                            {/if}
+                            {#if ex.xpath}
+                              <button
+                                type="button"
+                                class="seo-example-xpath"
+                                onclick={() =>
+                                  copyToClipboard(ex.xpath ?? '', `pf-xpath-${fix.id}-${i}`)}
+                              >
+                                <Copy class="size-3" />
+                                <code>{ex.xpath}</code>
+                              </button>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
                   </div>
                 </div>
               {/each}
@@ -698,6 +745,11 @@
                 <div class="seo-area-group">
                   <div class="seo-area-head">
                     <span class="seo-area-name">{seoCategoryLabel(category)}</span>
+                    {#if (categoryGains[category] ?? 0) > 0.5}
+                      <Badge variant="outline" class="seo-gain-badge" title={m['seo.potential_gain']()}>
+                        +{categoryGains[category].toFixed(0)} {m['seo.points']()}
+                      </Badge>
+                    {/if}
                     <Badge variant="outline">{checks.length}</Badge>
                   </div>
                   <div class="seo-area-list">
@@ -711,6 +763,12 @@
                       <div class="seo-area-item">
                         <span class="seo-area-message">{localized.message}</span>
                         <span class="seo-area-guidance">{localized.guidance}</span>
+                        {#if localized.why && !check.passed}
+                          <div class="seo-fix-line">
+                            <span class="seo-fix-label">{m['seo.why']()}</span>
+                            <span class="seo-fix-text">{localized.why}</span>
+                          </div>
+                        {/if}
                         {#if (localized.fix || localized.expected) && !check.passed}
                           <div class="seo-fix-block">
                             {#if localized.fix}
@@ -1088,6 +1146,25 @@
                 </Popover>
               {/if}
             </div>
+            {#if translateIssueFix(issue.issue_type)}
+              <div class="issue-fix-block">
+                <div class="issue-fix-line">
+                  <span class="issue-fix-label">{m['seo.why']()}</span>
+                  <span class="issue-fix-text">{translateIssueWhy(issue.issue_type)}</span>
+                </div>
+                <div class="issue-fix-line">
+                  <span class="issue-fix-label">{m['seo.fix']()}</span>
+                  <span class="issue-fix-text">{translateIssueFix(issue.issue_type)}</span>
+                </div>
+                {#if translateIssueExpected(issue.issue_type)}
+                  <div class="issue-fix-line">
+                    <span class="issue-fix-label">{m['seo.expected']()}</span>
+                    <pre class="seo-expected-code"><code>{translateIssueExpected(issue.issue_type)}</code
+                      ></pre>
+                  </div>
+                {/if}
+              </div>
+            {/if}
             {#if refInfo}
               <button
                 class="ref-toggle"
@@ -1755,6 +1832,36 @@
     gap: 8px;
     font-size: 0.72rem;
     align-items: center;
+  }
+
+  .issue-fix-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border, var(--bg-deep));
+  }
+
+  .issue-fix-line {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .issue-fix-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .issue-fix-text {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
   }
 
   .ref-toggle {

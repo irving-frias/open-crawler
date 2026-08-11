@@ -9,7 +9,6 @@
     FileText,
     Folder,
     Languages,
-    Network,
     RefreshCw,
     Search,
     Shrink,
@@ -31,9 +30,7 @@
     statusVariant,
     type StatusClass,
   } from '$lib/features/site-map/shared.js';
-  import { requestFocusInGraph, siteMapNav } from '$lib/features/site-map/nav.svelte.js';
   import {
-    resetSiteMapFilters,
     siteMapFilters,
     type StatusFilter,
   } from '$lib/features/site-map/filters.svelte.js';
@@ -78,7 +75,6 @@
   let issueFilter = $state<IssueFilter>('all');
   let selectedPage = $state<TreeNode | null>(null);
   let flashUrl = $state<string | null>(null);
-  let lastNavSeq = 0;
   let treeSeq = 0;
 
   // Flattens the link-based tree returned by the API, then re-assembles it as a
@@ -321,58 +317,6 @@
     selectedPage = page;
   }
 
-  // Expands every ancestor directory of `url` so the page becomes visible, and
-  // returns the matching page node (or null if it is not in the tree).
-  function locateAndExpand(url: string): TreeNode | null {
-    const found = rootPages.find((p) => p.url === url);
-    if (found) {
-      rootExpanded = true;
-      return found;
-    }
-    const walk = (dirs: DirState[]): TreeNode | null => {
-      for (const d of dirs) {
-        const hit = d.pages.find((p) => p.url === url);
-        if (hit) {
-          d.expanded = true;
-          rootExpanded = true;
-          return hit;
-        }
-        const child = walk(d.dirs);
-        if (child) {
-          d.expanded = true;
-          rootExpanded = true;
-          return child;
-        }
-      }
-      return null;
-    };
-    return walk(roots);
-  }
-
-  function scrollToUrl(url: string) {
-    requestAnimationFrame(() => {
-      const idx = visibleNodes.findIndex((r) => r.kind === 'page' && r.page.url === url);
-      if (idx < 0 || !listEl) return;
-      listEl.scrollTop = Math.max(0, idx * ROW_HEIGHT - (viewportHeight - ROW_HEIGHT) / 2);
-      flashUrl = url;
-      setTimeout(() => {
-        if (flashUrl === url) flashUrl = null;
-      }, 1600);
-    });
-  }
-
-  $effect(() => {
-    const nav = siteMapNav;
-    if (!nav.url || nav.projectId !== projectId || nav.action !== 'tree') return;
-    if (nav.seq === lastNavSeq) return;
-    lastNavSeq = nav.seq;
-    // Drop any filters that could hide the requested page before scrolling to it.
-    resetSiteMapFilters();
-    issueFilter = 'all';
-    const url = nav.url;
-    if (locateAndExpand(url)) scrollToUrl(url);
-  });
-
   $effect(() => {
     loadTree();
   });
@@ -604,23 +548,9 @@
                 {:else}
                   <span class="tree-clean"></span>
                 {/if}
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="tree-graph-link size-6"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    requestFocusInGraph(projectId, row.page.url);
-                  }}
-                  aria-label={m['tree.view_in_graph']()}
-                  title={m['tree.view_in_graph']()}
-                >
-                  <Network class="size-3.5" />
-                </Button>
               {/if}
-            </div>
-          {/each}
+              </div>
+            {/each}
         </div>
       </div>
 
@@ -655,15 +585,6 @@
             </dd>
           </dl>
           <div class="tree-panel-foot">
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-7 text-xs"
-              onclick={() => requestFocusInGraph(projectId, selectedPage!.url)}
-            >
-              <Network class="size-3.5" />
-              {m['tree.view_in_graph']()}
-            </Button>
             <a href={selectedPage.url} target="_blank" rel="noreferrer">
               <Button variant="default" size="sm" class="h-7 text-xs">
                 {m['graph.node.open']()}
@@ -842,16 +763,6 @@
     background: color-mix(in srgb, var(--text-muted) 12%, transparent);
     border-radius: 999px;
     padding: 1px 7px;
-  }
-
-  :global(.tree-graph-link) {
-    flex-shrink: 0;
-    opacity: 0;
-    color: var(--accent);
-  }
-
-  .tree-row:hover :global(.tree-graph-link) {
-    opacity: 1;
   }
 
   .tree-panel {

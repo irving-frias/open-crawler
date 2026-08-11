@@ -5,6 +5,7 @@
   import { getSeoOverview, runSeoAuditAll, getSeoAuditStatus, stopSeoAudit } from '$lib/api/seo';
   import type { SeoOverview, SeoAuditProgress } from '$lib/api/types';
   import { localizeSeoCheck } from '$lib/seo-checks';
+  import { seoScoreColor } from '$lib/seo-ui';
   import { cn } from '$lib/utils.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -48,9 +49,7 @@
   }
 
   function scoreColor(score: number): string {
-    if (score >= 80) return 'var(--success)';
-    if (score >= 60) return 'var(--warning)';
-    return 'var(--danger)';
+    return seoScoreColor(score);
   }
 
   $effect(() => {

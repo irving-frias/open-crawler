@@ -64,6 +64,12 @@ pub struct PriorityFix {
     pub message: String,
     pub guidance: String,
     pub category: String,
+    /// Supporting measured detail, forwarded from the failing check.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    /// Concrete offending elements (up to 5), forwarded from the failing check.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub examples: Vec<crate::crawler::parser::SemanticIssue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

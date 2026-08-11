@@ -4,8 +4,6 @@ import type {
   IssueCount,
   PageDetail,
   PaginatedResults,
-  SiteGraph,
-  SiteGraphEdgePage,
   SiteTreeFullNode,
   SiteTreeNode,
 } from './types';
@@ -70,16 +68,4 @@ export function getSiteTree(
 
 export function getSiteTreeFull(projectId: string): Promise<SiteTreeFullNode[]> {
   return invoke<SiteTreeFullNode[]>('get_site_tree_full', { projectId });
-}
-
-export function getSiteGraph(projectId: string): Promise<SiteGraph> {
-  return invoke<SiteGraph>('get_site_graph', { projectId });
-}
-
-export function getSiteGraphEdges(
-  projectId: string,
-  offset: number,
-  limit: number
-): Promise<SiteGraphEdgePage> {
-  return invoke<SiteGraphEdgePage>('get_site_graph_edges', { projectId, offset, limit });
 }

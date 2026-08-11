@@ -85,7 +85,7 @@
     try {
       const data = await getSemanticIssueCounts(projectId);
       if (seq !== countsSeq) return;
-      issueCounts = data.filter((i) => i.severity === 'error');
+      issueCounts = data;
     } catch (e) {
       if (seq === countsSeq) error = String(e);
     } finally {

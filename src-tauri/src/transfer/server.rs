@@ -382,18 +382,12 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         let cache: lru::LruCache<crate::ResultsCacheKey, (Vec<crate::models::CrawlResult>, u32)> =
             lru::LruCache::new(NonZeroUsize::new(64).unwrap());
-        
-        // Use the correct type for graph_edges_cache
-        // If GraphEdgesCacheValue is Vec<SiteGraphEdge>:
-        let graph_edges_cache: lru::LruCache<String, crate::GraphEdgesCacheValue> =
-            lru::LruCache::new(NonZeroUsize::new(32).unwrap());
-        
+
         AppState {
             db: StdMutex::new(conn),
             crawls: Arc::new(RwLock::new(HashMap::new())),
             seo_audits: Arc::new(RwLock::new(HashMap::new())),
             results_cache: Arc::new(StdMutex::new(cache)),
-            graph_edges_cache: Arc::new(StdMutex::new(graph_edges_cache)),
             transfer_server: StdMutex::new(None),
         }
     }

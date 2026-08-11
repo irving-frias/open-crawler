@@ -122,66 +122,6 @@ pub struct SiteTreeFullNode {
     pub children: Vec<SiteTreeFullNode>,
 }
 
-/// One node in the interactive site graph: a crawled page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SiteGraphNode {
-    pub url: String,
-    pub title: Option<String>,
-    pub status_code: Option<u16>,
-    pub depth: u32,
-    pub issue_count: u32,
-    pub seo_score: Option<f64>,
-    pub is_indexable: Option<bool>,
-    pub blocked: Option<bool>,
-    pub size_bytes: Option<u64>,
-    pub load_time_ms: Option<u64>,
-    pub in_degree: u32,
-    pub out_degree: u32,
-}
-
-/// One edge in the interactive site graph: an internal link between pages.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SiteGraphEdge {
-    pub source: String,
-    pub target: String,
-    pub link_type: String,
-    pub is_follow: bool,
-}
-
-/// Complete data needed to render the interactive graph of all pages. Edges
-/// are intentionally NOT included: they are served in pages by
-/// `get_site_graph_edges` so the frontend can render nodes first and stream
-/// links in, keeping the initial IPC payload small.
-///
-/// For very large sites the node set is capped (most-linked pages win) and
-/// only edges between those nodes are returned; `*_truncated` flags tell the
-/// UI to show a warning.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SiteGraph {
-    pub nodes: Vec<SiteGraphNode>,
-    /// Total number of internal edges between the rendered nodes, whether or
-    /// not they fit in a single payload.
-    pub edge_count: u32,
-    /// True when the edge set was capped server-side (dense graphs), meaning
-    /// the returned pages may not cover every edge.
-    pub edges_truncated: bool,
-    /// Total pages crawled for the project (may exceed `nodes.len()` when the
-    /// node set is capped).
-    pub total_nodes: u32,
-    /// True when only the top-N pages are returned (see `total_nodes`).
-    pub nodes_truncated: bool,
-}
-
-/// One page of the internal edge set, served from the in-memory cache.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SiteGraphEdgePage {
-    pub edges: Vec<SiteGraphEdge>,
-    pub offset: u32,
-    pub total: u32,
-    pub done: bool,
-    pub truncated: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusBucket {
     pub status: u16,

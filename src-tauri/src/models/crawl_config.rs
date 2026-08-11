@@ -1,13 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScanType {
-    #[default]
-    Web,
-    Local,
-}
-
 pub const IMPLICIT_USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 OpenCrawler/1.0";
 
@@ -67,10 +59,6 @@ pub struct CrawlConfig {
     pub request_timeout_ms: u64,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
-    #[serde(default)]
-    pub scan_type: ScanType,
-    #[serde(default)]
-    pub local_urls: Vec<String>,
 }
 
 fn default_max_depth() -> u32 {
@@ -123,8 +111,6 @@ impl Default for CrawlConfig {
             site_auth: None,
             request_timeout_ms: default_request_timeout_ms(),
             proxy: None,
-            scan_type: ScanType::Web,
-            local_urls: Vec::new(),
         }
     }
 }
