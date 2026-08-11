@@ -121,8 +121,41 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
 - Tests ajustados: audit.rs espera 8 categorías; score.rs usa comparación con
   epsilon (precisión de coma flotante). `cargo test --lib`: 122 OK.
 
+### Fase 4 — Export CSV/XLSX ampliado ✅ HECHO
+- **`db/repos/export.rs`**: `count_issues` cuenta todas las severidades (antes solo
+  error); nuevo `count_seo_rows(project_id)` (suma sobre `json_each` de
+  `categories` + `checks` con `passed=0` + `priority_fixes` del `seo_audit_json`);
+  `get_result_batch` añade col `redirect_from_url` (índice 26, `duplicate_group_id`
+  pasa a 27).
+- **`models/crawl_result.rs`**: nuevo campo `redirect_from_url: Option<String>`
+  (`#[serde(default)]`). Constructores actualizados: `engine.rs` (lo rellena con
+  `response.redirect_from_url`), `results.rs` (light idx 28 / full idx 29),
+  `features/results/commands.rs`, test helpers.
+- **`features/mod.rs`**: `with_repo` ahora delega en `with_repo_arc(&Arc<RwLock<AppState>>, f)`
+  para poder testear los writers sin Tauri.
+- **`features/export/commands.rs`** reescrito:
+  - Writers (`export_csv_single`, `export_xlsx`) toman `&Arc<RwLock<AppState>>` +
+    `emit: &(dyn Fn(&'static str, u64, u64) + Sync + 'static)` (el comando pasa
+    closure con `emit_export_progress` → evento `export-progress`).
+  - `page_values()` → 33 columnas planas (URL…Redirect From + 8 categorías desde
+    `CATEGORY_ORDER` + Keywords/OG/Hreflang JSON). `page_headers()` genera los
+    headers en el mismo orden. CSV y XLSX Pages la reusan.
+  - XLSX: 5 pases vía `export_page_passes` (Pages, Issues ya sin filtro de
+    severidad, **SEO Audit**, **SEO Checks** !passed, **SEO Fixes**) + Links.
+    `PagePass {stage, base_name, headers, total_rows, widths, write: fn}`;
+    split por `MAX_ROWS_PER_SHEET` reutilizado.
+  - `xlsx_str` trunca a 32.767 chars (límite de Excel) para blobs JSON grandes —
+    evita "String exceeds Excel's limit of 32,767 characters".
+  - `check_elements` (elemento+snippet, ≤3), `category_label`, `parse_audit`.
+  - Tests: `mod tests` con `AppState` en memoria + `run_migrations` + inserts de
+    proyecto/cfg; `save_redirect_batch` para poblar `redirect_from_url` (no se
+    persiste en `save_results_batch`); 4 tests (page_values 33 cols, CSV con
+    columnas SEO, nombres de hojas vía `workbook.worksheets()`+`name()`, archivo xlsx).
+  - `cargo test --lib`: 126 OK. Clippy limpio (salvo warning pre-existente
+    `run_default` en checks.rs).
+
 ### Verificación
-- `cargo test --lib` en `src-tauri/` (tests unit de parser/checks/audit/score)
+- `cargo test --lib` en `src-tauri/` (tests unit de parser/checks/audit/score/export)
 - `bun run check`, `bun run lint`, `bun run build` en la raíz
 
 ### No implementar (tendencias 2026)

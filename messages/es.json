@@ -259,6 +259,7 @@
   "export.stage.pages": "Escribiendo páginas…",
   "export.stage.issues": "Escribiendo problemas…",
   "export.stage.links": "Escribiendo enlaces…",
+  "export.stage.seo": "Escribiendo auditoría SEO…",
   "export.shared": "Exportación completada — archivo guardado en la ubicación elegida",
   "issue.missing_html_lang.name": "Falta Idioma HTML",
   "issue.missing_html_lang.message": "Falta el atributo lang en el elemento <html>",

@@ -26,7 +26,27 @@ impl<'a> CrawlRepo<'a> {
 
     pub fn count_issues(&self, project_id: &str) -> Result<u32, AppError> {
         let n: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM page_issues WHERE project_id = ?1 AND severity = 'error'",
+            "SELECT COUNT(*) FROM page_issues WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
+    /// Rows produced by the SEO audit export sheets: one per page×category,
+    /// plus one per failing check and one per priority fix. Counted over the
+    /// `seo_audit_json` blob so it stays correct even if the normalized
+    /// `seo_category_scores` / `seo_check_issues` tables are out of sync.
+    pub fn count_seo_rows(&self, project_id: &str) -> Result<u32, AppError> {
+        let n: i64 = self.conn.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
+                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))
+              + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.checks') c
+                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+                   AND json_extract(c.value, '$.passed') = 0)
+              + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.priority_fixes') c
+                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))",
             params![project_id],
             |row| row.get(0),
         )?;
@@ -43,7 +63,7 @@ impl<'a> CrawlRepo<'a> {
         last_id: Option<&str>,
         limit: u32,
     ) -> Result<Vec<CrawlResult>, AppError> {
-        let cols = "id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, blocked, seo_score, seo_audit_json";
+        let cols = "id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, blocked, seo_score, seo_audit_json, readability_score, keywords_json, og_json, pagespeed_score, pagespeed_json, hreflang_json, redirect_from_url, duplicate_group_id";
         let query = if last_timestamp.is_some() {
             format!(
                 "SELECT {} FROM crawled_pages
@@ -126,19 +146,20 @@ impl<'a> CrawlRepo<'a> {
             crawl_timestamp: row.get(14)?,
             links: Vec::new(),
             html_lang: row.get(15)?,
-            hreflang_json: None,
+            hreflang_json: row.get(25)?,
             semantic_issues_json: row.get(16)?,
             html_body: None,
-            readability_score: None,
+            readability_score: row.get(20)?,
             content_hash: None,
-            duplicate_group_id: None,
-            keywords_json: None,
-            og_json: None,
-            pagespeed_score: None,
-            pagespeed_json: None,
+            duplicate_group_id: row.get(27)?,
+            keywords_json: row.get(21)?,
+            og_json: row.get(22)?,
+            pagespeed_score: row.get(23)?,
+            pagespeed_json: row.get(24)?,
             seo_score: row.get(18)?,
             seo_audit_json: row.get(19)?,
             blocked: row.get::<_, i32>(17)? != 0,
+            redirect_from_url: row.get(26)?,
         })
     }
 

@@ -37,7 +37,20 @@ where
     F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
 {
-    let state = state.inner().clone();
+    with_repo_arc(state.inner(), f).await
+}
+
+/// Same as [`with_repo`] but takes the `Arc<RwLock<AppState>>` directly, so
+/// writers can run against an in-memory `AppState` in unit tests.
+pub(crate) async fn with_repo_arc<T, F>(
+    state: &Arc<RwLock<AppState>>,
+    f: F,
+) -> Result<T, AppError>
+where
+    F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError> + Send + 'static,
+    T: Send + 'static,
+{
+    let state = state.clone();
     tokio::task::spawn_blocking(move || {
         let state_read = state.blocking_read();
         let db = state_read

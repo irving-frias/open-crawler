@@ -152,6 +152,7 @@ mod tests {
             pagespeed_json: None,
             seo_score: None,
             seo_audit_json: None,
+            redirect_from_url: None,
         }
     }
 

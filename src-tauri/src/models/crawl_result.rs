@@ -36,6 +36,9 @@ pub struct CrawlResult {
     pub seo_score: Option<f64>,
     /// Serialized `SeoAuditResult` with per-check details and priority fixes.
     pub seo_audit_json: Option<String>,
+    /// Original URL before the redirect chain that reached this page, when any.
+    #[serde(default)]
+    pub redirect_from_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

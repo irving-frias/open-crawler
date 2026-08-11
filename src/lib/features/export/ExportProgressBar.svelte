@@ -25,6 +25,8 @@
           {m['export.stage.issues']()}
         {:else if exportProgress.stage === 'links'}
           {m['export.stage.links']()}
+        {:else if exportProgress.stage === 'seo'}
+          {m['export.stage.seo']()}
         {:else}
           …
         {/if}

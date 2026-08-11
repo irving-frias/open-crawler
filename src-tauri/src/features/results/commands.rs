@@ -258,6 +258,7 @@ pub async fn recrawl_page(
         pagespeed_json: None,
         seo_score,
         seo_audit_json,
+        redirect_from_url: None,
     };
 
     // Save to DB

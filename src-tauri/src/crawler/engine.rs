@@ -853,6 +853,7 @@ impl CrawlEngine {
             pagespeed_json: None,
             seo_score,
             seo_audit_json,
+            redirect_from_url: response.redirect_from_url.clone(),
         };
 
         // Send result to DbWriter (async, non-blocking)
