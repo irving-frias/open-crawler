@@ -400,9 +400,13 @@ fn page_values(p: &CrawlResult) -> Vec<ExportValue> {
             None => ExportValue::Str(String::new()),
         });
     }
-    values.push(ExportValue::Str(p.keywords_json.clone().unwrap_or_default()));
+    values.push(ExportValue::Str(
+        p.keywords_json.clone().unwrap_or_default(),
+    ));
     values.push(ExportValue::Str(p.og_json.clone().unwrap_or_default()));
-    values.push(ExportValue::Str(p.hreflang_json.clone().unwrap_or_default()));
+    values.push(ExportValue::Str(
+        p.hreflang_json.clone().unwrap_or_default(),
+    ));
     values
 }
 
@@ -564,7 +568,11 @@ fn write_page_row(
             ExportValue::Num(n) => xlsx_num(ws, row, col, *n, band)?,
             ExportValue::Str(s) => {
                 // Title / Meta Description get text wrap; the rest band by row.
-                let fmt = if col == 2 || col == 3 { Some(wrap) } else { band };
+                let fmt = if col == 2 || col == 3 {
+                    Some(wrap)
+                } else {
+                    band
+                };
                 xlsx_str(ws, row, col, s, fmt)?;
             }
         }
@@ -802,12 +810,8 @@ struct PagePass<'a> {
     /// Extra per-sheet column widths applied after the defaults.
     widths: &'a [(u16, f64)],
     /// Writes one page's contribution, returning the number of rows written.
-    write: fn(
-        &mut rust_xlsxwriter::Worksheet,
-        u32,
-        &CrawlResult,
-        &Formats,
-    ) -> Result<u32, AppError>,
+    write:
+        fn(&mut rust_xlsxwriter::Worksheet, u32, &CrawlResult, &Formats) -> Result<u32, AppError>,
 }
 
 const ISSUE_HEADERS: [&str; 7] = [
@@ -828,23 +832,10 @@ const AUDIT_HEADERS: [&str; 6] = [
     "Total Checks",
 ];
 const CHECK_HEADERS: [&str; 8] = [
-    "URL",
-    "Check ID",
-    "Category",
-    "Severity",
-    "Message",
-    "Guidance",
-    "Evidence",
-    "Elements",
+    "URL", "Check ID", "Category", "Severity", "Message", "Guidance", "Evidence", "Elements",
 ];
 const FIX_HEADERS: [&str; 7] = [
-    "URL",
-    "Priority",
-    "Category",
-    "Fix ID",
-    "Message",
-    "Guidance",
-    "Evidence",
+    "URL", "Priority", "Category", "Fix ID", "Message", "Guidance", "Evidence",
 ];
 const LINK_HEADERS: [&str; 5] = ["From URL", "To URL", "Link Type", "Anchor Text", "Follow"];
 
@@ -1228,7 +1219,9 @@ mod tests {
 
         // Category columns follow CATEGORY_ORDER at indices 22..30.
         assert!(matches!(&values[22], ExportValue::Num(n) if *n == 80.0));
-        assert!(matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 50.0));
+        assert!(
+            matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 50.0)
+        );
     }
 
     #[tokio::test]
@@ -1341,10 +1334,16 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(processed, 7, "1 page + 2 issues + 2 categories + 1 check + 1 fix");
+        assert_eq!(
+            processed, 7,
+            "1 page + 2 issues + 2 categories + 1 check + 1 fix"
+        );
         let names: Vec<String> = workbook.worksheets().iter().map(|w| w.name()).collect();
         for expected in ["Pages", "Issues", "SEO Audit", "SEO Checks", "SEO Fixes"] {
-            assert!(names.contains(&expected.to_string()), "missing sheet {expected}");
+            assert!(
+                names.contains(&expected.to_string()),
+                "missing sheet {expected}"
+            );
         }
     }
 

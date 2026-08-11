@@ -747,8 +747,13 @@
                   <div class="seo-area-head">
                     <span class="seo-area-name">{seoCategoryLabel(category)}</span>
                     {#if (categoryGains[category] ?? 0) > 0.5}
-                      <Badge variant="outline" class="seo-gain-badge" title={m['seo.potential_gain']()}>
-                        +{categoryGains[category].toFixed(0)} {m['seo.points']()}
+                      <Badge
+                        variant="outline"
+                        class="seo-gain-badge"
+                        title={m['seo.potential_gain']()}
+                      >
+                        +{categoryGains[category].toFixed(0)}
+                        {m['seo.points']()}
                       </Badge>
                     {/if}
                     <Badge variant="outline">{checks.length}</Badge>
@@ -1160,7 +1165,8 @@
                 {#if translateIssueExpected(issue.issue_type)}
                   <div class="issue-fix-line">
                     <span class="issue-fix-label">{m['seo.expected']()}</span>
-                    <pre class="seo-expected-code"><code>{translateIssueExpected(issue.issue_type)}</code
+                    <pre class="seo-expected-code"><code
+                        >{translateIssueExpected(issue.issue_type)}</code
                       ></pre>
                   </div>
                 {/if}

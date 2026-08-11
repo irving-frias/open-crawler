@@ -34,7 +34,8 @@ export default defineConfig({
         if (/\.svelte\?[^#]*&type=style&lang\.css/.test(id)) {
           const env = this.environment as DevEnvironment;
           const jsUrl = id.split('?')[0];
-          env.transformRequest(jsUrl)
+          env
+            .transformRequest(jsUrl)
             .then(() => {
               const mod = env.moduleGraph.getModuleById(id);
               if (mod) env.moduleGraph.invalidateModule(mod);

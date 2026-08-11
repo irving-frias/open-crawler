@@ -691,7 +691,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Relación de enlaces internos/externos: {0} (objetivo ≥ 10:1)',
-      guidance: 'Enlaza principalmente dentro de tu propio sitio; cita fuentes externas con moderación.',
+      guidance:
+        'Enlaza principalmente dentro de tu propio sitio; cita fuentes externas con moderación.',
     },
   },
   canonical_self_reference: {
@@ -701,7 +702,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'El canonical apunta a la propia página',
-      guidance: 'La etiqueta canonical de una página que debe posicionarse debería referenciarse a sí misma.',
+      guidance:
+        'La etiqueta canonical de una página que debe posicionarse debería referenciarse a sí misma.',
     },
   },
   meta_robots_directives: {
@@ -763,7 +765,8 @@ const DICT: Record<string, CheckDictEntry> = {
   author_schema: {
     en: {
       message: 'Article schema present but no author',
-      guidance: 'Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.',
+      guidance:
+        'Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.',
     },
     es: {
       message: 'Schema de artículo presente pero sin autor',
@@ -790,7 +793,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Sección de respuesta tras el H1: {0} palabras (ideal 40-100)',
-      guidance: 'Abre con un pasaje enfocado de 40-100 palabras que responda directamente a la pregunta principal.',
+      guidance:
+        'Abre con un pasaje enfocado de 40-100 palabras que responda directamente a la pregunta principal.',
     },
   },
   img_srcset: {
@@ -826,11 +830,13 @@ const DICT: Record<string, CheckDictEntry> = {
   autocomplete_inputs: {
     en: {
       message: 'Form inputs with autocomplete: {0}',
-      guidance: 'Add an autocomplete attribute (e.g. email, name) to common form fields to speed up completion.',
+      guidance:
+        'Add an autocomplete attribute (e.g. email, name) to common form fields to speed up completion.',
     },
     es: {
       message: 'Inputs de formulario con autocomplete: {0}',
-      guidance: 'Añade un atributo autocomplete (p. ej. email, name) a los campos comunes para agilizar la cumplimentación.',
+      guidance:
+        'Añade un atributo autocomplete (p. ej. email, name) a los campos comunes para agilizar la cumplimentación.',
     },
   },
   table_headers: {
@@ -840,7 +846,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Tablas con celdas de cabecera: {0}',
-      guidance: 'Marca las celdas de fila y/o columna de cabecera con <th> para que las celdas de datos tengan contexto.',
+      guidance:
+        'Marca las celdas de fila y/o columna de cabecera con <th> para que las celdas de datos tengan contexto.',
     },
   },
   table_captions: {
@@ -876,11 +883,13 @@ const DICT: Record<string, CheckDictEntry> = {
   video_accessible: {
     en: {
       message: 'Videos with controls/captions: {0}',
-      guidance: 'Add controls (or a <track>) to each <video> so users can pause and caption content.',
+      guidance:
+        'Add controls (or a <track>) to each <video> so users can pause and caption content.',
     },
     es: {
       message: 'Videos con controles/subtítulos: {0}',
-      guidance: 'Añade controles (o un <track>) a cada <video> para que los usuarios puedan pausarlo y subtitularlo.',
+      guidance:
+        'Añade controles (o un <track>) a cada <video> para que los usuarios puedan pausarlo y subtitularlo.',
     },
   },
 };
@@ -2003,17 +2012,20 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     },
     es: {
       fix: 'Abre con un pasaje enfocado de 40-100 palabras que responda a la pregunta principal.',
-      expected: '<h1>Título</h1>\n<p>Una respuesta directa de 40-100 palabras a la pregunta principal…</p>',
+      expected:
+        '<h1>Título</h1>\n<p>Una respuesta directa de 40-100 palabras a la pregunta principal…</p>',
     },
   },
   img_srcset: {
     en: {
       fix: 'Add srcset and sizes to responsive images.',
-      expected: '<img src="photo.jpg" srcset="photo-800.jpg 800w, photo-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Photo">',
+      expected:
+        '<img src="photo.jpg" srcset="photo-800.jpg 800w, photo-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Photo">',
     },
     es: {
       fix: 'Añade srcset y sizes a las imágenes responsivas.',
-      expected: '<img src="foto.jpg" srcset="foto-800.jpg 800w, foto-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Foto">',
+      expected:
+        '<img src="foto.jpg" srcset="foto-800.jpg 800w, foto-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Foto">',
     },
   },
   lazy_loading: {
@@ -2049,11 +2061,13 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
   table_headers: {
     en: {
       fix: 'Mark header cells with <th> using scope.',
-      expected: '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
+      expected:
+        '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
     },
     es: {
       fix: 'Marca las celdas de cabecera con <th> usando scope.',
-      expected: '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
+      expected:
+        '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
     },
   },
   table_captions: {
@@ -2069,11 +2083,13 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
   figure_captions: {
     en: {
       fix: 'Add a <figcaption> inside each figure.',
-      expected: '<figure>\n  <img src="chart.png" alt="Chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
+      expected:
+        '<figure>\n  <img src="chart.png" alt="Chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
     },
     es: {
       fix: 'Añade un <figcaption> dentro de cada figura.',
-      expected: '<figure>\n  <img src="grafico.png" alt="Gráfico">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
+      expected:
+        '<figure>\n  <img src="grafico.png" alt="Gráfico">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
     },
   },
   iframe_titles: {
@@ -2089,11 +2105,13 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
   video_accessible: {
     en: {
       fix: 'Add controls and a <track> to each video.',
-      expected: '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
+      expected:
+        '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
     },
     es: {
       fix: 'Añade controles y un <track> a cada video.',
-      expected: '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
+      expected:
+        '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
     },
   },
 };

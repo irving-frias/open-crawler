@@ -352,24 +352,28 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     en: {
       why: 'A <figcaption> ties an image or diagram to its explanation, helping screen readers and AI understanding to connect the visual with its meaning.',
       fix: 'Add a <figcaption> as the first or last child of the <figure>.',
-      expected: '<figure>\n  <img src="chart.png" alt="Sales chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
+      expected:
+        '<figure>\n  <img src="chart.png" alt="Sales chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
     },
     es: {
       why: 'Un <figcaption> vincula una imagen o diagrama con su explicación, ayudando a los lectores de pantalla y a la comprensión por IA a conectar lo visual con su significado.',
       fix: 'Añade un <figcaption> como primer o último hijo del <figure>.',
-      expected: '<figure>\n  <img src="grafico.png" alt="Gráfico de ventas">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
+      expected:
+        '<figure>\n  <img src="grafico.png" alt="Gráfico de ventas">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
     },
   },
   table_without_headers: {
     en: {
       why: 'A table without <th> cells gives screen readers and crawlers no way to associate each data cell with its meaning, breaking both accessibility and machine extraction.',
       fix: 'Mark the header row and/or column cells with <th> elements, using scope where needed.',
-      expected: '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
+      expected:
+        '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
     },
     es: {
       why: 'Una tabla sin celdas <th> no permite a los lectores de pantalla ni a los rastreadores asociar cada celda de datos con su significado, rompiendo la accesibilidad y la extracción por máquina.',
       fix: 'Marca las celdas de la fila y/o columna de cabecera con elementos <th>, usando scope cuando sea necesario.',
-      expected: '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
+      expected:
+        '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
     },
   },
   table_without_caption: {
@@ -388,12 +392,14 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     en: {
       why: 'Quotes without a source lack credibility: users and AI systems cannot verify the claim, and the missing attribution weakens the E-E-A-T signals of the page.',
       fix: 'Attribute the quote with the cite attribute or a visible author/source element.',
-      expected: '<blockquote cite="https://example.com/source">\n  Quoted text\n  <footer>— Author Name, Source</footer>\n</blockquote>',
+      expected:
+        '<blockquote cite="https://example.com/source">\n  Quoted text\n  <footer>— Author Name, Source</footer>\n</blockquote>',
     },
     es: {
       why: 'Las citas sin fuente carecen de credibilidad: los usuarios y los sistemas de IA no pueden verificar la afirmación, y la atribución ausente debilita las señales E-E-A-T de la página.',
       fix: 'Atribuye la cita con el atributo cite o con un elemento visible de autor/fuente.',
-      expected: '<blockquote cite="https://example.com/fuente">\n  Texto citado\n  <footer>— Nombre del autor, Fuente</footer>\n</blockquote>',
+      expected:
+        '<blockquote cite="https://example.com/fuente">\n  Texto citado\n  <footer>— Nombre del autor, Fuente</footer>\n</blockquote>',
     },
   },
   text_in_div_instead_of_p: {
@@ -417,19 +423,22 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     es: {
       why: 'Un <iframe> sin título se anuncia como un marco genérico a los lectores de pantalla, de modo que los usuarios de tecnologías de asistencia no pueden saber qué contiene.',
       fix: 'Añade un atributo title que describa el contenido incrustado.',
-      expected: '<iframe src="https://example.com/mapa" title="Mapa de la ubicación de la oficina"></iframe>',
+      expected:
+        '<iframe src="https://example.com/mapa" title="Mapa de la ubicación de la oficina"></iframe>',
     },
   },
   video_without_track_or_controls: {
     en: {
       why: 'A video without controls cannot be paused, muted or captioned by users, and without a <track> it has no captions for deaf users or search engines.',
       fix: 'Add the controls attribute and include a <track> element for captions.',
-      expected: '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
+      expected:
+        '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
     },
     es: {
       why: 'Un video sin controles no puede pausarse, silenciarse ni subtitularse por los usuarios, y sin <track> no tiene subtítulos para personas sordas ni para los buscadores.',
       fix: 'Añade el atributo controls e incluye un elemento <track> para los subtítulos.',
-      expected: '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
+      expected:
+        '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
     },
   },
 };

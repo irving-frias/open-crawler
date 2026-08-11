@@ -42,10 +42,7 @@ where
 
 /// Same as [`with_repo`] but takes the `Arc<RwLock<AppState>>` directly, so
 /// writers can run against an in-memory `AppState` in unit tests.
-pub(crate) async fn with_repo_arc<T, F>(
-    state: &Arc<RwLock<AppState>>,
-    f: F,
-) -> Result<T, AppError>
+pub(crate) async fn with_repo_arc<T, F>(state: &Arc<RwLock<AppState>>, f: F) -> Result<T, AppError>
 where
     F: FnOnce(&CrawlRepo<'_>) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,

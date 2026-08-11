@@ -99,29 +99,19 @@ impl PageExtras {
 
         // Tables
         extras.table_total = count_selector(&document, "table");
-        extras.table_with_headers = count_selector(
-            &document,
-            "table:has(th)",
-        );
-        extras.table_with_caption = count_selector(
-            &document,
-            "table:has(caption)",
-        );
+        extras.table_with_headers = count_selector(&document, "table:has(th)");
+        extras.table_with_caption = count_selector(&document, "table:has(caption)");
 
         // Figures
         extras.figure_total = count_selector(&document, "figure");
-        extras.figure_with_caption = count_selector(
-            &document,
-            "figure:has(figcaption)",
-        );
+        extras.figure_with_caption = count_selector(&document, "figure:has(figcaption)");
 
         // details/summary (FAQ-like accordions)
         extras.details_summary = count_selector(&document, "details");
 
         // Video / iframe accessibility
         extras.video_total = count_selector(&document, "video");
-        extras.video_accessible =
-            count_selector(&document, "video[controls], video:has(track)");
+        extras.video_accessible = count_selector(&document, "video[controls], video:has(track)");
         extras.iframe_total = count_selector(&document, "iframe");
         extras.iframe_with_title = count_selector(&document, "iframe[title]");
 
@@ -278,7 +268,10 @@ fn answer_section_words(document: &Html) -> usize {
         let Some(el) = sibling.value().as_element() else {
             continue;
         };
-        if matches!(el.name(), "h2" | "h3" | "h4" | "script" | "style" | "nav" | "footer") {
+        if matches!(
+            el.name(),
+            "h2" | "h3" | "h4" | "script" | "style" | "nav" | "footer"
+        ) {
             break;
         }
         if let Some(child_el) = scraper::ElementRef::wrap(sibling) {
@@ -407,9 +400,7 @@ fn collect_required(value: &serde_json::Value, present: &mut usize, required: &m
     *required += required_keys.len();
     for key in required_keys {
         let found = match value {
-            serde_json::Value::Object(map) => {
-                map.get(*key).map(|v| !v.is_null()).unwrap_or(false)
-            }
+            serde_json::Value::Object(map) => map.get(*key).map(|v| !v.is_null()).unwrap_or(false),
             _ => false,
         };
         if found {
@@ -458,7 +449,8 @@ fn block_has_freshness(value: &serde_json::Value) -> bool {
     }
 }
 
-fn collect_json_ld_types(value: &serde_json::Value, out: &mut Vec<String>) {    match value {
+fn collect_json_ld_types(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
         serde_json::Value::Array(items) => {
             for item in items {
                 collect_json_ld_types(item, out);
@@ -1330,7 +1322,10 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             extras.iframe_with_title, extras.iframe_total
         ),
         "Give every <iframe> a title describing the embedded content.",
-        Some(format!("{}/{}", extras.iframe_with_title, extras.iframe_total)),
+        Some(format!(
+            "{}/{}",
+            extras.iframe_with_title, extras.iframe_total
+        )),
     ));
     out.push(check(
         "video_accessible",
@@ -1343,7 +1338,10 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             extras.video_accessible, extras.video_total
         ),
         "Add controls (or a <track>) to each <video> so users can pause and caption content.",
-        Some(format!("{}/{}", extras.video_accessible, extras.video_total)),
+        Some(format!(
+            "{}/{}",
+            extras.video_accessible, extras.video_total
+        )),
     ));
     out.push(check(
         "autocomplete_inputs",
@@ -1721,8 +1719,8 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.",
         None,
     ));
-    let has_freshness = json_ld_has_freshness(&extras.json_ld_raw)
-        || extras.time_datetime_count > 0;
+    let has_freshness =
+        json_ld_has_freshness(&extras.json_ld_raw) || extras.time_datetime_count > 0;
     out.push(check(
         "freshness_dates",
         "sxo",
@@ -1838,7 +1836,9 @@ mod tests {
     }
 
     fn check<'a>(out: &'a [CheckResult], id: &str) -> &'a CheckResult {
-        out.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("check {id} missing"))
+        out.iter()
+            .find(|c| c.id == id)
+            .unwrap_or_else(|| panic!("check {id} missing"))
     }
 
     #[test]

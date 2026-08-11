@@ -30,7 +30,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("009_seo_redirects", include_str!("009_seo_redirects.sql")),
     ("010_seo_clusters", include_str!("010_seo_clusters.sql")),
     ("011_seo_overview", include_str!("011_seo_overview.sql")),
-    ("012_add_graph_indexes", include_str!("012_add_graph_indexes.sql")),
+    (
+        "012_add_graph_indexes",
+        include_str!("012_add_graph_indexes.sql"),
+    ),
     (
         "013_add_pages_project_url_index",
         include_str!("013_add_pages_project_url_index.sql"),

@@ -30,10 +30,7 @@
     statusVariant,
     type StatusClass,
   } from '$lib/features/site-map/shared.js';
-  import {
-    siteMapFilters,
-    type StatusFilter,
-  } from '$lib/features/site-map/filters.svelte.js';
+  import { siteMapFilters, type StatusFilter } from '$lib/features/site-map/filters.svelte.js';
 
   let { projectId }: { projectId: string } = $props();
 
@@ -204,7 +201,10 @@
     const matches = (page: TreeNode): boolean => {
       if (issueFilter === 'issues' && page.issue_count <= 0) return false;
       if (issueFilter === 'clean' && page.issue_count > 0) return false;
-      if (siteMapFilters.status !== 'all' && statusClass(page.status_code, null) !== siteMapFilters.status) {
+      if (
+        siteMapFilters.status !== 'all' &&
+        statusClass(page.status_code, null) !== siteMapFilters.status
+      ) {
         return false;
       }
       if (q && !`${page.url} ${page.title ?? ''}`.toLowerCase().includes(q)) return false;
@@ -549,8 +549,8 @@
                   <span class="tree-clean"></span>
                 {/if}
               {/if}
-              </div>
-            {/each}
+            </div>
+          {/each}
         </div>
       </div>
 

@@ -771,7 +771,10 @@ impl SeoParser {
 
         // 26. <time> without datetime (freshness signal for AI/AEO extraction)
         let times_no_datetime = self.iter_elements(document, "time:not([datetime])");
-        for el in times_no_datetime.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+        for el in times_no_datetime
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
             issues.push(issue(
                 "time_without_datetime",
                 "warning",
@@ -910,10 +913,7 @@ impl SeoParser {
         parts.join(" ").split_whitespace().count() >= 50
     }
 
-    fn figures_without_caption<'a>(
-        &self,
-        document: &'a Html,
-    ) -> Vec<scraper::ElementRef<'a>> {
+    fn figures_without_caption<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
         let caption = match Selector::parse("figcaption") {
             Ok(s) => s,
             Err(_) => return Vec::new(),
@@ -956,9 +956,7 @@ impl SeoParser {
         };
         self.iter_elements(document, "blockquote")
             .into_iter()
-            .filter(|el| {
-                el.value().attr("cite").is_none() && el.select(&inner).next().is_none()
-            })
+            .filter(|el| el.value().attr("cite").is_none() && el.select(&inner).next().is_none())
             .collect()
     }
 
@@ -1181,11 +1179,7 @@ impl SeoParser {
         };
         for link in document.select(&selector) {
             let text = link.text().collect::<Vec<_>>().join(" ").to_lowercase();
-            let label = link
-                .value()
-                .attr("aria-label")
-                .unwrap_or("")
-                .to_lowercase();
+            let label = link.value().attr("aria-label").unwrap_or("").to_lowercase();
             let class = link.value().attr("class").unwrap_or("").to_lowercase();
             if text.contains("skip") || label.contains("skip") || class.contains("skip") {
                 return true;
@@ -1245,7 +1239,12 @@ impl SeoParser {
             let has_aria = button.value().attr("aria-label").is_some()
                 || button.value().attr("aria-labelledby").is_some()
                 || button.value().attr("title").is_some();
-            let text = button.text().collect::<Vec<_>>().join("").trim().to_string();
+            let text = button
+                .text()
+                .collect::<Vec<_>>()
+                .join("")
+                .trim()
+                .to_string();
             if !has_aria && text.is_empty() {
                 result.push(button);
             }

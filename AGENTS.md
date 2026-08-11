@@ -7,6 +7,7 @@ retomarlo en futuras sesiones.
 ## Estado actual (al iniciar la mejora)
 
 ### Backend (Rust, en `src-tauri/src/`)
+
 - `crawler/parser.rs` — `SeoParser::analyze_semantics()` emite **24 issue types**:
   `missing_html_lang`, `missing_title`, `missing_meta_description`, `missing_canonical`,
   `missing_main`, `missing_header`, `missing_footer`, `missing_nav`, `missing_h1`,
@@ -26,6 +27,7 @@ retomarlo en futuras sesiones.
 - El audit se almacena en `crawled_pages.seo_audit_json` (JSON).
 
 ### Frontend (Svelte, en `src/lib/`)
+
 - `seo-checks.ts` — `DICT` (message/guidance por check), `CHECK_FIXES` (fix/expected),
   `WHY`, y `localizeSeoCheck(id, message, guidance, evidence)`.
 - `i18n-issues.ts` — `issueNames`/`issueMessages`/`ISSUE_FIXES` + `translateIssue*`
@@ -41,18 +43,20 @@ tendencias 2026 (búsqueda generativa AIO/AEO/GEO, extracción por pasajes, fres
 E-E-A-T, schema completo, ratios técnicos). Todo determinista, **sin IA/NLP**.
 
 ### Fase 1 — HTML semántico ✅ HECHO
+
 Nuevos issue types (con `issue()`, cap 25):
-| issue_type | severity | criterio |
-|---|---|---|
-| `article_missing` | warning | hay `<main>` con texto pero sin `<article>` |
-| `time_without_datetime` | warning | `<time>` sin atributo `datetime` |
-| `figure_without_caption` | info | `<figure>` sin `<figcaption>` |
-| `table_without_headers` | error | `<table>` sin `<th>` |
-| `table_without_caption` | info | `<table>` sin `<caption>` |
-| `blockquote_without_attribution` | warning | `<blockquote>` sin `cite` ni autor |
-| `text_in_div_instead_of_p` | warning | `<div>` con ≥20 palabras de texto directo |
-| `iframe_without_title` | warning | `<iframe>` sin `title` |
-| `video_without_track_or_controls` | warning | `<video>` sin `controls` ni `<track>` |
+
+| issue_type                        | severity | criterio                                    |
+| --------------------------------- | -------- | ------------------------------------------- |
+| `article_missing`                 | warning  | hay `<main>` con texto pero sin `<article>` |
+| `time_without_datetime`           | warning  | `<time>` sin atributo `datetime`            |
+| `figure_without_caption`          | info     | `<figure>` sin `<figcaption>`               |
+| `table_without_headers`           | error    | `<table>` sin `<th>`                        |
+| `table_without_caption`           | info     | `<table>` sin `<caption>`                   |
+| `blockquote_without_attribution`  | warning  | `<blockquote>` sin `cite` ni autor          |
+| `text_in_div_instead_of_p`        | warning  | `<div>` con ≥20 palabras de texto directo   |
+| `iframe_without_title`            | warning  | `<iframe>` sin `title`                      |
+| `video_without_track_or_controls` | warning  | `<video>` sin `controls` ni `<track>`       |
 
 Implementado en `crawler/parser.rs` (issues 25-33, helpers nuevos:
 `main_has_substantial_text`, `figures_without_caption`, `tables_without_headers`,
@@ -68,29 +72,31 @@ messages de paraglide en `messages/{en,es}.json` (`issue.<type>.name|message`) y
 salidas largas; verificar ediciones con `git diff --numstat` y ejecutar tests.
 
 ### Fase 2 — Checks de auditoría ✅ HECHO
+
 Nuevos checks en `seo/checks.rs` (`run_all` + `PageExtras`):
-| check | categoría | criterio |
-|---|---|---|
-| `content_to_html_ratio` | performance | ratio texto/HTML ≥ 0.08 |
-| `internal_external_ratio` | meta | ratio enlaces int/ext ≥ 10:1 |
-| `canonical_self_reference` | technical | canonical apunta a la propia URL |
-| `meta_robots_directives` | technical | sin nofollow/nosnippet |
-| `meta_description_topic_match` | meta | descripción comparte keywords con title |
-| `json_ld_valid` | sxo | todo bloque tiene @context + @type |
-| `schema_completeness` | sxo | ≥60% de props requeridas por tipo |
-| `faq_accordion_without_schema` | sxo | details/summary o H2-pregunta sin FAQPage |
-| `author_schema` | sxo | Article sin author/Person |
-| `freshness_dates` | sxo | datePublished/dateModified o `<time datetime>` |
-| `direct_answer_section` | sxo | bloque 40-100 palabras tras H1 |
-| `img_srcset` | performance | todas las imágenes con srcset |
-| `lazy_loading` | performance | loading explícito en imágenes |
-| `render_blocking_scripts` | performance | sin scripts externos sin async/defer |
-| `autocomplete_inputs` | accessibility | ≥50% de inputs con autocomplete |
-| `table_headers` | semantic_html | tablas con `<th>` |
-| `table_captions` | semantic_html | tablas con `<caption>` |
-| `figure_captions` | semantic_html | figuras con `<figcaption>` |
-| `iframe_titles` | semantic_html | iframes con `title` |
-| `video_accessible` | semantic_html | videos con controls o `<track>` |
+
+| check                          | categoría     | criterio                                       |
+| ------------------------------ | ------------- | ---------------------------------------------- |
+| `content_to_html_ratio`        | performance   | ratio texto/HTML ≥ 0.08                        |
+| `internal_external_ratio`      | meta          | ratio enlaces int/ext ≥ 10:1                   |
+| `canonical_self_reference`     | technical     | canonical apunta a la propia URL               |
+| `meta_robots_directives`       | technical     | sin nofollow/nosnippet                         |
+| `meta_description_topic_match` | meta          | descripción comparte keywords con title        |
+| `json_ld_valid`                | sxo           | todo bloque tiene @context + @type             |
+| `schema_completeness`          | sxo           | ≥60% de props requeridas por tipo              |
+| `faq_accordion_without_schema` | sxo           | details/summary o H2-pregunta sin FAQPage      |
+| `author_schema`                | sxo           | Article sin author/Person                      |
+| `freshness_dates`              | sxo           | datePublished/dateModified o `<time datetime>` |
+| `direct_answer_section`        | sxo           | bloque 40-100 palabras tras H1                 |
+| `img_srcset`                   | performance   | todas las imágenes con srcset                  |
+| `lazy_loading`                 | performance   | loading explícito en imágenes                  |
+| `render_blocking_scripts`      | performance   | sin scripts externos sin async/defer           |
+| `autocomplete_inputs`          | accessibility | ≥50% de inputs con autocomplete                |
+| `table_headers`                | semantic_html | tablas con `<th>`                              |
+| `table_captions`               | semantic_html | tablas con `<caption>`                         |
+| `figure_captions`              | semantic_html | figuras con `<figcaption>`                     |
+| `iframe_titles`                | semantic_html | iframes con `title`                            |
+| `video_accessible`             | semantic_html | videos con controls o `<track>`                |
 
 `PageExtras` nuevos campos: `json_ld_raw`, `img_srcset`, `img_lazy`, `table_total`,
 `table_with_headers`, `table_with_caption`, `figure_total`, `figure_with_caption`,
@@ -105,6 +111,7 @@ ampliado con 5 checks (table/figure/iframe/video). Tests: `mod tests` nuevo en
 checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`.
 
 ### Fase 3 — Score y UI ✅ HECHO
+
 - Nueva categoría **`semantic_html`** en `seo/score.rs` (CATEGORY_ORDER + CATEGORY_WEIGHTS).
   Pesos recalibrados para sumar 1.0: meta 0.25, technical 0.18, accessibility 0.12,
   semantic_html 0.12, performance 0.10, ai_readability 0.08, sxo 0.08, social 0.07.
@@ -122,6 +129,7 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
   epsilon (precisión de coma flotante). `cargo test --lib`: 122 OK.
 
 ### Fase 4 — Export CSV/XLSX ampliado ✅ HECHO
+
 - **`db/repos/export.rs`**: `count_issues` cuenta todas las severidades (antes solo
   error); nuevo `count_seo_rows(project_id)` (suma sobre `json_each` de
   `categories` + `checks` con `passed=0` + `priority_fixes` del `seo_audit_json`);
@@ -155,9 +163,11 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
     `run_default` en checks.rs).
 
 ### Verificación
+
 - `cargo test --lib` en `src-tauri/` (tests unit de parser/checks/audit/score/export)
 - `bun run check`, `bun run lint`, `bun run build` en la raíz
 
 ### No implementar (tendencias 2026)
+
 `llms.txt` (Google no le da trato especial), chunking/rewriting para IA, entity
 coverage/NLP, checks que requieran navegador (contraste de color, INP/CLS reales).
