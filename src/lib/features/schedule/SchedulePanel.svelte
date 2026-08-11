@@ -1,6 +1,6 @@
 <script lang="ts">
   import { toast } from 'svelte-sonner';
-  import { CalendarClock, Plus, Pencil, Trash2, RefreshCw, Save, X } from 'lucide-svelte';
+  import { CalendarClock, Plus, Pencil, Trash2, RefreshCw, Save, X } from '@lucide/svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { cn } from '$lib/utils.js';
   import * as api from '$lib/api';

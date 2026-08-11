@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { Radar } from 'lucide-svelte';
+  import { Radar } from '@lucide/svelte';
 
   let { visible = true }: { visible?: boolean } = $props();
 </script>

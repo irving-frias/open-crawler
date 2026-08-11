@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { SlidersHorizontal, ChevronDown, CircleX, TriangleAlert, Info } from 'lucide-svelte';
+  import { SlidersHorizontal, ChevronDown, CircleX, TriangleAlert, Info } from '@lucide/svelte';
   import * as Popover from '$lib/components/ui/popover/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';

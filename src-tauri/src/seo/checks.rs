@@ -9,6 +9,7 @@ use super::audit::{AuditContext, CheckResult};
 #[derive(Debug, Clone, Default)]
 pub struct PageExtras {
     pub json_ld_types: Vec<String>,
+    pub json_ld_raw: Vec<serde_json::Value>,
     pub has_json_ld: bool,
     pub viewport: bool,
     pub favicon: bool,
@@ -16,12 +17,35 @@ pub struct PageExtras {
     pub doctype: bool,
     pub img_total: usize,
     pub img_with_dimensions: usize,
+    pub img_srcset: usize,
+    pub img_lazy: usize,
     pub preconnect_or_preload: bool,
     pub p_count: usize,
     pub word_count: usize,
     pub sentence_count: usize,
     pub question_headings: usize,
     pub url_has_underscore: bool,
+    pub table_total: usize,
+    pub table_with_headers: usize,
+    pub table_with_caption: usize,
+    pub figure_total: usize,
+    pub figure_with_caption: usize,
+    pub details_summary: usize,
+    pub video_total: usize,
+    pub video_accessible: usize,
+    pub iframe_total: usize,
+    pub iframe_with_title: usize,
+    pub input_total: usize,
+    pub autocomplete_inputs: usize,
+    pub text_bytes: usize,
+    pub html_bytes: usize,
+    pub div_with_direct_text: usize,
+    pub scripts_render_blocking: usize,
+    pub internal_count: usize,
+    pub external_count: usize,
+    pub meta_robots: Option<String>,
+    pub answer_section_words: usize,
+    pub time_datetime_count: usize,
 }
 
 impl PageExtras {
@@ -47,7 +71,7 @@ impl PageExtras {
         extras.preconnect_or_preload =
             has_selector(&document, r#"link[rel="preconnect"], link[rel="preload"]"#);
 
-        // Images with explicit dimensions
+        // Images with explicit dimensions / srcset / lazy loading
         if let Ok(sel) = Selector::parse("img") {
             let imgs: Vec<_> = document.select(&sel).collect();
             extras.img_total = imgs.len();
@@ -57,17 +81,86 @@ impl PageExtras {
                     el.value().attr("width").is_some() && el.value().attr("height").is_some()
                 })
                 .count();
+            extras.img_srcset = imgs
+                .iter()
+                .filter(|el| el.value().attr("srcset").is_some())
+                .count();
+            extras.img_lazy = imgs
+                .iter()
+                .filter(|el| {
+                    let loading = el.value().attr("loading").unwrap_or("");
+                    loading == "lazy" || loading == "eager"
+                })
+                .count();
         }
 
         // Paragraph count
         extras.p_count = count_selector(&document, "p");
 
-        // JSON-LD structured data
+        // Tables
+        extras.table_total = count_selector(&document, "table");
+        extras.table_with_headers = count_selector(
+            &document,
+            "table:has(th)",
+        );
+        extras.table_with_caption = count_selector(
+            &document,
+            "table:has(caption)",
+        );
+
+        // Figures
+        extras.figure_total = count_selector(&document, "figure");
+        extras.figure_with_caption = count_selector(
+            &document,
+            "figure:has(figcaption)",
+        );
+
+        // details/summary (FAQ-like accordions)
+        extras.details_summary = count_selector(&document, "details");
+
+        // Video / iframe accessibility
+        extras.video_total = count_selector(&document, "video");
+        extras.video_accessible =
+            count_selector(&document, "video[controls], video:has(track)");
+        extras.iframe_total = count_selector(&document, "iframe");
+        extras.iframe_with_title = count_selector(&document, "iframe[title]");
+
+        // Form inputs with an autocomplete hint
+        if let Ok(sel) = Selector::parse("input:not([type='hidden'])") {
+            let inputs: Vec<_> = document.select(&sel).collect();
+            extras.input_total = inputs.len();
+            let with_autocomplete = inputs
+                .iter()
+                .filter(|el| el.value().attr("autocomplete").is_some())
+                .count();
+            extras.autocomplete_inputs = if inputs.is_empty() {
+                0
+            } else {
+                (with_autocomplete * 100) / inputs.len()
+            };
+        }
+
+        // Render-blocking scripts (external scripts without async/defer, excluding type=module)
+        extras.scripts_render_blocking = count_selector(
+            &document,
+            r#"script[src]:not([async]):not([defer]):not([type="module"]):not([type="application/ld+json"])"#,
+        );
+
+        // Divs holding substantial direct text (body copy in <div> instead of <p>)
+        if let Ok(sel) = Selector::parse("div") {
+            extras.div_with_direct_text = document
+                .select(&sel)
+                .filter(|el| direct_text_words(el) >= 20)
+                .count();
+        }
+
+        // JSON-LD structured data (raw values kept for validation)
         if let Ok(sel) = Selector::parse(r#"script[type="application/ld+json"]"#) {
             for script in document.select(&sel) {
                 let text = script.text().collect::<Vec<_>>().join("");
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     extras.has_json_ld = true;
+                    extras.json_ld_raw.push(value.clone());
                     collect_json_ld_types(&value, &mut extras.json_ld_types);
                 }
             }
@@ -91,10 +184,51 @@ impl PageExtras {
         let visible = collect_visible_text(&document);
         extras.word_count = visible.split_whitespace().count();
         extras.sentence_count = count_sentences(&visible).max(1);
+        extras.text_bytes = visible.len();
+        extras.html_bytes = html.len();
+
+        // Direct answer section: words in the first paragraph block right after the H1
+        extras.answer_section_words = answer_section_words(&document);
+
+        // <time datetime> count (freshness signal)
+        extras.time_datetime_count = count_selector(&document, "time[datetime]");
 
         // URL heuristics
         if let Ok(parsed) = Url::parse(url) {
             extras.url_has_underscore = parsed.path().contains('_');
+        }
+
+        // robots meta (also surfaced in PageExtras for directive checks)
+        if let Ok(sel) = Selector::parse(r#"meta[name="robots"]"#) {
+            extras.meta_robots = document
+                .select(&sel)
+                .next()
+                .and_then(|el| el.value().attr("content").map(|s| s.to_string()));
+        }
+
+        // Internal / external link counts
+        if let Ok(sel) = Selector::parse("a[href]") {
+            let origin = Url::parse(url).ok();
+            for el in document.select(&sel) {
+                let Some(href) = el.value().attr("href") else {
+                    continue;
+                };
+                if !href.starts_with("http://") && !href.starts_with("https://") {
+                    continue;
+                }
+                let Ok(parsed) = Url::parse(href) else {
+                    continue;
+                };
+                let same_host = match &origin {
+                    Some(o) => parsed.host_str() == o.host_str(),
+                    None => false,
+                };
+                if same_host {
+                    extras.internal_count += 1;
+                } else if parsed.host_str().is_some() {
+                    extras.external_count += 1;
+                }
+            }
         }
 
         extras
@@ -119,8 +253,212 @@ fn count_selector(document: &Html, selector_str: &str) -> usize {
         .unwrap_or(0)
 }
 
-fn collect_json_ld_types(value: &serde_json::Value, out: &mut Vec<String>) {
+/// Counts words in the direct text children of an element (ignoring descendants).
+fn direct_text_words(el: &scraper::ElementRef) -> usize {
+    el.children()
+        .filter_map(|child| match child.value() {
+            scraper::node::Node::Text(t) => Some(t.split_whitespace().count()),
+            _ => None,
+        })
+        .sum()
+}
+
+/// Word count of the paragraph block that immediately follows the first <h1>.
+/// Used by the direct-answer (AEO) check: a 40-100 word passage right after the
+/// H1 is a strong signal the page opens with a scannable, extractable answer.
+fn answer_section_words(document: &Html) -> usize {
+    let Ok(h1_sel) = Selector::parse("h1") else {
+        return 0;
+    };
+    let Some(h1) = document.select(&h1_sel).next() else {
+        return 0;
+    };
+    let mut words = 0usize;
+    for sibling in h1.next_siblings() {
+        let Some(el) = sibling.value().as_element() else {
+            continue;
+        };
+        if matches!(el.name(), "h2" | "h3" | "h4" | "script" | "style" | "nav" | "footer") {
+            break;
+        }
+        if let Some(child_el) = scraper::ElementRef::wrap(sibling) {
+            let mut parts: Vec<String> = Vec::new();
+            collect_text(&child_el, &mut parts);
+            words += parts.join(" ").split_whitespace().count();
+        }
+        if words >= 200 {
+            break;
+        }
+    }
+    words
+}
+
+/// Formats a huge internal:external ratio (no external links) as a readable value.
+fn ratio_display(ratio: f64) -> String {
+    if ratio == f64::MAX {
+        "∞".to_string()
+    } else if ratio >= 100.0 {
+        format!("{ratio:.0}")
+    } else {
+        format!("{ratio:.1}")
+    }
+}
+
+/// Every JSON-LD block must carry @context and @type to be valid structured data.
+fn all_json_ld_valid(blocks: &[serde_json::Value]) -> bool {
+    if blocks.is_empty() {
+        return true;
+    }
+    blocks.iter().all(|v| json_ld_block_valid(v, true))
+}
+
+fn json_ld_block_valid(value: &serde_json::Value, top_level: bool) -> bool {
     match value {
+        serde_json::Value::Array(items) => items.iter().all(|i| json_ld_block_valid(i, top_level)),
+        serde_json::Value::Object(map) => {
+            // Top-level blocks declare @context; nested entity objects inherit it.
+            if top_level && !map.contains_key("@context") {
+                return false;
+            }
+            let has_type = match map.get("@type") {
+                Some(serde_json::Value::String(s)) => !s.is_empty(),
+                Some(serde_json::Value::Array(l)) => !l.is_empty(),
+                _ => false,
+            };
+            if !has_type {
+                return false;
+            }
+            let mut ok = true;
+            for (key, child) in map {
+                if key == "@context" || key == "@type" {
+                    continue;
+                }
+                if key == "@graph" && !json_ld_block_valid(child, false) {
+                    ok = false;
+                }
+                if is_entity_value(child) && !json_ld_block_valid(child, false) {
+                    ok = false;
+                }
+            }
+            ok
+        }
+        _ => false,
+    }
+}
+
+/// Whether a value looks like a nested schema.org entity (has @type) vs a scalar.
+fn is_entity_value(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map.contains_key("@type") || map.contains_key("@id"),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .any(|i| matches!(i, serde_json::Value::Object(m) if m.contains_key("@type"))),
+        _ => false,
+    }
+}
+
+/// Fraction (0-1) of required schema properties that are present across blocks.
+fn schema_completeness_score(blocks: &[serde_json::Value]) -> f64 {
+    if blocks.is_empty() {
+        return 0.0;
+    }
+    let mut present = 0usize;
+    let mut required = 0usize;
+    for block in blocks {
+        collect_required(block, &mut present, &mut required);
+    }
+    if required == 0 {
+        return 0.0;
+    }
+    present as f64 / required as f64
+}
+
+fn collect_required(value: &serde_json::Value, present: &mut usize, required: &mut usize) {
+    let (entities, required_keys) = match value {
+        serde_json::Value::Object(map) => {
+            let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
+            let keys: &[&str] = match ty {
+                "Article" | "NewsArticle" | "BlogPosting" => {
+                    &["headline", "datePublished", "author"]
+                }
+                "Person" => &["name"],
+                "Organization" => &["name"],
+                "WebSite" => &["name"],
+                "FAQPage" => &["mainEntity"],
+                "Product" => &["name"],
+                "BreadcrumbList" => &["itemListElement"],
+                "Recipe" => &["name", "recipeIngredient", "recipeInstructions"],
+                _ => &[],
+            };
+            let children: Vec<_> = map
+                .iter()
+                .filter(|(k, _)| !k.starts_with('@'))
+                .map(|(_, v)| v)
+                .collect();
+            (children, keys)
+        }
+        serde_json::Value::Array(items) => {
+            let children: Vec<_> = items.iter().collect();
+            (children, &[] as &[&str])
+        }
+        _ => (Vec::new(), &[] as &[&str]),
+    };
+
+    *required += required_keys.len();
+    for key in required_keys {
+        let found = match value {
+            serde_json::Value::Object(map) => {
+                map.get(*key).map(|v| !v.is_null()).unwrap_or(false)
+            }
+            _ => false,
+        };
+        if found {
+            *present += 1;
+        }
+    }
+
+    for child in entities {
+        collect_required(child, present, required);
+    }
+}
+
+/// Whether any JSON-LD block declares an author entity.
+fn json_ld_has_author(blocks: &[serde_json::Value]) -> bool {
+    blocks.iter().any(block_has_author)
+}
+
+fn block_has_author(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(block_has_author),
+        serde_json::Value::Object(map) => {
+            if map.contains_key("author") {
+                return true;
+            }
+            map.values().any(block_has_author)
+        }
+        _ => false,
+    }
+}
+
+/// Whether any JSON-LD block exposes freshness dates.
+fn json_ld_has_freshness(blocks: &[serde_json::Value]) -> bool {
+    blocks.iter().any(block_has_freshness)
+}
+
+fn block_has_freshness(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(block_has_freshness),
+        serde_json::Value::Object(map) => {
+            if map.contains_key("datePublished") || map.contains_key("dateModified") {
+                return true;
+            }
+            map.values().any(block_has_freshness)
+        }
+        _ => false,
+    }
+}
+
+fn collect_json_ld_types(value: &serde_json::Value, out: &mut Vec<String>) {    match value {
         serde_json::Value::Array(items) => {
             for item in items {
                 collect_json_ld_types(item, out);
@@ -429,6 +767,47 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
+    // Internal:external ratio (10:1 recommended)
+    let ie_ratio = if extras.external_count > 0 {
+        extras.internal_count as f64 / extras.external_count as f64
+    } else if extras.internal_count > 0 {
+        f64::MAX
+    } else {
+        0.0
+    };
+    out.push(check(
+        "internal_external_ratio",
+        "meta",
+        "info",
+        extras.internal_count > 0 && ie_ratio >= 10.0,
+        1.0,
+        format!(
+            "Internal/external link ratio: {}:1 (target ≥ 10:1)",
+            ratio_display(ie_ratio)
+        ),
+        "Link mostly within your own site; cite external sources sparingly.",
+        Some(format!(
+            "{} internal / {} external",
+            extras.internal_count, extras.external_count
+        )),
+    ));
+
+    // Meta description topic match (title/description share keywords)
+    let desc_topic_match = match (&seo.title, &seo.meta_description) {
+        (Some(t), Some(d)) => !token_set(t).is_disjoint(&token_set(d)),
+        _ => false,
+    };
+    out.push(check(
+        "meta_description_topic_match",
+        "meta",
+        "info",
+        desc_topic_match,
+        1.0,
+        "Meta description shares topic keywords with the title",
+        "Make the meta description summarize the same topic as the title and content.",
+        None,
+    ));
+
     // ==================== TECHNICAL & MOBILE ====================
     let https = ctx.url.starts_with("https://");
     out.push(check(
@@ -524,6 +903,44 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         },
         "Add <link rel=\"canonical\"> pointing to the page's preferred URL.",
         None,
+    ));
+    // Canonical self-reference (recommended pattern for canonical pages)
+    let canonical_self = seo.canonical.as_deref().map(|c| {
+        let trimmed = c.trim_end_matches('#');
+        trimmed == ctx.url.trim_end_matches('#')
+            || trimmed.trim_end_matches('/') == ctx.url.trim_end_matches('/')
+    });
+    out.push(check(
+        "canonical_self_reference",
+        "technical",
+        "info",
+        canonical_self.unwrap_or(false),
+        1.0,
+        match canonical_self {
+            Some(true) => "Canonical points to the page itself".to_string(),
+            Some(false) => "Canonical points to a different URL".to_string(),
+            None => "No canonical to evaluate".to_string(),
+        },
+        "The canonical tag of a page that should rank should reference itself.",
+        seo.canonical.clone(),
+    ));
+    let robots = extras.meta_robots.as_deref().or(seo.meta_robots.as_deref());
+    let robots_nofollow = robots.map(|r| r.contains("nofollow")).unwrap_or(false);
+    let robots_nosnippet = robots.map(|r| r.contains("nosnippet")).unwrap_or(false);
+    out.push(check(
+        "meta_robots_directives",
+        "technical",
+        "warning",
+        !robots_nofollow && !robots_nosnippet,
+        2.0,
+        match (robots_nofollow, robots_nosnippet) {
+            (true, true) => "robots meta blocks follow and snippet".to_string(),
+            (true, false) => "robots meta sets nofollow".to_string(),
+            (false, true) => "robots meta sets nosnippet".to_string(),
+            (false, false) => "robots meta allows follow and snippet".to_string(),
+        },
+        "Remove nofollow/nosnippet from the robots meta unless the page must not be followed or shown in snippets.",
+        robots.map(|r| r.to_string()),
     ));
     let noindex = seo
         .meta_robots
@@ -854,9 +1271,111 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Fix invalid element nesting flagged by the semantic analysis.",
         None,
     ));
+    out.push(check(
+        "table_headers",
+        "semantic_html",
+        "error",
+        extras.table_total == 0 || extras.table_with_headers == extras.table_total,
+        2.0,
+        format!(
+            "Tables with header cells: {}/{}",
+            extras.table_with_headers, extras.table_total
+        ),
+        "Mark header row and/or column cells with <th> so data cells have context.",
+        Some(format!(
+            "{}/{}",
+            extras.table_with_headers, extras.table_total
+        )),
+    ));
+    out.push(check(
+        "table_captions",
+        "semantic_html",
+        "info",
+        extras.table_total == 0 || extras.table_with_caption == extras.table_total,
+        1.0,
+        format!(
+            "Tables with captions: {}/{}",
+            extras.table_with_caption, extras.table_total
+        ),
+        "Add a <caption> to each table describing what it contains.",
+        Some(format!(
+            "{}/{}",
+            extras.table_with_caption, extras.table_total
+        )),
+    ));
+    out.push(check(
+        "figure_captions",
+        "semantic_html",
+        "info",
+        extras.figure_total == 0 || extras.figure_with_caption == extras.figure_total,
+        1.0,
+        format!(
+            "Figures with captions: {}/{}",
+            extras.figure_with_caption, extras.figure_total
+        ),
+        "Add a <figcaption> inside each <figure> to explain the visual.",
+        Some(format!(
+            "{}/{}",
+            extras.figure_with_caption, extras.figure_total
+        )),
+    ));
+    out.push(check(
+        "iframe_titles",
+        "semantic_html",
+        "warning",
+        extras.iframe_total == 0 || extras.iframe_with_title == extras.iframe_total,
+        2.0,
+        format!(
+            "Iframes with title: {}/{}",
+            extras.iframe_with_title, extras.iframe_total
+        ),
+        "Give every <iframe> a title describing the embedded content.",
+        Some(format!("{}/{}", extras.iframe_with_title, extras.iframe_total)),
+    ));
+    out.push(check(
+        "video_accessible",
+        "semantic_html",
+        "warning",
+        extras.video_total == 0 || extras.video_accessible == extras.video_total,
+        2.0,
+        format!(
+            "Videos with controls/captions: {}/{}",
+            extras.video_accessible, extras.video_total
+        ),
+        "Add controls (or a <track>) to each <video> so users can pause and caption content.",
+        Some(format!("{}/{}", extras.video_accessible, extras.video_total)),
+    ));
+    out.push(check(
+        "autocomplete_inputs",
+        "accessibility",
+        "info",
+        extras.input_total == 0 || extras.autocomplete_inputs >= 50,
+        0.5,
+        format!(
+            "Form inputs with autocomplete: {}%",
+            extras.autocomplete_inputs
+        ),
+        "Add an autocomplete attribute (e.g. email, name) to common form fields to speed up completion.",
+        Some(format!("{}%", extras.autocomplete_inputs)),
+    ));
 
     // ==================== PERFORMANCE ====================
     let size_kb = ctx.size_bytes as f64 / 1024.0;
+    let ratio = if extras.html_bytes > 0 {
+        extras.text_bytes as f64 / extras.html_bytes as f64
+    } else {
+        0.0
+    };
+    out.push(check(
+        "content_to_html_ratio",
+        "performance",
+        "info",
+        ratio >= 0.08,
+        1.0,
+        format!("Content-to-HTML ratio: {:.1}% (target ≥ 8%)", ratio * 100.0),
+        "Reduce non-content markup (inline styles, wrappers) so text dominates the HTML.",
+        Some(format!("{:.1}%", ratio * 100.0)),
+    ));
     out.push(check(
         "page_weight",
         "performance",
@@ -886,6 +1405,45 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Images declare dimensions for lazy layout",
         "Add width/height to images so browsers can reserve space.",
         None,
+    ));
+    out.push(check(
+        "img_srcset",
+        "performance",
+        "info",
+        extras.img_total == 0 || extras.img_srcset == extras.img_total,
+        1.0,
+        format!(
+            "Images with srcset: {}/{}",
+            extras.img_srcset, extras.img_total
+        ),
+        "Use srcset to serve responsive sizes for different viewports.",
+        Some(format!("{}/{}", extras.img_srcset, extras.img_total)),
+    ));
+    out.push(check(
+        "lazy_loading",
+        "performance",
+        "info",
+        extras.img_total == 0 || extras.img_lazy >= extras.img_total.saturating_sub(1),
+        1.0,
+        format!(
+            "Images with explicit loading: {}/{}",
+            extras.img_lazy, extras.img_total
+        ),
+        "Declare loading=\"lazy\" (or eager) on images below the fold.",
+        Some(format!("{}/{}", extras.img_lazy, extras.img_total)),
+    ));
+    out.push(check(
+        "render_blocking_scripts",
+        "performance",
+        "warning",
+        extras.scripts_render_blocking == 0,
+        2.0,
+        format!(
+            "Render-blocking scripts: {}",
+            extras.scripts_render_blocking
+        ),
+        "Load external scripts with async or defer so they do not block rendering.",
+        Some(extras.scripts_render_blocking.to_string()),
     ));
     out.push(check(
         "resource_hints",
@@ -970,7 +1528,7 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
     );
     out.push(check(
         "semantic_html",
-        "ai_readability",
+        "semantic_html",
         "info",
         semantic_html,
         1.0,
@@ -1083,6 +1641,102 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Lead with a direct, concise answer to the main question.",
         None,
     ));
+    out.push(check(
+        "direct_answer_section",
+        "sxo",
+        "info",
+        (40..=100).contains(&extras.answer_section_words),
+        1.0,
+        format!(
+            "Answer-style section after H1: {} words (ideal 40-100)",
+            extras.answer_section_words
+        ),
+        "Open with a focused 40-100 word passage that answers the main question directly.",
+        Some(extras.answer_section_words.to_string()),
+    ));
+    out.push(check(
+        "json_ld_valid",
+        "sxo",
+        "warning",
+        !extras.has_json_ld || all_json_ld_valid(&extras.json_ld_raw),
+        2.0,
+        if extras.json_ld_raw.is_empty() {
+            "No JSON-LD to validate".to_string()
+        } else if all_json_ld_valid(&extras.json_ld_raw) {
+            "JSON-LD blocks are structurally valid".to_string()
+        } else {
+            "At least one JSON-LD block is missing @context or @type".to_string()
+        },
+        "Every JSON-LD block needs @context and @type to be interpretable by Google and AI systems.",
+        None,
+    ));
+    out.push(check(
+        "schema_completeness",
+        "sxo",
+        "info",
+        schema_completeness_score(&extras.json_ld_raw) >= 0.6,
+        1.0,
+        format!(
+            "Schema completeness: {:.0}% of required properties present",
+            schema_completeness_score(&extras.json_ld_raw) * 100.0
+        ),
+        "Add the required properties for each schema type (headline for Article, name for Person, etc.).",
+        None,
+    ));
+    let has_faq_schema = extras.json_ld_types.iter().any(|t| t == "FAQPage");
+    let faq_like_markup = extras.details_summary > 0 || extras.question_headings > 0;
+    out.push(check(
+        "faq_accordion_without_schema",
+        "sxo",
+        "info",
+        !faq_like_markup || has_faq_schema,
+        1.0,
+        match (faq_like_markup, has_faq_schema) {
+            (true, false) => "FAQ-like content without FAQPage schema".to_string(),
+            (true, true) => "FAQ-like content with FAQPage schema".to_string(),
+            (false, _) => "No FAQ-like content detected".to_string(),
+        },
+        "Mark up question/answer or accordion content with FAQPage schema so AI assistants can cite it.",
+        Some(format!(
+            "{} details/summary, {} question headings",
+            extras.details_summary, extras.question_headings
+        )),
+    ));
+    let has_article_schema = extras
+        .json_ld_types
+        .iter()
+        .any(|t| matches!(t.as_str(), "Article" | "NewsArticle" | "BlogPosting"));
+    let has_author = json_ld_has_author(&extras.json_ld_raw);
+    out.push(check(
+        "author_schema",
+        "sxo",
+        "info",
+        !has_article_schema || has_author,
+        1.0,
+        match (has_article_schema, has_author) {
+            (true, false) => "Article schema present but no author".to_string(),
+            (true, true) => "Article schema declares an author".to_string(),
+            (false, _) => "No article schema to check".to_string(),
+        },
+        "Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.",
+        None,
+    ));
+    let has_freshness = json_ld_has_freshness(&extras.json_ld_raw)
+        || extras.time_datetime_count > 0;
+    out.push(check(
+        "freshness_dates",
+        "sxo",
+        "info",
+        has_freshness,
+        1.0,
+        if has_freshness {
+            "Publish/modify dates present (schema or <time datetime>)".to_string()
+        } else {
+            "No freshness dates detected".to_string()
+        },
+        "Add datePublished/dateModified (or <time datetime>) so search and AI systems can trust content freshness.",
+        None,
+    ));
 
     attach_examples(&mut out, seo);
 
@@ -1102,6 +1756,11 @@ const SEMANTIC_CHECK_MAP: &[(&str, &[&str])] = &[
     ("aria_controls", &["missing_aria"]),
     ("empty_link_text", &["empty_link_text"]),
     ("nesting_valid", &["invalid_nesting", "context_nesting"]),
+    ("table_headers", &["table_without_headers"]),
+    ("table_captions", &["table_without_caption"]),
+    ("figure_captions", &["figure_without_caption"]),
+    ("iframe_titles", &["iframe_without_title"]),
+    ("video_accessible", &["video_without_track_or_controls"]),
     ("main_landmark", &["missing_main"]),
     ("header_landmark", &["missing_header"]),
     ("footer_landmark", &["missing_footer"]),
@@ -1148,5 +1807,184 @@ fn severity_rank(severity: &str) -> u8 {
         "error" => 0,
         "warning" => 1,
         _ => 2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx(url: &str) -> AuditContext {
+        AuditContext {
+            url: url.to_string(),
+            status_code: 200,
+            size_bytes: 4096,
+            load_time_ms: 120,
+            pagespeed_score: None,
+        }
+    }
+
+    fn run(html: &str, url: &str) -> Vec<CheckResult> {
+        let extras = PageExtras::extract(html, url);
+        let parsed = Url::parse(url).ok();
+        let parser = crate::crawler::parser::SeoParser::new();
+        let (seo, _) = parser.parse(html, &parsed.expect("valid url"));
+        run_all(&seo, &extras, &ctx(url))
+    }
+
+    fn run_default(html: &str, url: &str) -> Vec<CheckResult> {
+        let extras = PageExtras::extract(html, url);
+        run_all(&SeoData::default(), &extras, &ctx(url))
+    }
+
+    fn check<'a>(out: &'a [CheckResult], id: &str) -> &'a CheckResult {
+        out.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("check {id} missing"))
+    }
+
+    #[test]
+    fn test_extract_counts_semantic_elements() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Title</h1>
+        <p>First paragraph with enough words to make a small direct answer section for extraction.</p>
+        <table><caption>Data</caption><tr><th>H</th></tr></table>
+        <table><tr><td>x</td></tr></table>
+        <figure><img src="a.png" alt="a"><figcaption>Cap</figcaption></figure>
+        <figure><img src="b.png" alt="b"></figure>
+        <details><summary>Q</summary>Answer</details>
+        <video src="v.mp4"></video>
+        <iframe src="https://example.com"></iframe>
+    </main>
+</body>
+</html>"#;
+        let extras = PageExtras::extract(html, "https://example.com/page");
+        assert_eq!(extras.table_total, 2);
+        assert_eq!(extras.table_with_headers, 1);
+        assert_eq!(extras.table_with_caption, 1);
+        assert_eq!(extras.figure_total, 2);
+        assert_eq!(extras.figure_with_caption, 1);
+        assert_eq!(extras.details_summary, 1);
+        assert_eq!(extras.video_total, 1);
+        assert_eq!(extras.video_accessible, 0);
+        assert_eq!(extras.iframe_total, 1);
+        assert_eq!(extras.iframe_with_title, 0);
+    }
+
+    #[test]
+    fn test_internal_external_ratio_and_direct_answer() {
+        let links = (0..12)
+            .map(|i| format!("<a href=\"https://example.com/page/{i}\">link {i}</a>"))
+            .collect::<String>();
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Title</h1>
+        <p>This opening paragraph answers the main question directly in a compact passage of roughly forty to one hundred words so that AI answer engines can extract it quickly.</p>
+        <p>A second short paragraph adds a little more context about the topic of this page.</p>
+        {links}
+        <a href="https://other.com/x">external</a>
+    </main>
+</body>
+</html>"#
+        );
+        let out = run(&html, "https://example.com/page");
+        assert!(check(&out, "internal_external_ratio").passed);
+        assert!(check(&out, "direct_answer_section").passed);
+    }
+
+    #[test]
+    fn test_canonical_self_reference() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title><link rel="canonical" href="https://example.com/page"></head>
+<body><main><h1>T</h1><p>Content.</p></main></body>
+</html>"#;
+        let out = run(html, "https://example.com/page");
+        assert!(check(&out, "canonical_self_reference").passed);
+
+        let out = run(html, "https://example.com/other");
+        assert!(!check(&out, "canonical_self_reference").passed);
+    }
+
+    #[test]
+    fn test_robots_directives_and_freshness() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title><meta name="robots" content="nofollow, nosnippet"></head>
+<body><main><h1>T</h1><p>Content.</p></main></body>
+</html>"#;
+        let out = run(html, "https://example.com/page");
+        assert!(!check(&out, "meta_robots_directives").passed);
+
+        let with_time = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body><main><h1>T</h1><p>Content.</p><time datetime="2026-08-11">Aug</time></main></body>
+</html>"#;
+        let out = run(with_time, "https://example.com/page");
+        assert!(check(&out, "freshness_dates").passed);
+    }
+
+    #[test]
+    fn test_json_ld_validation_and_completeness() {
+        let valid = r#"{
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "A headline",
+            "datePublished": "2026-08-11",
+            "author": {"@type": "Person", "name": "Jane"}
+        }"#;
+        let invalid = r#"{"name": "no context or type"}"#;
+
+        let html = |ld: &str| {
+            format!(
+                r#"<!DOCTYPE html><html lang="en"><head><title>T</title><script type="application/ld+json">{ld}</script></head><body><main><h1>T</h1><p>Content.</p></main></body></html>"#
+            )
+        };
+
+        let out = run(&html(valid), "https://example.com/page");
+        assert!(check(&out, "json_ld_valid").passed);
+        assert!(check(&out, "schema_completeness").passed);
+        assert!(check(&out, "author_schema").passed);
+
+        let out = run(&html(invalid), "https://example.com/page");
+        assert!(!check(&out, "json_ld_valid").passed);
+        assert!(check(&out, "author_schema").passed);
+
+        // Article without author fails author_schema
+        let no_author = r#"{
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "A headline"
+        }"#;
+        let out = run(&html(no_author), "https://example.com/page");
+        assert!(!check(&out, "author_schema").passed);
+    }
+
+    #[test]
+    fn test_faq_accordion_without_schema_and_rendering_checks() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>T</h1>
+        <details><summary>Question?</summary>Answer text.</details>
+        <img src="a.png" alt="a" width="10" height="10" srcset="a.png 1x" loading="lazy">
+        <script src="/app.js"></script>
+    </main>
+</body>
+</html>"#;
+        let out = run(html, "https://example.com/page");
+        assert!(!check(&out, "faq_accordion_without_schema").passed);
+        assert!(check(&out, "img_srcset").passed);
+        assert!(check(&out, "lazy_loading").passed);
+        assert!(!check(&out, "render_blocking_scripts").passed);
     }
 }

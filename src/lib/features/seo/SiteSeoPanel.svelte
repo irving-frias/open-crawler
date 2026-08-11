@@ -1,6 +1,6 @@
 <script lang="ts">
   import { listen } from '@tauri-apps/api/event';
-  import { RefreshCw, Loader2, Globe, Square, ChevronDown, Copy } from 'lucide-svelte';
+  import { RefreshCw, Loader2, Globe, Square, ChevronDown, Copy } from '@lucide/svelte';
   import { m } from '$lib/paraglide/messages.js';
   import { getSeoOverview, runSeoAuditAll, getSeoAuditStatus, stopSeoAudit } from '$lib/api/seo';
   import type { SeoOverview, SeoAuditProgress } from '$lib/api/types';
@@ -33,6 +33,7 @@
     technical: m['seo.category.technical'],
     social: m['seo.category.social'],
     accessibility: m['seo.category.accessibility'],
+    semantic_html: m['seo.category.semantic_html'],
     performance: m['seo.category.performance'],
     ai_readability: m['seo.category.ai_readability'],
     sxo: m['seo.category.sxo'],

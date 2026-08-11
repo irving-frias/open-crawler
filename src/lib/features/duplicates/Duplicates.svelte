@@ -2,7 +2,7 @@
   import { getDuplicateGroups } from '$lib/api/analytics';
   import type { DuplicateGroup } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { Copy, Check, RefreshCw, TriangleAlert, Files } from 'lucide-svelte';
+  import { Copy, Check, RefreshCw, TriangleAlert, Files } from '@lucide/svelte';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';

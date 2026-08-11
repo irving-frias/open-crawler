@@ -5,6 +5,7 @@ pub const CATEGORY_ORDER: &[&str] = &[
     "technical",
     "social",
     "accessibility",
+    "semantic_html",
     "performance",
     "ai_readability",
     "sxo",
@@ -12,12 +13,13 @@ pub const CATEGORY_ORDER: &[&str] = &[
 
 pub const CATEGORY_WEIGHTS: &[(&str, f64)] = &[
     ("meta", 0.25),
-    ("technical", 0.20),
-    ("accessibility", 0.15),
-    ("social", 0.10),
+    ("technical", 0.18),
+    ("accessibility", 0.12),
+    ("semantic_html", 0.12),
+    ("social", 0.07),
     ("performance", 0.10),
-    ("ai_readability", 0.10),
-    ("sxo", 0.10),
+    ("ai_readability", 0.08),
+    ("sxo", 0.08),
 ];
 
 fn category_weight(category: &str) -> f64 {
@@ -121,7 +123,7 @@ mod tests {
             ck("accessibility", "error", true, 3.0),
         ];
         let (score, grade, categories) = compute(&checks);
-        assert_eq!(score, 100.0);
+        assert!((score - 100.0).abs() < 0.001, "score: {score}");
         assert_eq!(grade, "A");
         assert_eq!(categories.len(), 3);
         assert!(categories.iter().all(|c| c.score == 100.0));

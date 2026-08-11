@@ -33,7 +33,7 @@
     ChevronDown,
     ScanSearch,
     Sparkles,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import * as Tabs from '$lib/components/ui/tabs/index.js';
   import { Card, CardContent, CardHeader } from '$lib/components/ui/card/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -358,6 +358,7 @@
       technical: m['seo.category.technical'],
       social: m['seo.category.social'],
       accessibility: m['seo.category.accessibility'],
+      semantic_html: m['seo.category.semantic_html'],
       performance: m['seo.category.performance'],
       ai_readability: m['seo.category.ai_readability'],
       sxo: m['seo.category.sxo'],

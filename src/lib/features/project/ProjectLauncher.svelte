@@ -1,7 +1,7 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
   import { getAppShell } from '$lib/app.svelte';
-  import { Settings, Plus, FolderOpen, ExternalLink, Trash2, FileUp, Loader2 } from 'lucide-svelte';
+  import { Settings, Plus, FolderOpen, ExternalLink, Trash2, FileUp, Loader2 } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import * as Select from '$lib/components/ui/select/index.js';

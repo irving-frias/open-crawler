@@ -29,7 +29,7 @@ pub struct SemanticIssue {
     pub column: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SeoData {
     pub title: Option<String>,
     pub meta_description: Option<String>,
@@ -756,7 +756,243 @@ impl SeoParser {
             });
         }
 
+        // 25. Substantial <main> content without an <article> (citable content)
+        if self.count_elements(document, "article") == 0 && self.main_has_substantial_text(document)
+        {
+            issues.push(SemanticIssue {
+                issue_type: "article_missing".to_string(),
+                severity: "warning".to_string(),
+                element: "<article>".to_string(),
+                message: "Page has substantial content but no <article> element".to_string(),
+                selector: Some("article".to_string()),
+                ..Default::default()
+            });
+        }
+
+        // 26. <time> without datetime (freshness signal for AI/AEO extraction)
+        let times_no_datetime = self.iter_elements(document, "time:not([datetime])");
+        for el in times_no_datetime.into_iter().take(MAX_ELEMENT_ISSUES_PER_TYPE) {
+            issues.push(issue(
+                "time_without_datetime",
+                "warning",
+                "<time>",
+                "<time> is missing the datetime attribute",
+                Some("time".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 27. <figure> without <figcaption>
+        for el in self
+            .figures_without_caption(document)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "figure_without_caption",
+                "info",
+                "<figure>",
+                "<figure> has no <figcaption>",
+                Some("figure".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 28. <table> without <th> header cells
+        for el in self
+            .tables_without_headers(document)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "table_without_headers",
+                "error",
+                "<table>",
+                "<table> has no <th> header cells",
+                Some("table".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 29. <table> without <caption>
+        for el in self
+            .tables_without_caption(document)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "table_without_caption",
+                "info",
+                "<table>",
+                "<table> has no <caption>",
+                Some("table".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 30. <blockquote> without attribution (cite or named source)
+        for el in self
+            .blockquotes_without_attribution(document)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "blockquote_without_attribution",
+                "warning",
+                "<blockquote>",
+                "<blockquote> has no attribution (cite or author)",
+                Some("blockquote".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 31. Substantial text directly inside a <div> instead of <p>
+        for el in self
+            .divs_with_direct_text(document, 20)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "text_in_div_instead_of_p",
+                "warning",
+                "<div>",
+                "<div> contains substantial text; use <p> for body copy",
+                Some("div".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 32. <iframe> without title
+        for el in self
+            .iter_elements(document, "iframe:not([title])")
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "iframe_without_title",
+                "warning",
+                "<iframe>",
+                "<iframe> is missing the title attribute",
+                Some("iframe".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 33. <video> without controls or <track>
+        for el in self
+            .videos_without_controls(document)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "video_without_track_or_controls",
+                "warning",
+                "<video>",
+                "<video> has no controls attribute and no <track>",
+                Some("video".to_string()),
+                Some(el),
+            ));
+        }
+
         issues
+    }
+
+    fn main_has_substantial_text(&self, document: &Html) -> bool {
+        let selector = match Selector::parse("main") {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let Some(main) = document.select(&selector).next() else {
+            return false;
+        };
+        let mut parts: Vec<String> = Vec::new();
+        collect_visible_text(&main, &mut parts);
+        parts.join(" ").split_whitespace().count() >= 50
+    }
+
+    fn figures_without_caption<'a>(
+        &self,
+        document: &'a Html,
+    ) -> Vec<scraper::ElementRef<'a>> {
+        let caption = match Selector::parse("figcaption") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        self.iter_elements(document, "figure")
+            .into_iter()
+            .filter(|el| el.select(&caption).next().is_none())
+            .collect()
+    }
+
+    fn tables_without_headers<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
+        let th = match Selector::parse("th") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        self.iter_elements(document, "table")
+            .into_iter()
+            .filter(|el| el.select(&th).next().is_none())
+            .collect()
+    }
+
+    fn tables_without_caption<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
+        let caption = match Selector::parse("caption") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        self.iter_elements(document, "table")
+            .into_iter()
+            .filter(|el| el.select(&caption).next().is_none())
+            .collect()
+    }
+
+    fn blockquotes_without_attribution<'a>(
+        &self,
+        document: &'a Html,
+    ) -> Vec<scraper::ElementRef<'a>> {
+        let inner = match Selector::parse("footer, figcaption, cite") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        self.iter_elements(document, "blockquote")
+            .into_iter()
+            .filter(|el| {
+                el.value().attr("cite").is_none() && el.select(&inner).next().is_none()
+            })
+            .collect()
+    }
+
+    fn videos_without_controls<'a>(&self, document: &'a Html) -> Vec<scraper::ElementRef<'a>> {
+        let track = match Selector::parse("track") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        self.iter_elements(document, "video")
+            .into_iter()
+            .filter(|el| {
+                el.value().attr("controls").is_none() && el.select(&track).next().is_none()
+            })
+            .collect()
+    }
+
+    fn divs_with_direct_text<'a>(
+        &self,
+        document: &'a Html,
+        min_words: usize,
+    ) -> Vec<scraper::ElementRef<'a>> {
+        self.iter_elements(document, "div")
+            .into_iter()
+            .filter(|el| self.direct_text_words(*el) >= min_words)
+            .collect()
+    }
+
+    fn direct_text_words(&self, el: scraper::ElementRef) -> usize {
+        el.children()
+            .filter_map(|child| match child.value() {
+                scraper::node::Node::Text(t) => Some(t.split_whitespace().count()),
+                _ => None,
+            })
+            .sum()
     }
 
     fn has_element(&self, document: &Html, selector_str: &str) -> bool {
@@ -2023,14 +2259,14 @@ mod tests {
     #[test]
     fn test_skip_link_detection() {
         let parser = SeoParser::new();
-        let with_skip = r#"<!DOCTYPE html>
+        let with_skip = r##"<!DOCTYPE html>
 <html lang="en">
 <head><title>T</title></head>
 <body>
     <a href="#main">Skip to content</a>
     <main><h1>Title</h1></main>
 </body>
-</html>"#;
+</html>"##;
         let issues = parser.analyze_semantics(&parser_doc(with_skip));
         assert!(
             !issues.iter().any(|i| i.issue_type == "skip_link_missing"),
@@ -2201,5 +2437,174 @@ mod tests {
             issues.iter().any(|i| i.issue_type == "aria_current_nav"),
             "nav without aria-current should be reported"
         );
+    }
+
+    #[test]
+    fn test_article_missing_for_substantial_main() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Title</h1>
+        <p>This is the first paragraph of a long article with enough words to be considered substantial, meaningful content that deserves to be wrapped in an article element for better extraction.</p>
+        <p>This second paragraph adds even more detail and keeps expanding the body of text so that the total word count crosses the fifty word threshold used by the analysis.</p>
+        <p>A third paragraph rounds out the content, making the main section clearly substantial and self-contained.</p>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        assert!(
+            issues.iter().any(|i| i.issue_type == "article_missing"),
+            "substantial main without article should be reported"
+        );
+
+        let with_article = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <article>
+            <h1>Title</h1>
+            <p>This is the first paragraph of a long article with enough words to be considered substantial, meaningful content that deserves to be wrapped in an article element for better extraction.</p>
+            <p>This second paragraph adds even more detail and keeps expanding the body of text so that the total word count crosses the fifty word threshold used by the analysis.</p>
+            <p>A third paragraph rounds out the content, making the main section clearly substantial and self-contained.</p>
+        </article>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(with_article));
+        assert!(
+            !issues.iter().any(|i| i.issue_type == "article_missing"),
+            "article present, no issue expected"
+        );
+    }
+
+    #[test]
+    fn test_time_without_datetime() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <time datetime="2026-08-11">Aug 11, 2026</time>
+        <time>Yesterday</time>
+        <time>Today</time>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let times: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "time_without_datetime")
+            .collect();
+        assert_eq!(times.len(), 2, "two <time> without datetime expected");
+        assert!(times.iter().all(|i| i.xpath.is_some()));
+    }
+
+    #[test]
+    fn test_figure_and_table_checks() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <figure><img src="a.png" alt="a"><figcaption>Caption A</figcaption></figure>
+        <figure><img src="b.png" alt="b"></figure>
+        <table>
+            <caption>Planets</caption>
+            <tr><th>Name</th><th>Radius</th></tr>
+            <tr><td>Earth</td><td>6371</td></tr>
+        </table>
+        <table>
+            <tr><td>No headers</td></tr>
+        </table>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+
+        let figs: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "figure_without_caption")
+            .collect();
+        assert_eq!(figs.len(), 1, "one figure without caption expected");
+
+        let no_th: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "table_without_headers")
+            .collect();
+        assert_eq!(no_th.len(), 1, "one table without th expected");
+        assert_eq!(no_th[0].severity, "error");
+
+        let no_cap: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "table_without_caption")
+            .collect();
+        assert_eq!(no_cap.len(), 1, "one table without caption expected");
+    }
+
+    #[test]
+    fn test_blockquote_attribution_and_media_accessibility() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <blockquote cite="https://example.com/source">Cited quote</blockquote>
+        <blockquote>Unattributed quote</blockquote>
+        <iframe src="https://example.com"></iframe>
+        <iframe src="https://example.com" title="Map"></iframe>
+        <video src="v.mp4"></video>
+        <video src="v2.mp4" controls></video>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+
+        let quotes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "blockquote_without_attribution")
+            .collect();
+        assert_eq!(quotes.len(), 1, "one unattributed blockquote expected");
+
+        let iframes: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "iframe_without_title")
+            .collect();
+        assert_eq!(iframes.len(), 1, "one iframe without title expected");
+
+        let videos: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "video_without_track_or_controls")
+            .collect();
+        assert_eq!(videos.len(), 1, "one video without controls expected");
+    }
+
+    #[test]
+    fn test_text_in_div_instead_of_p() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <div>This is a long block of text sitting directly inside a div element instead of a paragraph tag, and it keeps going until there are well over twenty words present to trigger the warning.</div>
+        <div><p>A short child paragraph is fine.</p></div>
+        <span>Short</span>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let divs: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "text_in_div_instead_of_p")
+            .collect();
+        assert_eq!(divs.len(), 1, "one text-heavy div expected");
+        assert!(divs[0].xpath.is_some());
     }
 }

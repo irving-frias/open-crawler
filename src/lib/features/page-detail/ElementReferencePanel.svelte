@@ -2,7 +2,7 @@
   import type { ElementReference } from '$lib/data/html-elements';
   import { m } from '$lib/paraglide/messages.js';
   import { getLocale } from '$lib/paraglide/runtime.js';
-  import { ExternalLink } from 'lucide-svelte';
+  import { ExternalLink } from '@lucide/svelte';
 
   let {
     tag,

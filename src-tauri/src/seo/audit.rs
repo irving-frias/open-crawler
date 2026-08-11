@@ -167,8 +167,8 @@ mod tests {
         assert!(by_id("https_used").unwrap().passed);
         assert!(by_id("img_alt").unwrap().passed);
 
-        // 7 categories should be reported.
-        assert_eq!(result.categories.len(), 7);
+        // 8 categories should be reported.
+        assert_eq!(result.categories.len(), 8);
     }
 
     #[test]

@@ -672,6 +672,217 @@ const DICT: Record<string, CheckDictEntry> = {
       guidance: 'Comienza con una respuesta directa y concisa a la pregunta principal.',
     },
   },
+  // ==================== FASE 2 (2026: AIO/AEO/GEO + ratios) ====================
+  content_to_html_ratio: {
+    en: {
+      message: 'Content-to-HTML ratio: {0} (target ≥ 8%)',
+      guidance: 'Reduce non-content markup (inline styles, wrappers) so text dominates the HTML.',
+    },
+    es: {
+      message: 'Relación contenido-HTML: {0} (objetivo ≥ 8%)',
+      guidance:
+        'Reduce el marcado no relacionado con contenido (estilos en línea, contenedores) para que el texto domine el HTML.',
+    },
+  },
+  internal_external_ratio: {
+    en: {
+      message: 'Internal/external link ratio: {0} (target ≥ 10:1)',
+      guidance: 'Link mostly within your own site; cite external sources sparingly.',
+    },
+    es: {
+      message: 'Relación de enlaces internos/externos: {0} (objetivo ≥ 10:1)',
+      guidance: 'Enlaza principalmente dentro de tu propio sitio; cita fuentes externas con moderación.',
+    },
+  },
+  canonical_self_reference: {
+    en: {
+      message: 'Canonical points to the page itself',
+      guidance: 'The canonical tag of a page that should rank should reference itself.',
+    },
+    es: {
+      message: 'El canonical apunta a la propia página',
+      guidance: 'La etiqueta canonical de una página que debe posicionarse debería referenciarse a sí misma.',
+    },
+  },
+  meta_robots_directives: {
+    en: {
+      message: 'Robots meta uses nofollow or nosnippet',
+      guidance:
+        'Remove nofollow/nosnippet from the robots meta unless the page must not be followed or shown in snippets.',
+    },
+    es: {
+      message: 'La meta de robots usa nofollow o nosnippet',
+      guidance:
+        'Elimina nofollow/nosnippet de la meta de robots salvo que la página no deba rastrearse o mostrarse en fragmentos.',
+    },
+  },
+  meta_description_topic_match: {
+    en: {
+      message: 'Meta description shares topic keywords with the title',
+      guidance: 'Make the meta description summarize the same topic as the title and content.',
+    },
+    es: {
+      message: 'La meta description comparte palabras clave con el título',
+      guidance: 'Haz que la meta description resuma el mismo tema que el título y el contenido.',
+    },
+  },
+  json_ld_valid: {
+    en: {
+      message: 'JSON-LD blocks are structurally valid',
+      guidance: 'Every JSON-LD block needs @context and @type to be interpretable.',
+    },
+    es: {
+      message: 'Los bloques JSON-LD son estructuralmente válidos',
+      guidance: 'Cada bloque JSON-LD necesita @context y @type para ser interpretable.',
+    },
+  },
+  schema_completeness: {
+    en: {
+      message: 'Schema completeness: {0} of required properties present',
+      guidance:
+        'Add the required properties for each schema type (headline for Article, name for Person, etc.).',
+    },
+    es: {
+      message: 'Completitud del schema: {0} de las propiedades requeridas presentes',
+      guidance:
+        'Añade las propiedades requeridas para cada tipo de schema (headline en Article, name en Person, etc.).',
+    },
+  },
+  faq_accordion_without_schema: {
+    en: {
+      message: 'FAQ-like content without FAQPage schema',
+      guidance:
+        'Mark up question/answer or accordion content with FAQPage schema so AI assistants can cite it.',
+    },
+    es: {
+      message: 'Contenido tipo FAQ sin schema FAQPage',
+      guidance:
+        'Marca el contenido de preguntas/respuestas o acordeones con el schema FAQPage para que los asistentes de IA puedan citarlo.',
+    },
+  },
+  author_schema: {
+    en: {
+      message: 'Article schema present but no author',
+      guidance: 'Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.',
+    },
+    es: {
+      message: 'Schema de artículo presente pero sin autor',
+      guidance:
+        'Declara el autor (Person) en el schema de artículo para reforzar E-E-A-T y la atribución de entidades.',
+    },
+  },
+  freshness_dates: {
+    en: {
+      message: 'No freshness dates detected',
+      guidance:
+        'Add datePublished/dateModified (or <time datetime>) so search and AI systems can trust content freshness.',
+    },
+    es: {
+      message: 'No se detectan fechas de actualización',
+      guidance:
+        'Añade datePublished/dateModified (o <time datetime>) para que los buscadores y la IA confíen en la frescura del contenido.',
+    },
+  },
+  direct_answer_section: {
+    en: {
+      message: 'Answer-style section after H1: {0} words (ideal 40-100)',
+      guidance: 'Open with a focused 40-100 word passage that answers the main question directly.',
+    },
+    es: {
+      message: 'Sección de respuesta tras el H1: {0} palabras (ideal 40-100)',
+      guidance: 'Abre con un pasaje enfocado de 40-100 palabras que responda directamente a la pregunta principal.',
+    },
+  },
+  img_srcset: {
+    en: {
+      message: 'Images with srcset: {0}',
+      guidance: 'Use srcset to serve responsive sizes for different viewports.',
+    },
+    es: {
+      message: 'Imágenes con srcset: {0}',
+      guidance: 'Usa srcset para servir tamaños responsivos según el viewport.',
+    },
+  },
+  lazy_loading: {
+    en: {
+      message: 'Images with explicit loading: {0}',
+      guidance: 'Declare loading="lazy" (or eager) on images below the fold.',
+    },
+    es: {
+      message: 'Imágenes con loading explícito: {0}',
+      guidance: 'Declara loading="lazy" (o eager) en las imágenes bajo el pliegue.',
+    },
+  },
+  render_blocking_scripts: {
+    en: {
+      message: 'Render-blocking scripts: {0}',
+      guidance: 'Load external scripts with async or defer so they do not block rendering.',
+    },
+    es: {
+      message: 'Scripts que bloquean el renderizado: {0}',
+      guidance: 'Carga los scripts externos con async o defer para que no bloqueen el renderizado.',
+    },
+  },
+  autocomplete_inputs: {
+    en: {
+      message: 'Form inputs with autocomplete: {0}',
+      guidance: 'Add an autocomplete attribute (e.g. email, name) to common form fields to speed up completion.',
+    },
+    es: {
+      message: 'Inputs de formulario con autocomplete: {0}',
+      guidance: 'Añade un atributo autocomplete (p. ej. email, name) a los campos comunes para agilizar la cumplimentación.',
+    },
+  },
+  table_headers: {
+    en: {
+      message: 'Tables with header cells: {0}',
+      guidance: 'Mark header row and/or column cells with <th> so data cells have context.',
+    },
+    es: {
+      message: 'Tablas con celdas de cabecera: {0}',
+      guidance: 'Marca las celdas de fila y/o columna de cabecera con <th> para que las celdas de datos tengan contexto.',
+    },
+  },
+  table_captions: {
+    en: {
+      message: 'Tables with captions: {0}',
+      guidance: 'Add a <caption> to each table describing what it contains.',
+    },
+    es: {
+      message: 'Tablas con caption: {0}',
+      guidance: 'Añade un <caption> a cada tabla que describa su contenido.',
+    },
+  },
+  figure_captions: {
+    en: {
+      message: 'Figures with captions: {0}',
+      guidance: 'Add a <figcaption> inside each <figure> to explain the visual.',
+    },
+    es: {
+      message: 'Figuras con caption: {0}',
+      guidance: 'Añade un <figcaption> dentro de cada <figure> para explicar el contenido visual.',
+    },
+  },
+  iframe_titles: {
+    en: {
+      message: 'Iframes with title: {0}',
+      guidance: 'Give every <iframe> a title describing the embedded content.',
+    },
+    es: {
+      message: 'Iframes con title: {0}',
+      guidance: 'Da a cada <iframe> un title que describa el contenido incrustado.',
+    },
+  },
+  video_accessible: {
+    en: {
+      message: 'Videos with controls/captions: {0}',
+      guidance: 'Add controls (or a <track>) to each <video> so users can pause and caption content.',
+    },
+    es: {
+      message: 'Videos con controles/subtítulos: {0}',
+      guidance: 'Añade controles (o un <track>) a cada <video> para que los usuarios puedan pausarlo y subtitularlo.',
+    },
+  },
 };
 
 const READABILITY_NO_TEXT = {
@@ -946,6 +1157,86 @@ const WHY: Record<string, { en: string; es: string }> = {
   direct_answer: {
     en: 'A direct answer up front lets engines and AI quote the page in featured snippets.',
     es: 'Una respuesta directa al inicio permite a los buscadores y a la IA citar la página en los fragmentos destacados.',
+  },
+  content_to_html_ratio: {
+    en: 'A low content-to-HTML ratio signals to crawlers that the page is mostly markup, diluting the extractable text.',
+    es: 'Una baja relación contenido-HTML indica a los rastreadores que la página es mayormente marcado, diluyendo el texto extraíble.',
+  },
+  internal_external_ratio: {
+    en: 'A healthy internal link ratio distributes ranking strength across your site and signals topical authority.',
+    es: 'Una proporción sana de enlaces internos distribuye la autoridad de posicionamiento por tu sitio y señala autoridad temática.',
+  },
+  canonical_self_reference: {
+    en: 'A self-referencing canonical confirms this URL is the authoritative version, preventing duplicate-signal dilution.',
+    es: 'Un canonical autorreferente confirma que esta URL es la versión autoritativa, evitando la dilución de señales por duplicados.',
+  },
+  meta_robots_directives: {
+    en: 'nofollow/nosnippet in robots meta blocks link following or snippet display, limiting how engines and AI can use the page.',
+    es: 'nofollow/nosnippet en la meta de robots bloquea el seguimiento de enlaces o la visualización de fragmentos, limitando cómo los buscadores y la IA pueden usar la página.',
+  },
+  meta_description_topic_match: {
+    en: 'A meta description aligned with the title and content reinforces the page topic for engines and improves snippet relevance.',
+    es: 'Una meta description alineada con el título y el contenido refuerza el tema de la página para los buscadores y mejora la relevancia del fragmento.',
+  },
+  json_ld_valid: {
+    en: 'Invalid JSON-LD is ignored entirely by engines and AI, wasting the structured data opportunity.',
+    es: 'El JSON-LD inválido se ignora por completo en los buscadores y la IA, desperdiciando la oportunidad de los datos estructurados.',
+  },
+  schema_completeness: {
+    en: 'Incomplete schema types are harder for AI and engines to resolve into rich results and entity graphs.',
+    es: 'Los tipos de schema incompletos son más difíciles de resolver por la IA y los buscadores en resultados enriquecidos y grafos de entidades.',
+  },
+  faq_accordion_without_schema: {
+    en: 'FAQ-like content without FAQPage schema cannot be cited as a direct answer by AI assistants.',
+    es: 'El contenido tipo FAQ sin schema FAQPage no puede citarse como respuesta directa por los asistentes de IA.',
+  },
+  author_schema: {
+    en: 'A declared author links content to a named entity, strengthening E-E-A-T trust signals.',
+    es: 'Un autor declarado vincula el contenido a una entidad con nombre, reforzando las señales de confianza E-E-A-T.',
+  },
+  freshness_dates: {
+    en: 'Machine-readable publish/modify dates help engines and AI prefer recent, fresh content.',
+    es: 'Las fechas de publicación/modificación legibles por máquina ayudan a los buscadores y la IA a preferir contenido reciente.',
+  },
+  direct_answer_section: {
+    en: 'A compact answer right after the H1 is what AI engines extract for featured snippets and answer boxes.',
+    es: 'Una respuesta compacta justo después del H1 es lo que los motores de IA extraen para los fragmentos destacados y las cajas de respuesta.',
+  },
+  img_srcset: {
+    en: 'srcset serves appropriately sized images per viewport, saving bandwidth and improving LCP.',
+    es: 'srcset sirve imágenes de tamaño adecuado según el viewport, ahorrando ancho de banda y mejorando el LCP.',
+  },
+  lazy_loading: {
+    en: 'Explicit loading hints avoid downloading off-screen images early, speeding up initial render.',
+    es: 'Las pistas de loading explícitas evitan descargar antes de tiempo las imágenes fuera de pantalla, acelerando el renderizado inicial.',
+  },
+  render_blocking_scripts: {
+    en: 'Scripts without async/defer delay first paint and hurt Core Web Vitals.',
+    es: 'Los scripts sin async/defer retrasan la primera pintura y perjudican las Core Web Vitals.',
+  },
+  autocomplete_inputs: {
+    en: 'autocomplete attributes speed up form filling and improve conversion and accessibility.',
+    es: 'Los atributos autocomplete agilizan el llenado de formularios y mejoran la conversión y la accesibilidad.',
+  },
+  table_headers: {
+    en: 'Tables without <th> cells leave screen readers and crawlers unable to interpret each data cell.',
+    es: 'Las tablas sin celdas <th> impiden a los lectores de pantalla y a los rastreadores interpretar cada celda de datos.',
+  },
+  table_captions: {
+    en: 'A <caption> tells users and AI what a table is about before reading its rows.',
+    es: 'Un <caption> indica a los usuarios y a la IA de qué trata la tabla antes de leer sus filas.',
+  },
+  figure_captions: {
+    en: 'A <figcaption> connects an image or diagram to its explanation for assistive tech and AI.',
+    es: 'Un <figcaption> conecta una imagen o diagrama con su explicación para las tecnologías de asistencia y la IA.',
+  },
+  iframe_titles: {
+    en: 'Untitled iframes are announced as generic frames, hiding what the embedded content is.',
+    es: 'Los iframes sin título se anuncian como marcos genéricos, ocultando qué contiene el contenido incrustado.',
+  },
+  video_accessible: {
+    en: 'Videos without controls or captions exclude users who cannot pause or hear the content.',
+    es: 'Los videos sin controles ni subtítulos excluyen a los usuarios que no pueden pausar o escuchar el contenido.',
   },
 };
 
@@ -1593,6 +1884,216 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Comienza con una respuesta directa y concisa a la pregunta principal.',
       expected: 'Responde en la primera frase y luego amplía con detalles.',
+    },
+  },
+  content_to_html_ratio: {
+    en: {
+      fix: 'Reduce non-content markup and move CSS to external stylesheets.',
+      expected: '<main>\n  <h1>Title</h1>\n  <p>Long body text…</p>\n</main>',
+    },
+    es: {
+      fix: 'Reduce el marcado que no es contenido y mueve el CSS a hojas externas.',
+      expected: '<main>\n  <h1>Título</h1>\n  <p>Texto largo…</p>\n</main>',
+    },
+  },
+  internal_external_ratio: {
+    en: {
+      fix: 'Add more internal links pointing to your own relevant pages.',
+      expected: '<a href="/products">Our products</a> (internal)',
+    },
+    es: {
+      fix: 'Añade más enlaces internos que apunten a tus propias páginas relevantes.',
+      expected: '<a href="/productos">Nuestros productos</a> (interno)',
+    },
+  },
+  canonical_self_reference: {
+    en: {
+      fix: 'Point the canonical to the page’s own URL.',
+      expected: '<link rel="canonical" href="https://example.com/this-page">',
+    },
+    es: {
+      fix: 'Apunta el canonical a la URL de la propia página.',
+      expected: '<link rel="canonical" href="https://example.com/esta-pagina">',
+    },
+  },
+  meta_robots_directives: {
+    en: {
+      fix: 'Remove nofollow/nosnippet from the robots meta.',
+      expected: '<meta name="robots" content="index, follow">',
+    },
+    es: {
+      fix: 'Elimina nofollow/nosnippet de la meta de robots.',
+      expected: '<meta name="robots" content="index, follow">',
+    },
+  },
+  meta_description_topic_match: {
+    en: {
+      fix: 'Rewrite the meta description to summarize the same topic as the title.',
+      expected: '<meta name="description" content="About the same topic as the title.">',
+    },
+    es: {
+      fix: 'Reescribe la meta description para que resuma el mismo tema que el título.',
+      expected: '<meta name="description" content="Sobre el mismo tema que el título.">',
+    },
+  },
+  json_ld_valid: {
+    en: {
+      fix: 'Add @context and @type to each JSON-LD block.',
+      expected:
+        '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"…"}</script>',
+    },
+    es: {
+      fix: 'Añade @context y @type a cada bloque JSON-LD.',
+      expected:
+        '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"…"}</script>',
+    },
+  },
+  schema_completeness: {
+    en: {
+      fix: 'Add the required properties for each schema type.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","headline":"…","datePublished":"2026-01-01","author":{"@type":"Person","name":"…"}}</script>',
+    },
+    es: {
+      fix: 'Añade las propiedades requeridas para cada tipo de schema.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","headline":"…","datePublished":"2026-01-01","author":{"@type":"Person","name":"…"}}</script>',
+    },
+  },
+  faq_accordion_without_schema: {
+    en: {
+      fix: 'Mark up the FAQ/accordion content with FAQPage schema.',
+      expected:
+        '<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"…","acceptedAnswer":{"@type":"Answer","text":"…"}}]}</script>',
+    },
+    es: {
+      fix: 'Marca el contenido de FAQ/acordeón con el schema FAQPage.',
+      expected:
+        '<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"…","acceptedAnswer":{"@type":"Answer","text":"…"}}]}</script>',
+    },
+  },
+  author_schema: {
+    en: {
+      fix: 'Declare an author Person in the article schema.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","headline":"…","author":{"@type":"Person","name":"Jane Doe"}}</script>',
+    },
+    es: {
+      fix: 'Declara un autor Person en el schema del artículo.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","headline":"…","author":{"@type":"Person","name":"Juan Pérez"}}</script>',
+    },
+  },
+  freshness_dates: {
+    en: {
+      fix: 'Add datePublished/dateModified or a <time datetime> for content.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","datePublished":"2026-08-01","dateModified":"2026-08-11"}</script>',
+    },
+    es: {
+      fix: 'Añade datePublished/dateModified o un <time datetime> para el contenido.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Article","datePublished":"2026-08-01","dateModified":"2026-08-11"}</script>',
+    },
+  },
+  direct_answer_section: {
+    en: {
+      fix: 'Open with a focused 40-100 word passage answering the main question.',
+      expected: '<h1>Title</h1>\n<p>A direct 40-100 word answer to the main question…</p>',
+    },
+    es: {
+      fix: 'Abre con un pasaje enfocado de 40-100 palabras que responda a la pregunta principal.',
+      expected: '<h1>Título</h1>\n<p>Una respuesta directa de 40-100 palabras a la pregunta principal…</p>',
+    },
+  },
+  img_srcset: {
+    en: {
+      fix: 'Add srcset and sizes to responsive images.',
+      expected: '<img src="photo.jpg" srcset="photo-800.jpg 800w, photo-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Photo">',
+    },
+    es: {
+      fix: 'Añade srcset y sizes a las imágenes responsivas.',
+      expected: '<img src="foto.jpg" srcset="foto-800.jpg 800w, foto-1600.jpg 1600w" sizes="(max-width: 800px) 100vw, 50vw" alt="Foto">',
+    },
+  },
+  lazy_loading: {
+    en: {
+      fix: 'Add loading="lazy" to images below the fold.',
+      expected: '<img src="photo.jpg" alt="Photo" loading="lazy" width="1200" height="800">',
+    },
+    es: {
+      fix: 'Añade loading="lazy" a las imágenes bajo el pliegue.',
+      expected: '<img src="foto.jpg" alt="Foto" loading="lazy" width="1200" height="800">',
+    },
+  },
+  render_blocking_scripts: {
+    en: {
+      fix: 'Load external scripts with async or defer.',
+      expected: '<script src="app.js" defer></script>',
+    },
+    es: {
+      fix: 'Carga los scripts externos con async o defer.',
+      expected: '<script src="app.js" defer></script>',
+    },
+  },
+  autocomplete_inputs: {
+    en: {
+      fix: 'Add autocomplete attributes to common form fields.',
+      expected: '<input type="email" id="email" autocomplete="email">',
+    },
+    es: {
+      fix: 'Añade atributos autocomplete a los campos de formulario comunes.',
+      expected: '<input type="email" id="email" autocomplete="email">',
+    },
+  },
+  table_headers: {
+    en: {
+      fix: 'Mark header cells with <th> using scope.',
+      expected: '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
+    },
+    es: {
+      fix: 'Marca las celdas de cabecera con <th> usando scope.',
+      expected: '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
+    },
+  },
+  table_captions: {
+    en: {
+      fix: 'Add a <caption> as the first child of each table.',
+      expected: '<table>\n  <caption>Monthly sales</caption>\n  <tr>…</tr>\n</table>',
+    },
+    es: {
+      fix: 'Añade un <caption> como primer hijo de cada tabla.',
+      expected: '<table>\n  <caption>Ventas mensuales</caption>\n  <tr>…</tr>\n</table>',
+    },
+  },
+  figure_captions: {
+    en: {
+      fix: 'Add a <figcaption> inside each figure.',
+      expected: '<figure>\n  <img src="chart.png" alt="Chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
+    },
+    es: {
+      fix: 'Añade un <figcaption> dentro de cada figura.',
+      expected: '<figure>\n  <img src="grafico.png" alt="Gráfico">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
+    },
+  },
+  iframe_titles: {
+    en: {
+      fix: 'Add a title attribute to every iframe.',
+      expected: '<iframe src="https://example.com/map" title="Office location map"></iframe>',
+    },
+    es: {
+      fix: 'Añade un atributo title a cada iframe.',
+      expected: '<iframe src="https://example.com/mapa" title="Mapa de la oficina"></iframe>',
+    },
+  },
+  video_accessible: {
+    en: {
+      fix: 'Add controls and a <track> to each video.',
+      expected: '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
+    },
+    es: {
+      fix: 'Añade controles y un <track> a cada video.',
+      expected: '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
     },
   },
 };

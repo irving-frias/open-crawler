@@ -13,7 +13,7 @@
     ExternalLink,
     BookOpenText,
     Gauge,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';

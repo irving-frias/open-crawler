@@ -21,7 +21,7 @@
     TextCursorInput,
     TriangleAlert,
     ChevronRight,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import { cn } from '$lib/utils.js';

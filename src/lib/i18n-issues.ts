@@ -23,6 +23,15 @@ const issueNames: Record<string, () => string> = {
   missing_aria: () => m['issue.missing_aria.name'](),
   invalid_nesting: () => m['issue.invalid_nesting.name'](),
   context_nesting: () => m['issue.context_nesting.name'](),
+  article_missing: () => m['issue.article_missing.name'](),
+  time_without_datetime: () => m['issue.time_without_datetime.name'](),
+  figure_without_caption: () => m['issue.figure_without_caption.name'](),
+  table_without_headers: () => m['issue.table_without_headers.name'](),
+  table_without_caption: () => m['issue.table_without_caption.name'](),
+  blockquote_without_attribution: () => m['issue.blockquote_without_attribution.name'](),
+  text_in_div_instead_of_p: () => m['issue.text_in_div_instead_of_p.name'](),
+  iframe_without_title: () => m['issue.iframe_without_title.name'](),
+  video_without_track_or_controls: () => m['issue.video_without_track_or_controls.name'](),
 };
 
 const issueMessages: Record<string, (params?: IssueParams) => string> = {
@@ -54,6 +63,15 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
       child: String(p?.child ?? ''),
       parent: String(p?.parent ?? ''),
     }),
+  article_missing: () => m['issue.article_missing.message'](),
+  time_without_datetime: () => m['issue.time_without_datetime.message'](),
+  figure_without_caption: () => m['issue.figure_without_caption.message'](),
+  table_without_headers: () => m['issue.table_without_headers.message'](),
+  table_without_caption: () => m['issue.table_without_caption.message'](),
+  blockquote_without_attribution: () => m['issue.blockquote_without_attribution.message'](),
+  text_in_div_instead_of_p: () => m['issue.text_in_div_instead_of_p.message'](),
+  iframe_without_title: () => m['issue.iframe_without_title.message'](),
+  video_without_track_or_controls: () => m['issue.video_without_track_or_controls.message'](),
 };
 
 /**
@@ -302,6 +320,116 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
       why: 'Este anidamiento solo es válido en determinados contextos; el navegador puede reubicar el elemento, alterando el esquema y la estructura accesible de forma difícil de predecir.',
       fix: 'Mueve el elemento a un contexto donde el anidamiento esté permitido por la especificación HTML.',
       expected: '<div>\n  <a href="/pagina"><span>Enlace</span></a>\n</div>',
+    },
+  },
+  article_missing: {
+    en: {
+      why: 'Search engines and AI answer engines extract self-contained units of content; an <article> element marks the primary content as a citable unit, improving extraction and entity understanding.',
+      fix: 'Wrap each self-contained piece of content (post, guide, news item) in an <article> element.',
+      expected:
+        '<main>\n  <article>\n    <h1>Post title</h1>\n    <p>Post body…</p>\n  </article>\n</main>',
+    },
+    es: {
+      why: 'Los buscadores y los motores de respuesta con IA extraen unidades de contenido autocontenidas; el elemento <article> marca el contenido principal como una unidad citable, mejorando la extracción y la comprensión de entidades.',
+      fix: 'Envuelve cada pieza de contenido autocontenida (post, guía, noticia) en un elemento <article>.',
+      expected:
+        '<main>\n  <article>\n    <h1>Título del post</h1>\n    <p>Cuerpo del post…</p>\n  </article>\n</main>',
+    },
+  },
+  time_without_datetime: {
+    en: {
+      why: 'A <time> without datetime gives search engines no machine-readable date, weakening the freshness signal that AI and search systems use to prefer recent content.',
+      fix: 'Add a datetime attribute to the <time> element using an ISO-8601 date.',
+      expected: '<time datetime="2026-08-11">August 11, 2026</time>',
+    },
+    es: {
+      why: 'Un <time> sin datetime no ofrece a los buscadores una fecha legible por máquina, debilitando la señal de frescura que la IA y los buscadores usan para preferir contenido reciente.',
+      fix: 'Añade un atributo datetime al elemento <time> con una fecha ISO-8601.',
+      expected: '<time datetime="2026-08-11">11 de agosto de 2026</time>',
+    },
+  },
+  figure_without_caption: {
+    en: {
+      why: 'A <figcaption> ties an image or diagram to its explanation, helping screen readers and AI understanding to connect the visual with its meaning.',
+      fix: 'Add a <figcaption> as the first or last child of the <figure>.',
+      expected: '<figure>\n  <img src="chart.png" alt="Sales chart">\n  <figcaption>Quarterly sales</figcaption>\n</figure>',
+    },
+    es: {
+      why: 'Un <figcaption> vincula una imagen o diagrama con su explicación, ayudando a los lectores de pantalla y a la comprensión por IA a conectar lo visual con su significado.',
+      fix: 'Añade un <figcaption> como primer o último hijo del <figure>.',
+      expected: '<figure>\n  <img src="grafico.png" alt="Gráfico de ventas">\n  <figcaption>Ventas trimestrales</figcaption>\n</figure>',
+    },
+  },
+  table_without_headers: {
+    en: {
+      why: 'A table without <th> cells gives screen readers and crawlers no way to associate each data cell with its meaning, breaking both accessibility and machine extraction.',
+      fix: 'Mark the header row and/or column cells with <th> elements, using scope where needed.',
+      expected: '<table>\n  <tr><th scope="col">Name</th><th scope="col">Price</th></tr>\n  <tr><td>Widget</td><td>$9</td></tr>\n</table>',
+    },
+    es: {
+      why: 'Una tabla sin celdas <th> no permite a los lectores de pantalla ni a los rastreadores asociar cada celda de datos con su significado, rompiendo la accesibilidad y la extracción por máquina.',
+      fix: 'Marca las celdas de la fila y/o columna de cabecera con elementos <th>, usando scope cuando sea necesario.',
+      expected: '<table>\n  <tr><th scope="col">Nombre</th><th scope="col">Precio</th></tr>\n  <tr><td>Artículo</td><td>9 €</td></tr>\n</table>',
+    },
+  },
+  table_without_caption: {
+    en: {
+      why: 'A <caption> states what a table is about, so screen readers announce it before the data and search engines can understand the table topic at a glance.',
+      fix: 'Add a <caption> as the first child of the <table>.',
+      expected: '<table>\n  <caption>Monthly sales</caption>\n  <tr>…</tr>\n</table>',
+    },
+    es: {
+      why: 'Un <caption> indica de qué trata la tabla, de modo que los lectores de pantalla lo anuncian antes de los datos y los buscadores pueden entender el tema de la tabla de un vistazo.',
+      fix: 'Añade un <caption> como primer hijo de la <table>.',
+      expected: '<table>\n  <caption>Ventas mensuales</caption>\n  <tr>…</tr>\n</table>',
+    },
+  },
+  blockquote_without_attribution: {
+    en: {
+      why: 'Quotes without a source lack credibility: users and AI systems cannot verify the claim, and the missing attribution weakens the E-E-A-T signals of the page.',
+      fix: 'Attribute the quote with the cite attribute or a visible author/source element.',
+      expected: '<blockquote cite="https://example.com/source">\n  Quoted text\n  <footer>— Author Name, Source</footer>\n</blockquote>',
+    },
+    es: {
+      why: 'Las citas sin fuente carecen de credibilidad: los usuarios y los sistemas de IA no pueden verificar la afirmación, y la atribución ausente debilita las señales E-E-A-T de la página.',
+      fix: 'Atribuye la cita con el atributo cite o con un elemento visible de autor/fuente.',
+      expected: '<blockquote cite="https://example.com/fuente">\n  Texto citado\n  <footer>— Nombre del autor, Fuente</footer>\n</blockquote>',
+    },
+  },
+  text_in_div_instead_of_p: {
+    en: {
+      why: 'Using <div> for body copy removes the semantic meaning of a paragraph, so screen readers and extraction systems cannot treat the text as a coherent passage.',
+      fix: 'Replace the text-bearing <div> with a <p> (or another appropriate text element).',
+      expected: '<div class="wrapper">\n  <p>Paragraph of body text.</p>\n</div>',
+    },
+    es: {
+      why: 'Usar <div> para el cuerpo del texto elimina el significado semántico de un párrafo, de modo que los lectores de pantalla y los sistemas de extracción no pueden tratar el texto como un pasaje coherente.',
+      fix: 'Sustituye el <div> con texto por un <p> (u otro elemento de texto apropiado).',
+      expected: '<div class="contenedor">\n  <p>Párrafo de texto.</p>\n</div>',
+    },
+  },
+  iframe_without_title: {
+    en: {
+      why: 'An <iframe> without a title is announced as a generic frame by screen readers, so assistive technology users cannot tell what the embedded content is.',
+      fix: 'Add a title attribute describing the embedded content.',
+      expected: '<iframe src="https://example.com/map" title="Office location map"></iframe>',
+    },
+    es: {
+      why: 'Un <iframe> sin título se anuncia como un marco genérico a los lectores de pantalla, de modo que los usuarios de tecnologías de asistencia no pueden saber qué contiene.',
+      fix: 'Añade un atributo title que describa el contenido incrustado.',
+      expected: '<iframe src="https://example.com/mapa" title="Mapa de la ubicación de la oficina"></iframe>',
+    },
+  },
+  video_without_track_or_controls: {
+    en: {
+      why: 'A video without controls cannot be paused, muted or captioned by users, and without a <track> it has no captions for deaf users or search engines.',
+      fix: 'Add the controls attribute and include a <track> element for captions.',
+      expected: '<video controls>\n  <source src="movie.mp4" type="video/mp4">\n  <track kind="captions" src="captions.vtt" srclang="en" label="English">\n</video>',
+    },
+    es: {
+      why: 'Un video sin controles no puede pausarse, silenciarse ni subtitularse por los usuarios, y sin <track> no tiene subtítulos para personas sordas ni para los buscadores.',
+      fix: 'Añade el atributo controls e incluye un elemento <track> para los subtítulos.',
+      expected: '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
     },
   },
 };

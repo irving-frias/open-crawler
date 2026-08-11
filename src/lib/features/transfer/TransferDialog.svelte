@@ -11,7 +11,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox/index.js';
   import { Progress } from '$lib/components/ui/progress/index.js';
   import { toast } from 'svelte-sonner';
-  import { Box, Download, FolderOpen, Share2, Loader2 } from 'lucide-svelte';
+  import { Box, Download, FolderOpen, Share2, Loader2 } from '@lucide/svelte';
 
   const app = getAppShell();
 

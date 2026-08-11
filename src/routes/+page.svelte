@@ -1,6 +1,6 @@
 <script lang="ts">
   import { m } from '$lib/paraglide/messages.js';
-  import { SearchX, Pencil, Trash2, Loader2 } from 'lucide-svelte';
+  import { SearchX, Pencil, Trash2, Loader2 } from '@lucide/svelte';
   import { setAppShell } from '$lib/app.svelte';
   import * as api from '$lib/api';
   import AppHeader from '$lib/features/project/AppHeader.svelte';
