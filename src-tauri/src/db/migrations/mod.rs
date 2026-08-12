@@ -38,10 +38,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "013_add_pages_project_url_index",
         include_str!("013_add_pages_project_url_index.sql"),
     ),
-    (
-        "014_link_analysis",
-        include_str!("014_link_analysis.sql"),
-    ),
+    ("014_link_analysis", include_str!("014_link_analysis.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -222,7 +219,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(internal, 3, "same host (with scheme/port variance) is internal");
+        assert_eq!(
+            internal, 3,
+            "same host (with scheme/port variance) is internal"
+        );
         assert_eq!(external, 1, "different host is external");
     }
 

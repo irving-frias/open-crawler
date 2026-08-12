@@ -172,22 +172,22 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
   `features/seo/commands.rs` (2). Test helpers usan `Default::default()`.
 - **6 checks `security`** (categorías ya existían en score.rs, pesos 0.12/0.08):
 
-| check                      | severity | criterio                                 |
-| -------------------------- | -------- | ---------------------------------------- |
-| `hsts_header`              | warning  | `Strict-Transport-Security` presente     |
-| `x_content_type_options`   | warning  | header contiene `nosniff`                |
-| `x_frame_options`          | warning  | `X-Frame-Options` o CSP `frame-ancestors`|
-| `content_security_policy`  | warning  | `Content-Security-Policy` presente       |
-| `referrer_policy`          | info     | `Referrer-Policy` presente               |
-| `permissions_policy`       | info     | `Permissions-Policy` presente            |
+| check                     | severity | criterio                                  |
+| ------------------------- | -------- | ----------------------------------------- |
+| `hsts_header`             | warning  | `Strict-Transport-Security` presente      |
+| `x_content_type_options`  | warning  | header contiene `nosniff`                 |
+| `x_frame_options`         | warning  | `X-Frame-Options` o CSP `frame-ancestors` |
+| `content_security_policy` | warning  | `Content-Security-Policy` presente        |
+| `referrer_policy`         | info     | `Referrer-Policy` presente                |
+| `permissions_policy`      | info     | `Permissions-Policy` presente             |
 
 - **3 checks `compliance`**:
 
-| check                       | severity | criterio                                       |
-| --------------------------- | -------- | ---------------------------------------------- |
-| `privacy_policy_available`  | warning  | link privacy/cookies/terms/gdpr o schema       |
-| `cookie_consent_banner`     | warning  | marcadores CMP/banner en el HTML (`CONSENT_MARKERS`) |
-| `data_protection_schema`    | info     | JSON-LD con `privacyPolicy` o `policies`       |
+| check                      | severity | criterio                                             |
+| -------------------------- | -------- | ---------------------------------------------------- |
+| `privacy_policy_available` | warning  | link privacy/cookies/terms/gdpr o schema             |
+| `cookie_consent_banner`    | warning  | marcadores CMP/banner en el HTML (`CONSENT_MARKERS`) |
+| `data_protection_schema`   | info     | JSON-LD con `privacyPolicy` o `policies`             |
 
 - `PageExtras` nuevos campos: `privacy_link_count` (enlaces cuyo href/texto contiene
   privacy/cookies/gdpr/terms/legal/datenschutz), `consent_banner`. Helper nuevo

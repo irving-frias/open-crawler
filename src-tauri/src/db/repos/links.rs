@@ -35,9 +35,7 @@ const GENERIC_ANCHORS: &[&str] = &[
 impl<'a> CrawlRepo<'a> {
     fn link_count(&self, project_id: &str, extra: &str) -> Result<usize, AppError> {
         let n: i64 = self.conn.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM page_links WHERE project_id = ?1 {extra}"
-            ),
+            &format!("SELECT COUNT(*) FROM page_links WHERE project_id = ?1 {extra}"),
             params![project_id],
             |row| row.get(0),
         )?;
@@ -55,7 +53,11 @@ impl<'a> CrawlRepo<'a> {
 
     /// Pages that have no incoming internal link (excluding self links). These
     /// are hard to discover for both crawlers and users unless they are seeds.
-    fn orphan_pages(&self, project_id: &str, limit: usize) -> Result<(usize, Vec<String>), AppError> {
+    fn orphan_pages(
+        &self,
+        project_id: &str,
+        limit: usize,
+    ) -> Result<(usize, Vec<String>), AppError> {
         let where_ = "SELECT p.url FROM crawled_pages p
              WHERE p.project_id = ?1
                AND NOT EXISTS (
@@ -161,7 +163,13 @@ impl<'a> CrawlRepo<'a> {
                         *u += 1;
                     }
                 }
-                None => acc.push((host, 1, usize::from(!follow), usize::from(sponsored), usize::from(ugc))),
+                None => acc.push((
+                    host,
+                    1,
+                    usize::from(!follow),
+                    usize::from(sponsored),
+                    usize::from(ugc),
+                )),
             }
         }
         acc.sort_by(|a, b| b.1.cmp(&a.1));
@@ -338,19 +346,46 @@ mod tests {
     #[test]
     fn test_get_link_analysis_aggregates() {
         let repo = test_repo();
-        repo.save_results_batch(&[page("https://x.com/a"), page("https://x.com/b"), page("https://x.com/c")])
-            .unwrap();
+        repo.save_results_batch(&[
+            page("https://x.com/a"),
+            page("https://x.com/b"),
+            page("https://x.com/c"),
+        ])
+        .unwrap();
 
         let mut links = vec![
             link("https://x.com/a", "https://x.com/b", Some("About us"), &[]),
-            link("https://x.com/a", "https://x.com/c", Some("here"), &["nofollow"]),
+            link(
+                "https://x.com/a",
+                "https://x.com/c",
+                Some("here"),
+                &["nofollow"],
+            ),
             link("https://x.com/b", "https://x.com/b", Some("self"), &[]),
-            link("https://x.com/b", "https://ads.y.com/land", Some("Buy now"), &["sponsored"]),
-            link("https://x.com/c", "https://forum.z.com/t", Some("User post"), &["ugc"]),
+            link(
+                "https://x.com/b",
+                "https://ads.y.com/land",
+                Some("Buy now"),
+                &["sponsored"],
+            ),
+            link(
+                "https://x.com/c",
+                "https://forum.z.com/t",
+                Some("User post"),
+                &["ugc"],
+            ),
         ];
         for l in &mut links {
-            let from_host = l.from_url.split("//").nth(1).and_then(|h| h.split('/').next());
-            let to_host = l.to_url.split("//").nth(1).and_then(|h| h.split('/').next());
+            let from_host = l
+                .from_url
+                .split("//")
+                .nth(1)
+                .and_then(|h| h.split('/').next());
+            let to_host = l
+                .to_url
+                .split("//")
+                .nth(1)
+                .and_then(|h| h.split('/').next());
             l.is_internal = from_host == to_host;
         }
         repo.save_links_batch(&links).unwrap();
@@ -367,13 +402,23 @@ mod tests {
         assert_eq!(analysis.unique_internal_targets, 2);
         assert_eq!(analysis.internal_pages, 3);
 
-        assert_eq!(analysis.orphan_count, 1, "only the seed page a has no incoming internal link");
+        assert_eq!(
+            analysis.orphan_count, 1,
+            "only the seed page a has no incoming internal link"
+        );
         assert_eq!(analysis.orphan_pages, vec!["https://x.com/a".to_string()]);
 
-        assert_eq!(analysis.dead_end_count, 1, "only c has no internal outbound");
+        assert_eq!(
+            analysis.dead_end_count, 1,
+            "only c has no internal outbound"
+        );
         assert_eq!(analysis.dead_end_pages, vec!["https://x.com/c".to_string()]);
 
-        let anchors: Vec<&str> = analysis.top_anchors.iter().map(|a| a.anchor.as_str()).collect();
+        let anchors: Vec<&str> = analysis
+            .top_anchors
+            .iter()
+            .map(|a| a.anchor.as_str())
+            .collect();
         assert_eq!(anchors.len(), 5, "all non-empty anchors are listed");
         assert!(anchors.contains(&"here"));
         assert!(anchors.contains(&"About us"));
@@ -384,10 +429,18 @@ mod tests {
         assert_eq!(analysis.anchor_quality.empty, 0);
 
         assert_eq!(analysis.external_domains.len(), 2);
-        let ads = analysis.external_domains.iter().find(|d| d.domain == "ads.y.com").unwrap();
+        let ads = analysis
+            .external_domains
+            .iter()
+            .find(|d| d.domain == "ads.y.com")
+            .unwrap();
         assert_eq!(ads.count, 1);
         assert!(ads.sponsored == 1);
-        let forum = analysis.external_domains.iter().find(|d| d.domain == "forum.z.com").unwrap();
+        let forum = analysis
+            .external_domains
+            .iter()
+            .find(|d| d.domain == "forum.z.com")
+            .unwrap();
         assert!(forum.ugc == 1);
     }
 
@@ -395,7 +448,8 @@ mod tests {
     fn test_project_has_links_empty() {
         let repo = test_repo();
         assert!(!repo.project_has_links("p1").unwrap());
-        repo.save_links_batch(&[link("https://x.com/a", "https://x.com/b", None, &[])]).unwrap();
+        repo.save_links_batch(&[link("https://x.com/a", "https://x.com/b", None, &[])])
+            .unwrap();
         assert!(repo.project_has_links("p1").unwrap());
     }
 }

@@ -1206,7 +1206,11 @@ mod tests {
     fn page_values_flatten_seo_data() {
         let p = sample_page("a", "https://x.com/a");
         let values = page_values(&p);
-        assert_eq!(values.len(), 35, "35 columns expected (33 + security + compliance)");
+        assert_eq!(
+            values.len(),
+            35,
+            "35 columns expected (33 + security + compliance)"
+        );
 
         let seo_score = &values[15];
         assert!(matches!(seo_score, ExportValue::Num(n) if *n == 72.0));
@@ -1221,9 +1225,7 @@ mod tests {
 
         // Category columns follow CATEGORY_ORDER at indices 22..32.
         assert!(matches!(&values[22], ExportValue::Num(n) if *n == 80.0));
-        assert!(
-            matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0)
-        );
+        assert!(matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0));
     }
 
     #[tokio::test]

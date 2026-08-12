@@ -900,7 +900,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Falta la cabecera Strict-Transport-Security',
-      guidance: 'Añade Strict-Transport-Security para que los navegadores usen siempre HTTPS en el dominio.',
+      guidance:
+        'Añade Strict-Transport-Security para que los navegadores usen siempre HTTPS en el dominio.',
     },
   },
   x_content_type_options: {
@@ -940,7 +941,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Falta la cabecera Referrer-Policy',
-      guidance: 'Establece Referrer-Policy para controlar qué datos de URL se comparten en la cabecera Referer.',
+      guidance:
+        'Establece Referrer-Policy para controlar qué datos de URL se comparten en la cabecera Referer.',
     },
   },
   permissions_policy: {
@@ -950,7 +952,8 @@ const DICT: Record<string, CheckDictEntry> = {
     },
     es: {
       message: 'Falta la cabecera Permissions-Policy',
-      guidance: 'Añade Permissions-Policy para restringir el acceso a funciones sensibles del navegador.',
+      guidance:
+        'Añade Permissions-Policy para restringir el acceso a funciones sensibles del navegador.',
     },
   },
   // ==================== COMPLIANCE ====================
@@ -969,21 +972,25 @@ const DICT: Record<string, CheckDictEntry> = {
   cookie_consent_banner: {
     en: {
       message: 'No cookie-consent banner / CMP detected',
-      guidance: 'Provide an explicit consent mechanism (banner or CMP) for non-essential cookies where required.',
+      guidance:
+        'Provide an explicit consent mechanism (banner or CMP) for non-essential cookies where required.',
     },
     es: {
       message: 'No se detectó banner de consentimiento de cookies ni CMP',
-      guidance: 'Ofrece un mecanismo de consentimiento explícito (banner o CMP) para cookies no esenciales cuando sea obligatorio.',
+      guidance:
+        'Ofrece un mecanismo de consentimiento explícito (banner o CMP) para cookies no esenciales cuando sea obligatorio.',
     },
   },
   data_protection_schema: {
     en: {
       message: 'No privacyPolicy/policies in structured data',
-      guidance: 'Declare privacyPolicy or policies on Organization/WebPage schema to make data handling machine-readable.',
+      guidance:
+        'Declare privacyPolicy or policies on Organization/WebPage schema to make data handling machine-readable.',
     },
     es: {
       message: 'Sin privacyPolicy/policies en los datos estructurados',
-      guidance: 'Declara privacyPolicy o policies en el schema de Organization/WebPage para que el tratamiento de datos sea legible por máquina.',
+      guidance:
+        'Declara privacyPolicy o policies en el schema de Organization/WebPage para que el tratamiento de datos sea legible por máquina.',
     },
   },
 };
@@ -2267,11 +2274,11 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
   x_frame_options: {
     en: {
       fix: 'Add X-Frame-Options or a CSP frame-ancestors directive.',
-      expected: 'X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors \'none\'',
+      expected: "X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors 'none'",
     },
     es: {
       fix: 'Añade X-Frame-Options o una directiva CSP frame-ancestors.',
-      expected: 'X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors \'none\'',
+      expected: "X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors 'none'",
     },
   },
   content_security_policy: {
@@ -2297,11 +2304,11 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
   permissions_policy: {
     en: {
       fix: 'Add a Permissions-Policy restricting sensitive features.',
-      expected: "Permissions-Policy: camera=(), microphone=(), geolocation=(self)",
+      expected: 'Permissions-Policy: camera=(), microphone=(), geolocation=(self)',
     },
     es: {
       fix: 'Añade una Permissions-Policy que restrinja funciones sensibles.',
-      expected: "Permissions-Policy: camera=(), microphone=(), geolocation=(self)",
+      expected: 'Permissions-Policy: camera=(), microphone=(), geolocation=(self)',
     },
   },
   privacy_policy_available: {

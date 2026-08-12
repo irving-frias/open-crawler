@@ -192,18 +192,24 @@ impl PageExtras {
                 .filter(|el| {
                     let href = el.value().attr("href").unwrap_or("").to_ascii_lowercase();
                     let text = el.text().collect::<Vec<_>>().join("").to_ascii_lowercase();
-                    ["privacy", "cookies", "cookie", "gdpr", "terms", "legal", "datenschutz"]
-                        .iter()
-                        .any(|k| href.contains(k) || text.contains(k))
+                    [
+                        "privacy",
+                        "cookies",
+                        "cookie",
+                        "gdpr",
+                        "terms",
+                        "legal",
+                        "datenschutz",
+                    ]
+                    .iter()
+                    .any(|k| href.contains(k) || text.contains(k))
                 })
                 .count();
         }
 
         // Compliance: cookie-consent banner / CMP markers
         let lower_html = html.to_ascii_lowercase();
-        extras.consent_banner = CONSENT_MARKERS
-            .iter()
-            .any(|m| lower_html.contains(m));
+        extras.consent_banner = CONSENT_MARKERS.iter().any(|m| lower_html.contains(m));
 
         // URL heuristics
         if let Ok(parsed) = Url::parse(url) {
@@ -2217,13 +2223,17 @@ mod tests {
 
     #[test]
     fn test_security_headers_checks() {
-        let html = "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body></body></html>";
+        let html =
+            "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body></body></html>";
         let extras = PageExtras::extract(html, "https://example.com/page");
         let parser = crate::crawler::parser::SeoParser::new();
         let (seo, _) = parser.parse(html, &Url::parse("https://example.com/page").unwrap());
 
         let mut headers = std::collections::HashMap::new();
-        headers.insert("strict-transport-security".to_string(), "max-age=63072000".to_string());
+        headers.insert(
+            "strict-transport-security".to_string(),
+            "max-age=63072000".to_string(),
+        );
         headers.insert("x-content-type-options".to_string(), "nosniff".to_string());
         headers.insert("x-frame-options".to_string(), "DENY".to_string());
         headers.insert(
@@ -2283,7 +2293,8 @@ mod tests {
         assert!(check(&out, "cookie_consent_banner").passed);
         assert!(check(&out, "data_protection_schema").passed);
 
-        let bare = r#"<!DOCTYPE html><html lang="en"><head><title>T</title></head><body></body></html>"#;
+        let bare =
+            r#"<!DOCTYPE html><html lang="en"><head><title>T</title></head><body></body></html>"#;
         let out = run(bare, "https://example.com/page");
         assert!(!check(&out, "privacy_policy_available").passed);
         assert!(!check(&out, "cookie_consent_banner").passed);

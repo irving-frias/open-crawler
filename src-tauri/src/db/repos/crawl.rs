@@ -21,7 +21,8 @@ fn serialize_rel_tokens(tokens: &[String]) -> Option<String> {
 
 /// Parses rel tokens previously stored by [`serialize_rel_tokens`].
 pub fn deserialize_rel_tokens(raw: Option<&str>) -> Vec<String> {
-    raw.and_then(|s| serde_json::from_str::<Vec<String>>(s).ok()).unwrap_or_default()
+    raw.and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+        .unwrap_or_default()
 }
 
 /// Deletes the normalized `page_issues` rows belonging to the given page ids.
