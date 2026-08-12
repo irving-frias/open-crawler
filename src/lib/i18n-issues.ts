@@ -32,6 +32,9 @@ const issueNames: Record<string, () => string> = {
   text_in_div_instead_of_p: () => m['issue.text_in_div_instead_of_p.name'](),
   iframe_without_title: () => m['issue.iframe_without_title.name'](),
   video_without_track_or_controls: () => m['issue.video_without_track_or_controls.name'](),
+  empty_heading: () => m['issue.empty_heading.name'](),
+  empty_paragraph: () => m['issue.empty_paragraph.name'](),
+  empty_content_tag: () => m['issue.empty_content_tag.name'](),
 };
 
 const issueMessages: Record<string, (params?: IssueParams) => string> = {
@@ -72,6 +75,10 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
   text_in_div_instead_of_p: () => m['issue.text_in_div_instead_of_p.message'](),
   iframe_without_title: () => m['issue.iframe_without_title.message'](),
   video_without_track_or_controls: () => m['issue.video_without_track_or_controls.message'](),
+  empty_heading: (p) => m['issue.empty_heading.message']({ tag: String(p?.tag ?? '') }),
+  empty_paragraph: () => m['issue.empty_paragraph.message'](),
+  empty_content_tag: (p) =>
+    m['issue.empty_content_tag.message']({ tag: String(p?.tag ?? '') }),
 };
 
 /**
@@ -441,6 +448,42 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
         '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
     },
   },
+  empty_heading: {
+    en: {
+      why: 'An empty heading is invisible to users and confuses the heading outline that screen readers, AI extractors and search snippets rely on to understand the page structure.',
+      fix: 'Fill the heading with descriptive text, or remove it if the section is not needed.',
+      expected: '<h2>Descriptive section heading</h2>',
+    },
+    es: {
+      why: 'Un encabezado vacío es invisible para los usuarios y confunde el esquema de encabezados del que dependen los lectores de pantalla, los extractores de IA y los fragmentos de búsqueda para entender la estructura de la página.',
+      fix: 'Rellena el encabezado con texto descriptivo, o elimínalo si la sección no es necesaria.',
+      expected: '<h2>Encabezado descriptivo de la sección</h2>',
+    },
+  },
+  empty_paragraph: {
+    en: {
+      why: 'Empty paragraphs add dead whitespace to the layout and dilute the text-to-HTML ratio, a quality signal for content extraction.',
+      fix: 'Fill the paragraph with content or remove the empty tag.',
+      expected: '<p>Body copy paragraph with real content.</p>',
+    },
+    es: {
+      why: 'Los párrafos vacíos añaden espacio muerto al layout y diluyen el ratio texto-HTML, una señal de calidad para la extracción de contenido.',
+      fix: 'Rellena el párrafo con contenido o elimina la etiqueta vacía.',
+      expected: '<p>Párrafo de contenido con texto real.</p>',
+    },
+  },
+  empty_content_tag: {
+    en: {
+      why: 'Empty content tags are usually leftovers from broken templates or failed hydration; they bloat the HTML and carry no meaning for search engines or assistive technology.',
+      fix: 'Remove the empty tag or fill it with the content it was meant to hold.',
+      expected: '<li>List item with text</li>',
+    },
+    es: {
+      why: 'Las etiquetas de contenido vacías suelen ser restos de plantillas rotas o de una hidratación fallida; inflan el HTML y no aportan significado a los buscadores ni a las tecnologías de asistencia.',
+      fix: 'Elimina la etiqueta vacía o rellénala con el contenido que debía contener.',
+      expected: '<li>Elemento de lista con texto</li>',
+    },
+  },
 };
 
 export function translateIssueWhy(issueType: string): string {
@@ -488,6 +531,9 @@ export function parseIssueParams(message: string, issueType: string): IssueParam
     const parentM = message.match(/<(\w+)>.*?<(\w+)>/);
     if (childM) params.child = childM[1];
     if (parentM) params.parent = parentM[2];
+  } else if (issueType === 'empty_heading' || issueType === 'empty_content_tag') {
+    const tagM = message.match(/<(\w+)>/);
+    if (tagM) params.tag = tagM[1];
   }
   return params;
 }

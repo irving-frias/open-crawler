@@ -579,6 +579,18 @@ const DICT: Record<string, CheckDictEntry> = {
         'Usa HTML semántico para que la IA y las herramientas de asistencia entiendan la estructura.',
     },
   },
+  empty_tags: {
+    en: {
+      message: 'Empty elements: {0}',
+      guidance:
+        'Remove or fill empty tags (headings, paragraphs, divs, list items, ...) left by broken templates or failed hydration.',
+    },
+    es: {
+      message: 'Elementos vacíos: {0}',
+      guidance:
+        'Elimina o rellena las etiquetas vacías (encabezados, párrafos, divs, elementos de lista, ...) que dejan las plantillas rotas o una hidratación fallida.',
+    },
+  },
   content_present: {
     en: {
       message: 'Page has enough text to extract meaning',
@@ -1231,6 +1243,10 @@ const WHY: Record<string, { en: string; es: string }> = {
   semantic_html: {
     en: 'Semantic landmarks help AI and assistive tools map the page structure.',
     es: 'Los landmarks semánticos ayudan a la IA y a las herramientas de asistencia a mapear la estructura de la página.',
+  },
+  empty_tags: {
+    en: 'Empty tags add dead markup that dilutes the page and confuses extraction.',
+    es: 'Las etiquetas vacías añaden markup muerto que diluye la página y confunde la extracción.',
   },
   content_present: {
     en: 'With too little text there is nothing for engines or AI to understand.',
@@ -1928,6 +1944,16 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Usa landmarks semánticos (main/header/footer/nav).',
       expected: '<header>…</header>\n<nav>…</nav>\n<main>…</main>\n<footer>…</footer>',
+    },
+  },
+  empty_tags: {
+    en: {
+      fix: 'Remove empty tags or fill them with the content they were meant to hold.',
+      expected: '<h2>Section heading</h2>\n<p>Paragraph with real content.</p>',
+    },
+    es: {
+      fix: 'Elimina las etiquetas vacías o rellénalas con el contenido que debían contener.',
+      expected: '<h2>Encabezado de sección</h2>\n<p>Párrafo con contenido real.</p>',
     },
   },
   content_present: {

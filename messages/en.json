@@ -477,5 +477,11 @@
   "issue.iframe_without_title.name": "Iframe Without Title",
   "issue.iframe_without_title.message": "<iframe> is missing the title attribute",
   "issue.video_without_track_or_controls.name": "Video Without Controls or Track",
-  "issue.video_without_track_or_controls.message": "<video> has no controls attribute and no <track>"
+  "issue.video_without_track_or_controls.message": "<video> has no controls attribute and no <track>",
+  "issue.empty_heading.name": "Empty Heading",
+  "issue.empty_heading.message": "<{tag}> has no content",
+  "issue.empty_paragraph.name": "Empty Paragraph",
+  "issue.empty_paragraph.message": "<p> has no content",
+  "issue.empty_content_tag.name": "Empty Content Tag",
+  "issue.empty_content_tag.message": "<{tag}> has no content"
 }

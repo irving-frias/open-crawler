@@ -477,5 +477,11 @@
   "issue.iframe_without_title.name": "Iframe Sin Título",
   "issue.iframe_without_title.message": "A <iframe> le falta el atributo title",
   "issue.video_without_track_or_controls.name": "Video Sin Controles ni Track",
-  "issue.video_without_track_or_controls.message": "<video> no tiene atributo controls ni <track>"
+  "issue.video_without_track_or_controls.message": "<video> no tiene atributo controls ni <track>",
+  "issue.empty_heading.name": "Encabezado Vacío",
+  "issue.empty_heading.message": "<{tag}> no tiene contenido",
+  "issue.empty_paragraph.name": "Párrafo Vacío",
+  "issue.empty_paragraph.message": "<p> no tiene contenido",
+  "issue.empty_content_tag.name": "Etiqueta de Contenido Vacía",
+  "issue.empty_content_tag.message": "<{tag}> no tiene contenido"
 }

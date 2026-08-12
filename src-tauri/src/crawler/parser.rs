@@ -900,7 +900,109 @@ impl SeoParser {
             ));
         }
 
+        // 34. Empty headings (h1-h6): break the heading outline and the
+        //     passage-extraction signals used by search and AI tools.
+        let empty_heading_tags = ["h1", "h2", "h3", "h4", "h5", "h6"];
+        for el in self
+            .empty_elements(document, &empty_heading_tags)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "empty_heading",
+                "warning",
+                &format!("<{}>", el.value().name()),
+                &format!("<{}> has no content", el.value().name()),
+                Some(empty_heading_tags.join(", ")),
+                Some(el),
+            ));
+        }
+
+        // 35. Empty <p>: dead body-copy markup that wastes layout space.
+        for el in self
+            .empty_elements(document, &["p"])
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "empty_paragraph",
+                "warning",
+                "<p>",
+                "<p> has no content",
+                Some("p".to_string()),
+                Some(el),
+            ));
+        }
+
+        // 36. Empty content tags (div/span/li/section/...): dead markup usually
+        //     left by broken templates or failed hydration.
+        const EMPTY_CONTENT_TAGS: &[&str] = &[
+            "div",
+            "span",
+            "li",
+            "section",
+            "article",
+            "blockquote",
+            "label",
+            "td",
+            "th",
+            "header",
+            "footer",
+            "nav",
+            "main",
+            "aside",
+            "figure",
+            "caption",
+            "summary",
+        ];
+        for el in self
+            .empty_elements(document, EMPTY_CONTENT_TAGS)
+            .into_iter()
+            .take(MAX_ELEMENT_ISSUES_PER_TYPE)
+        {
+            issues.push(issue(
+                "empty_content_tag",
+                "info",
+                &format!("<{}>", el.value().name()),
+                &format!("<{}> has no content", el.value().name()),
+                Some(EMPTY_CONTENT_TAGS.join(", ")),
+                Some(el),
+            ));
+        }
+
         issues
+    }
+
+    /// Elements matching any of `tags` that contain neither element children nor
+    /// non-whitespace text. Elements carrying identity/styling/hiding attributes
+    /// (id, class, style, hidden, aria-hidden) are skipped because they are
+    /// plausibly intentional (JS mount points, icon fonts, CSS spacers).
+    fn empty_elements<'a>(
+        &self,
+        document: &'a Html,
+        tags: &[&str],
+    ) -> Vec<scraper::ElementRef<'a>> {
+        let Ok(selector) = Selector::parse(&tags.join(", ")) else {
+            return Vec::new();
+        };
+        document
+            .select(&selector)
+            .filter(|el| {
+                let value = el.value();
+                if value.id().is_some()
+                    || value.attr("class").is_some()
+                    || value.attr("style").is_some()
+                    || value.attr("hidden").is_some()
+                    || value.attr("aria-hidden").is_some()
+                {
+                    return false;
+                }
+                el.children().all(|child| match child.value() {
+                    scraper::node::Node::Text(t) => t.trim().is_empty(),
+                    _ => false,
+                })
+            })
+            .collect()
     }
 
     fn main_has_substantial_text(&self, document: &Html) -> bool {
@@ -2655,5 +2757,100 @@ mod tests {
             .collect();
         assert_eq!(divs.len(), 1, "one text-heavy div expected");
         assert!(divs[0].xpath.is_some());
+    }
+
+    #[test]
+    fn test_empty_headings_and_paragraphs() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Real heading</h1>
+        <h2></h2>
+        <h3>   </h3>
+        <p></p>
+        <p> </p>
+        <p>Real paragraph</p>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+
+        let headings: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "empty_heading")
+            .collect();
+        assert_eq!(headings.len(), 2, "two empty headings expected");
+        assert!(headings.iter().all(|i| i.severity == "warning"));
+        assert!(headings.iter().all(|i| i.xpath.is_some()));
+
+        let paragraphs: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "empty_paragraph")
+            .collect();
+        assert_eq!(paragraphs.len(), 2, "two empty paragraphs expected");
+        assert!(paragraphs.iter().all(|i| i.severity == "warning"));
+    }
+
+    #[test]
+    fn test_empty_content_tags_detected() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <div></div>
+        <ul><li>One</li><li></li></ul>
+        <section></section>
+        <span></span>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let empties: Vec<_> = issues
+            .iter()
+            .filter(|i| i.issue_type == "empty_content_tag")
+            .collect();
+        assert_eq!(empties.len(), 4, "four empty content tags expected");
+        assert!(empties.iter().all(|i| i.severity == "info"));
+        assert!(empties.iter().any(|i| i.element == "<li>"));
+    }
+
+    #[test]
+    fn test_empty_elements_skips_intentional_and_void() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <div id="app"></div>
+        <span class="icon"></span>
+        <div style="height: 1px"></div>
+        <div aria-hidden="true"></div>
+        <img src="x.jpg">
+        <input type="text">
+        <div><p>Has a child element</p></div>
+    </main>
+</body>
+</html>"#;
+        let issues = parser.analyze_semantics(&parser_doc(html));
+        let empties: Vec<_> = issues
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i.issue_type.as_str(),
+                    "empty_heading" | "empty_paragraph" | "empty_content_tag"
+                )
+            })
+            .collect();
+        assert!(
+            empties.is_empty(),
+            "no empty-tag issues expected, got {:?}",
+            empties
+        );
     }
 }

@@ -1601,6 +1601,22 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Use semantic HTML so AI and assistive tools understand the page structure.",
         None,
     ));
+    let empty_tags = ["empty_heading", "empty_paragraph", "empty_content_tag"];
+    let empty_tag_count = seo
+        .semantic_issues
+        .iter()
+        .filter(|i| empty_tags.contains(&i.issue_type.as_str()))
+        .count();
+    out.push(check(
+        "empty_tags",
+        "semantic_html",
+        "warning",
+        empty_tag_count == 0,
+        1.5,
+        format!("Empty elements: {empty_tag_count}"),
+        "Remove or fill empty tags (headings, paragraphs, divs, list items, ...) left by broken templates or failed hydration.",
+        Some(empty_tag_count.to_string()),
+    ));
     out.push(check(
         "content_present",
         "ai_readability",
@@ -2104,6 +2120,40 @@ mod tests {
         assert_eq!(extras.video_accessible, 0);
         assert_eq!(extras.iframe_total, 1);
         assert_eq!(extras.iframe_with_title, 0);
+    }
+
+    #[test]
+    fn test_empty_tags_check() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Title</h1>
+        <h2></h2>
+        <p></p>
+        <ul><li>One</li><li></li></ul>
+    </main>
+</body>
+</html>"#;
+        let out = run(html, "https://example.com/page");
+        let result = check(&out, "empty_tags");
+        assert!(!result.passed, "empty tags should fail the check");
+        assert!(result.evidence.as_deref().is_some_and(|e| e.parse::<usize>().unwrap_or(0) >= 3));
+
+        let clean = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <main>
+        <h1>Title</h1>
+        <p>Real content.</p>
+        <ul><li>One</li><li>Two</li></ul>
+    </main>
+</body>
+</html>"#;
+        let out = run(clean, "https://example.com/page");
+        assert!(check(&out, "empty_tags").passed);
     }
 
     #[test]
