@@ -5,6 +5,7 @@ use crate::error::AppError;
 use crate::models::{CrawlResult, PageDetail, PageLink};
 use crate::ResultsCacheKey;
 
+use super::crawl::deserialize_rel_tokens;
 use super::{compress_png, decompress_html_body, decompress_png, CrawlRepo};
 
 impl<'a> CrawlRepo<'a> {
@@ -327,7 +328,7 @@ impl<'a> CrawlRepo<'a> {
         )?;
 
         let mut stmt = self.conn.prepare(
-            "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+            "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal
              FROM page_links WHERE from_url = ?1",
         )?;
 
@@ -341,6 +342,10 @@ impl<'a> CrawlRepo<'a> {
                     link_type: row.get(4)?,
                     anchor_text: row.get(5)?,
                     is_follow: row.get::<_, i32>(6)? != 0,
+                    rel_tokens: deserialize_rel_tokens(row.get::<_, Option<String>>(7)?.as_deref()),
+                    is_sponsored: row.get::<_, i32>(8)? != 0,
+                    is_ugc: row.get::<_, i32>(9)? != 0,
+                    is_internal: row.get::<_, i32>(10)? != 0,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

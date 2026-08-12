@@ -38,6 +38,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "013_add_pages_project_url_index",
         include_str!("013_add_pages_project_url_index.sql"),
     ),
+    (
+        "014_link_analysis",
+        include_str!("014_link_analysis.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -167,6 +171,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!(seo_priority, 1);
+
+        let link_cols = column_names(&conn, "page_links");
+        for expected in ["rel_tokens", "is_sponsored", "is_ugc", "is_internal"] {
+            assert!(
+                link_cols.contains(&expected.to_string()),
+                "missing column {}",
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_link_analysis_backfill_is_internal() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        conn.execute_batch(
+            "CREATE TABLE page_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_url TEXT NOT NULL,
+                to_url TEXT NOT NULL,
+                config_id TEXT NOT NULL,
+                project_id TEXT,
+                link_type TEXT NOT NULL,
+                anchor_text TEXT,
+                is_follow INTEGER
+            );
+            INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, is_follow)
+            VALUES
+                ('https://x.com/a', 'https://x.com/b', 'cfg', 'p1', 'a', 1),
+                ('https://x.com/a', 'https://y.com/ext', 'cfg', 'p1', 'a', 1),
+                ('http://x.com:8080/a', 'https://x.com/b', 'cfg', 'p1', 'a', 1),
+                ('https://x.com:443/a', 'https://x.com/a', 'cfg', 'p1', 'a', 1);",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let internal: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM page_links WHERE is_internal = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let external: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM page_links WHERE is_internal = 0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(internal, 3, "same host (with scheme/port variance) is internal");
+        assert_eq!(external, 1, "different host is external");
     }
 
     #[test]

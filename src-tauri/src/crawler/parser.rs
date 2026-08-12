@@ -52,7 +52,10 @@ pub struct SeoData {
 pub struct OutgoingLink {
     pub url: String,
     pub anchor_text: String,
+    pub rel_tokens: Vec<String>,
     pub is_follow: bool,
+    pub is_sponsored: bool,
+    pub is_ugc: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1452,12 +1455,21 @@ impl SeoParser {
                 };
 
                 let rel = el.value().attr("rel").unwrap_or("");
-                let is_follow = !rel.contains("nofollow");
+                let rel_tokens: Vec<String> = rel
+                    .split_whitespace()
+                    .map(|t| t.to_ascii_lowercase())
+                    .collect();
+                let is_follow = !rel_tokens.iter().any(|t| t == "nofollow");
+                let is_sponsored = rel_tokens.iter().any(|t| t == "sponsored");
+                let is_ugc = rel_tokens.iter().any(|t| t == "ugc");
 
                 Some(OutgoingLink {
                     url: absolute_url,
                     anchor_text,
+                    rel_tokens,
                     is_follow,
+                    is_sponsored,
+                    is_ugc,
                 })
             })
             .collect()
@@ -2284,6 +2296,44 @@ mod tests {
             issues.iter().any(|i| i.issue_type == "skip_link_missing"),
             "missing skip link should be reported"
         );
+    }
+
+    #[test]
+    fn test_extract_links_captures_rel_tokens_and_flags() {
+        let parser = SeoParser::new();
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title></head>
+<body>
+    <a href="https://x.com/next" rel="nofollow ugc">User link</a>
+    <a href="https://x.com/ads" rel="sponsored">Promoted</a>
+    <a href="https://x.com/plain">Plain</a>
+    <a href="https://y.com/ext">External</a>
+</body>
+</html>"#;
+        let doc = parser_doc(html);
+        let links = parser.extract_links(&doc, &Url::parse("https://x.com/start").unwrap());
+
+        let by_url: std::collections::HashMap<&str, &OutgoingLink> =
+            links.iter().map(|l| (l.url.as_str(), l)).collect();
+
+        let user = by_url["https://x.com/next"];
+        assert_eq!(user.rel_tokens, vec!["nofollow", "ugc"]);
+        assert!(!user.is_follow);
+        assert!(!user.is_sponsored);
+        assert!(user.is_ugc);
+
+        let ads = by_url["https://x.com/ads"];
+        assert_eq!(ads.rel_tokens, vec!["sponsored"]);
+        assert!(ads.is_follow);
+        assert!(ads.is_sponsored);
+        assert!(!ads.is_ugc);
+
+        let plain = by_url["https://x.com/plain"];
+        assert!(plain.rel_tokens.is_empty());
+        assert!(plain.is_follow);
+        assert!(!plain.is_sponsored);
+        assert!(!plain.is_ugc);
     }
 
     #[test]

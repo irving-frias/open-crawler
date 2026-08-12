@@ -798,15 +798,15 @@ fn copy_page_links(
         return Ok(());
     }
     let mut stmt = src.prepare(&format!(
-        "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+        "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal
          FROM page_links WHERE config_id IN ({})",
         in_placeholders(config_map.len())
     ))?;
     let config_ids: Vec<&String> = config_map.keys().collect();
     let mut rows = stmt.query(rusqlite::params_from_iter(config_ids))?;
     let mut insert = tx.prepare(
-        "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
     )?;
     while let Some(row) = rows.next()? {
         let old_config_id: String = row.get(2)?;
@@ -823,6 +823,10 @@ fn copy_page_links(
             row.get::<_, String>(4)?,
             row.get::<_, Option<String>>(5)?,
             row.get::<_, Option<i64>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<i64>>(8)?,
+            row.get::<_, Option<i64>>(9)?,
+            row.get::<_, Option<i64>>(10)?,
         ])?;
     }
     Ok(())

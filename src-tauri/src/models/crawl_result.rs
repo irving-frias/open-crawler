@@ -50,6 +50,16 @@ pub struct PageLink {
     pub link_type: String,
     pub anchor_text: Option<String>,
     pub is_follow: bool,
+    /// Raw `rel` attribute tokens (lowercased), e.g. ["nofollow", "ugc"].
+    #[serde(default)]
+    pub rel_tokens: Vec<String>,
+    #[serde(default)]
+    pub is_sponsored: bool,
+    #[serde(default)]
+    pub is_ugc: bool,
+    /// Whether both endpoints share the same host (derived at crawl time).
+    #[serde(default)]
+    pub is_internal: bool,
 }
 
 /// One hop of an HTTP redirect chain captured while fetching a page.

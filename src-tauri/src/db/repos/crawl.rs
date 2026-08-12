@@ -10,6 +10,20 @@ use crate::models::{CrawlConfig, CrawlResult, PageLink, RedirectRecord};
 use super::seo::{delete_seo_normalized, save_seo_normalized};
 use super::{compress_html_body, CrawlRepo};
 
+/// Serializes rel tokens to a compact JSON array string (NULL when empty).
+fn serialize_rel_tokens(tokens: &[String]) -> Option<String> {
+    if tokens.is_empty() {
+        None
+    } else {
+        serde_json::to_string(tokens).ok()
+    }
+}
+
+/// Parses rel tokens previously stored by [`serialize_rel_tokens`].
+pub fn deserialize_rel_tokens(raw: Option<&str>) -> Vec<String> {
+    raw.and_then(|s| serde_json::from_str::<Vec<String>>(s).ok()).unwrap_or_default()
+}
+
 /// Deletes the normalized `page_issues` rows belonging to the given page ids.
 /// Re-crawls replace page rows per URL, and the replaced rows' ids differ from
 /// the new ones, so stale issue rows must be removed explicitly.
@@ -319,8 +333,8 @@ impl<'a> CrawlRepo<'a> {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
 
             for link in links {
@@ -332,6 +346,10 @@ impl<'a> CrawlRepo<'a> {
                     link.link_type,
                     link.anchor_text,
                     link.is_follow as i32,
+                    serialize_rel_tokens(&link.rel_tokens),
+                    link.is_sponsored as i32,
+                    link.is_ugc as i32,
+                    link.is_internal as i32,
                 ])?;
             }
         }

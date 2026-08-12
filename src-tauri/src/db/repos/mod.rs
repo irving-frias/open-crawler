@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod crawl;
 pub mod export;
+pub mod links;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;
@@ -339,6 +340,10 @@ mod tests {
             link_type: "href".to_string(),
             anchor_text: None,
             is_follow: true,
+            rel_tokens: Vec::new(),
+            is_sponsored: false,
+            is_ugc: false,
+            is_internal: false,
         }
     }
 

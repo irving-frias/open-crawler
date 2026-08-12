@@ -802,17 +802,27 @@ impl CrawlEngine {
             }
         };
 
+        let response_host = response.url.host_str();
         let links: Vec<PageLink> = seo_data
             .outgoing_links
             .iter()
-            .map(|l| PageLink {
-                from_url: response.url.to_string(),
-                to_url: l.url.clone(),
-                config_id: config_id.to_string(),
-                project_id: project_id.to_string(),
-                link_type: "a".to_string(),
-                anchor_text: Some(l.anchor_text.clone()),
-                is_follow: l.is_follow,
+            .map(|l| {
+                let target_host = Url::parse(&l.url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(|h| h.to_owned()));
+                PageLink {
+                    from_url: response.url.to_string(),
+                    to_url: l.url.clone(),
+                    config_id: config_id.to_string(),
+                    project_id: project_id.to_string(),
+                    link_type: "a".to_string(),
+                    anchor_text: Some(l.anchor_text.clone()),
+                    is_follow: l.is_follow,
+                    rel_tokens: l.rel_tokens.clone(),
+                    is_sponsored: l.is_sponsored,
+                    is_ugc: l.is_ugc,
+                    is_internal: response_host.is_some() && response_host == target_host.as_deref(),
+                }
             })
             .collect();
 

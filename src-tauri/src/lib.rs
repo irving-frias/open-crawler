@@ -224,6 +224,8 @@ pub fn run() {
             crate::commands::get_dashboard_stats,
             crate::commands::get_duplicate_groups,
             crate::commands::get_project_keywords,
+            crate::commands::get_link_analysis,
+            crate::commands::get_project_has_links,
             // snapshots
             crate::commands::list_crawl_snapshots,
             crate::commands::compare_crawls,

@@ -3,6 +3,7 @@ use rusqlite::params;
 use crate::error::AppError;
 use crate::models::{CrawlResult, PageLink};
 
+use super::crawl::deserialize_rel_tokens;
 use super::CrawlRepo;
 
 impl<'a> CrawlRepo<'a> {
@@ -105,12 +106,12 @@ impl<'a> CrawlRepo<'a> {
         limit: u32,
     ) -> Result<Vec<(i64, PageLink)>, AppError> {
         let query = if last_rowid.is_some() {
-            "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+            "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal
              FROM page_links WHERE project_id = ?1 AND rowid < ?2
              ORDER BY rowid DESC LIMIT ?3"
                 .to_string()
         } else {
-            "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow
+            "SELECT rowid, from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal
              FROM page_links WHERE project_id = ?1
              ORDER BY rowid DESC LIMIT ?2"
                 .to_string()
@@ -174,6 +175,10 @@ impl<'a> CrawlRepo<'a> {
                 link_type: row.get(5)?,
                 anchor_text: row.get(6)?,
                 is_follow: row.get::<_, i32>(7)? != 0,
+                rel_tokens: deserialize_rel_tokens(row.get::<_, Option<String>>(8)?.as_deref()),
+                is_sponsored: row.get::<_, i32>(9)? != 0,
+                is_ugc: row.get::<_, i32>(10)? != 0,
+                is_internal: row.get::<_, i32>(11)? != 0,
             },
         ))
     }

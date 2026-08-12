@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod app;
 pub mod crawl;
 pub mod export;
+pub mod links;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;
