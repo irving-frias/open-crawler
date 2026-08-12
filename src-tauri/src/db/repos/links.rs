@@ -172,7 +172,7 @@ impl<'a> CrawlRepo<'a> {
                 )),
             }
         }
-        acc.sort_by(|a, b| b.1.cmp(&a.1));
+        acc.sort_by_key(|a| std::cmp::Reverse(a.1));
         Ok(acc
             .into_iter()
             .take(limit)
