@@ -91,6 +91,7 @@ pub async fn run_seo_audit(
             size_bytes: response.size_bytes,
             load_time_ms: response.load_time_ms,
             pagespeed_score: None,
+            response_headers: response.headers.clone(),
         },
     );
 
@@ -387,6 +388,7 @@ pub async fn run_seo_audit_all(
                     size_bytes: response.size_bytes,
                     load_time_ms: response.load_time_ms,
                     pagespeed_score: None,
+                    response_headers: response.headers.clone(),
                 },
             );
             let json = serde_json::to_string(&audit).ok();

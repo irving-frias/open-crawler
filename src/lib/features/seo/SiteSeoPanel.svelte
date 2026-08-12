@@ -37,6 +37,8 @@
     performance: m['seo.category.performance'],
     ai_readability: m['seo.category.ai_readability'],
     sxo: m['seo.category.sxo'],
+    security: m['seo.category.security'],
+    compliance: m['seo.category.compliance'],
   };
 
   function categoryLabel(category: string): string {

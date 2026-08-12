@@ -892,6 +892,100 @@ const DICT: Record<string, CheckDictEntry> = {
         'Añade controles (o un <track>) a cada <video> para que los usuarios puedan pausarlo y subtitularlo.',
     },
   },
+  // ==================== SECURITY (response headers) ====================
+  hsts_header: {
+    en: {
+      message: 'Missing Strict-Transport-Security header',
+      guidance: 'Add Strict-Transport-Security so browsers always use HTTPS for the domain.',
+    },
+    es: {
+      message: 'Falta la cabecera Strict-Transport-Security',
+      guidance: 'Añade Strict-Transport-Security para que los navegadores usen siempre HTTPS en el dominio.',
+    },
+  },
+  x_content_type_options: {
+    en: {
+      message: 'Missing X-Content-Type-Options: nosniff',
+      guidance: 'Set X-Content-Type-Options: nosniff to stop MIME-sniffing attacks.',
+    },
+    es: {
+      message: 'Falta X-Content-Type-Options: nosniff',
+      guidance: 'Establece X-Content-Type-Options: nosniff para evitar ataques de MIME-sniffing.',
+    },
+  },
+  x_frame_options: {
+    en: {
+      message: 'No clickjacking protection (X-Frame-Options / frame-ancestors)',
+      guidance: 'Deny framing with X-Frame-Options or a CSP frame-ancestors directive.',
+    },
+    es: {
+      message: 'Sin protección contra clickjacking (X-Frame-Options / frame-ancestors)',
+      guidance: 'Deniega el framing con X-Frame-Options o una directiva CSP frame-ancestors.',
+    },
+  },
+  content_security_policy: {
+    en: {
+      message: 'Missing Content-Security-Policy header',
+      guidance: 'Add a Content-Security-Policy header restricting scripts and origins.',
+    },
+    es: {
+      message: 'Falta la cabecera Content-Security-Policy',
+      guidance: 'Añade una cabecera Content-Security-Policy que restrinja scripts y orígenes.',
+    },
+  },
+  referrer_policy: {
+    en: {
+      message: 'Missing Referrer-Policy header',
+      guidance: 'Set Referrer-Policy to control what URL data is shared in the Referer header.',
+    },
+    es: {
+      message: 'Falta la cabecera Referrer-Policy',
+      guidance: 'Establece Referrer-Policy para controlar qué datos de URL se comparten en la cabecera Referer.',
+    },
+  },
+  permissions_policy: {
+    en: {
+      message: 'Missing Permissions-Policy header',
+      guidance: 'Add Permissions-Policy to restrict access to sensitive browser features.',
+    },
+    es: {
+      message: 'Falta la cabecera Permissions-Policy',
+      guidance: 'Añade Permissions-Policy para restringir el acceso a funciones sensibles del navegador.',
+    },
+  },
+  // ==================== COMPLIANCE ====================
+  privacy_policy_available: {
+    en: {
+      message: 'No privacy policy link or schema found',
+      guidance:
+        'Link a privacy policy (footer, header or schema.org privacyPolicy) so visitors and regulators can find it.',
+    },
+    es: {
+      message: 'No se encontró enlace ni schema de política de privacidad',
+      guidance:
+        'Enlaza una política de privacidad (footer, cabecera o schema.org privacyPolicy) para que visitantes y reguladores puedan encontrarla.',
+    },
+  },
+  cookie_consent_banner: {
+    en: {
+      message: 'No cookie-consent banner / CMP detected',
+      guidance: 'Provide an explicit consent mechanism (banner or CMP) for non-essential cookies where required.',
+    },
+    es: {
+      message: 'No se detectó banner de consentimiento de cookies ni CMP',
+      guidance: 'Ofrece un mecanismo de consentimiento explícito (banner o CMP) para cookies no esenciales cuando sea obligatorio.',
+    },
+  },
+  data_protection_schema: {
+    en: {
+      message: 'No privacyPolicy/policies in structured data',
+      guidance: 'Declare privacyPolicy or policies on Organization/WebPage schema to make data handling machine-readable.',
+    },
+    es: {
+      message: 'Sin privacyPolicy/policies en los datos estructurados',
+      guidance: 'Declara privacyPolicy o policies en el schema de Organization/WebPage para que el tratamiento de datos sea legible por máquina.',
+    },
+  },
 };
 
 const READABILITY_NO_TEXT = {
@@ -1246,6 +1340,42 @@ const WHY: Record<string, { en: string; es: string }> = {
   video_accessible: {
     en: 'Videos without controls or captions exclude users who cannot pause or hear the content.',
     es: 'Los videos sin controles ni subtítulos excluyen a los usuarios que no pueden pausar o escuchar el contenido.',
+  },
+  hsts_header: {
+    en: 'Without HSTS, browsers may downgrade HTTPS connections, leaving users exposed to downgrade attacks.',
+    es: 'Sin HSTS, los navegadores pueden degradar conexiones HTTPS, exponiendo a los usuarios a ataques de degradación.',
+  },
+  x_content_type_options: {
+    en: 'MIME-sniffing lets attackers serve scripts as images; nosniff forces browsers to respect declared types.',
+    es: 'El MIME-sniffing permite a los atacantes servir scripts como imágenes; nosniff obliga al navegador a respetar los tipos declarados.',
+  },
+  x_frame_options: {
+    en: 'Without clickjacking protection, third-party sites can frame and trick users into unintended actions.',
+    es: 'Sin protección contra clickjacking, sitios de terceros pueden enmarcar la página y engañar a los usuarios para realizar acciones no deseadas.',
+  },
+  content_security_policy: {
+    en: 'A Content-Security-Policy limits which scripts can run, blocking most XSS payloads at the source.',
+    es: 'Una Content-Security-Policy limita qué scripts pueden ejecutarse, bloqueando la mayoría de los payloads XSS en origen.',
+  },
+  referrer_policy: {
+    en: 'Referrer-Policy controls how much of the URL leaks to third parties, protecting privacy.',
+    es: 'Referrer-Policy controla cuánta parte de la URL se filtra a terceros, protegiendo la privacidad.',
+  },
+  permissions_policy: {
+    en: 'Permissions-Policy blocks sites from using sensitive browser features (camera, mic, geolocation) without consent.',
+    es: 'Permissions-Policy impide que los sitios usen funciones sensibles del navegador (cámara, micrófono, geolocalización) sin consentimiento.',
+  },
+  privacy_policy_available: {
+    en: 'Privacy regulations require a findable policy explaining how personal data is collected and used.',
+    es: 'Las normativas de privacidad exigen una política localizable que explique cómo se recopilan y usan los datos personales.',
+  },
+  cookie_consent_banner: {
+    en: 'Regions like the EU require explicit, informed consent before non-essential cookies are set.',
+    es: 'Regiones como la UE exigen consentimiento explícito e informado antes de instalar cookies no esenciales.',
+  },
+  data_protection_schema: {
+    en: 'Machine-readable privacy references help transparency systems and AI assistants surface how data is handled.',
+    es: 'Las referencias de privacidad legibles por máquina ayudan a los sistemas de transparencia y a los asistentes de IA a mostrar cómo se tratan los datos.',
   },
 };
 
@@ -2112,6 +2242,98 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
       fix: 'Añade controles y un <track> a cada video.',
       expected:
         '<video controls>\n  <source src="pelicula.mp4" type="video/mp4">\n  <track kind="captions" src="subtitulos.vtt" srclang="es" label="Español">\n</video>',
+    },
+  },
+  hsts_header: {
+    en: {
+      fix: 'Add the Strict-Transport-Security header to the HTTPS response.',
+      expected: 'Strict-Transport-Security: max-age=63072000; includeSubDomains; preload',
+    },
+    es: {
+      fix: 'Añade la cabecera Strict-Transport-Security a la respuesta HTTPS.',
+      expected: 'Strict-Transport-Security: max-age=63072000; includeSubDomains; preload',
+    },
+  },
+  x_content_type_options: {
+    en: {
+      fix: 'Set X-Content-Type-Options on every response.',
+      expected: 'X-Content-Type-Options: nosniff',
+    },
+    es: {
+      fix: 'Establece X-Content-Type-Options en cada respuesta.',
+      expected: 'X-Content-Type-Options: nosniff',
+    },
+  },
+  x_frame_options: {
+    en: {
+      fix: 'Add X-Frame-Options or a CSP frame-ancestors directive.',
+      expected: 'X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors \'none\'',
+    },
+    es: {
+      fix: 'Añade X-Frame-Options o una directiva CSP frame-ancestors.',
+      expected: 'X-Frame-Options: DENY\nContent-Security-Policy: frame-ancestors \'none\'',
+    },
+  },
+  content_security_policy: {
+    en: {
+      fix: 'Add a Content-Security-Policy header tuned to the site.',
+      expected: "Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'",
+    },
+    es: {
+      fix: 'Añade una cabecera Content-Security-Policy adaptada al sitio.',
+      expected: "Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'",
+    },
+  },
+  referrer_policy: {
+    en: {
+      fix: 'Add a Referrer-Policy header.',
+      expected: 'Referrer-Policy: strict-origin-when-cross-origin',
+    },
+    es: {
+      fix: 'Añade una cabecera Referrer-Policy.',
+      expected: 'Referrer-Policy: strict-origin-when-cross-origin',
+    },
+  },
+  permissions_policy: {
+    en: {
+      fix: 'Add a Permissions-Policy restricting sensitive features.',
+      expected: "Permissions-Policy: camera=(), microphone=(), geolocation=(self)",
+    },
+    es: {
+      fix: 'Añade una Permissions-Policy que restrinja funciones sensibles.',
+      expected: "Permissions-Policy: camera=(), microphone=(), geolocation=(self)",
+    },
+  },
+  privacy_policy_available: {
+    en: {
+      fix: 'Link the privacy policy from the footer and expose it in schema.',
+      expected: '<a href="/privacy">Privacy policy</a>',
+    },
+    es: {
+      fix: 'Enlaza la política de privacidad desde el footer y expónla en el schema.',
+      expected: '<a href="/privacy">Política de privacidad</a>',
+    },
+  },
+  cookie_consent_banner: {
+    en: {
+      fix: 'Add a consent banner or integrate a CMP before setting non-essential cookies.',
+      expected: '<div id="cookie-banner"><button>Accept cookies</button></div>',
+    },
+    es: {
+      fix: 'Añade un banner de consentimiento o integra una CMP antes de instalar cookies no esenciales.',
+      expected: '<div id="cookie-banner"><button>Aceptar cookies</button></div>',
+    },
+  },
+  data_protection_schema: {
+    en: {
+      fix: 'Declare privacyPolicy on the Organization schema.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Organization","name":"Acme","privacyPolicy":"https://example.com/privacy"}</script>',
+    },
+    es: {
+      fix: 'Declara privacyPolicy en el schema de Organization.',
+      expected:
+        '<script type="application/ld+json">{"@type":"Organization","name":"Acme","privacyPolicy":"https://example.com/privacy"}</script>',
     },
   },
 };

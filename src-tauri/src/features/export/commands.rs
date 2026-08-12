@@ -1104,7 +1104,9 @@ mod tests {
         "grade": "C",
         "categories": [
             {"category":"meta","score":80.0,"weight":0.25,"passed_weight":0.2,"total_weight":0.25,"passed_checks":3,"total_checks":4},
-            {"category":"sxo","score":50.0,"weight":0.08,"passed_weight":0.04,"total_weight":0.08,"passed_checks":1,"total_checks":3}
+            {"category":"sxo","score":50.0,"weight":0.08,"passed_weight":0.04,"total_weight":0.08,"passed_checks":1,"total_checks":3},
+            {"category":"security","score":42.0,"weight":0.12,"passed_weight":0.0,"total_weight":0.12,"passed_checks":0,"total_checks":6},
+            {"category":"compliance","score":0.0,"weight":0.08,"passed_weight":0.0,"total_weight":0.08,"passed_checks":0,"total_checks":3}
         ],
         "checks": [
             {"id":"title_length","category":"meta","severity":"warning","passed":false,"weight":2.0,"message":"Title length: 10 chars","guidance":"Keep it 30-65","evidence":"10"},
@@ -1204,7 +1206,7 @@ mod tests {
     fn page_values_flatten_seo_data() {
         let p = sample_page("a", "https://x.com/a");
         let values = page_values(&p);
-        assert_eq!(values.len(), 33, "33 columns expected");
+        assert_eq!(values.len(), 35, "35 columns expected (33 + security + compliance)");
 
         let seo_score = &values[15];
         assert!(matches!(seo_score, ExportValue::Num(n) if *n == 72.0));
@@ -1217,10 +1219,10 @@ mod tests {
         let redirect = &values[21];
         assert!(matches!(redirect, ExportValue::Str(s) if s == "https://old.example.com/page"));
 
-        // Category columns follow CATEGORY_ORDER at indices 22..30.
+        // Category columns follow CATEGORY_ORDER at indices 22..32.
         assert!(matches!(&values[22], ExportValue::Num(n) if *n == 80.0));
         assert!(
-            matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 50.0)
+            matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0)
         );
     }
 
@@ -1236,7 +1238,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(counts.0, 2, "count_issues covers all severities");
-        assert_eq!(counts.1, 4, "2 categories + 1 failing check + 1 fix");
+        assert_eq!(counts.1, 6, "4 categories + 1 failing check + 1 fix");
         let path = std::env::temp_dir().join("open-crawler-test-export.csv");
         let _ = std::fs::remove_file(&path);
 
@@ -1335,8 +1337,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            processed, 7,
-            "1 page + 2 issues + 2 categories + 1 check + 1 fix"
+            processed, 9,
+            "1 page + 2 issues + 4 categories + 1 check + 1 fix"
         );
         let names: Vec<String> = workbook.worksheets().iter().map(|w| w.name()).collect();
         for expected in ["Pages", "Issues", "SEO Audit", "SEO Checks", "SEO Fixes"] {

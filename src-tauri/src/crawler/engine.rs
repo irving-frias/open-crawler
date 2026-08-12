@@ -757,6 +757,7 @@ impl CrawlEngine {
                 size_bytes: response.size_bytes,
                 load_time_ms: response.load_time_ms,
                 pagespeed_score: None,
+                response_headers: response.headers.clone(),
             },
         );
         let seo_audit_json = serde_json::to_string(&seo_audit).ok();

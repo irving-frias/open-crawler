@@ -17,10 +17,12 @@ retomarlo en futuras sesiones.
   `form_no_accessible_name`, `button_no_name`, `duplicate_id`, `aria_current_nav`.
   (constante `MAX_ELEMENT_ISSUES_PER_TYPE = 25`; helper `issue()` con xpath/css/snippet)
 - `seo/checks.rs` — `PageExtras::extract(html, url)` (segunda pasada ligera de DOM) y
-  `run_all()` con **36+ checks** en 7 categorías: `meta`, `technical`, `social`,
-  `accessibility`, `performance`, `ai_readability`, `sxo`.
-- `seo/audit.rs` — `AuditContext` (url, status, size, load_time, pagespeed_score),
-  `CheckResult` (id/category/severity/passed/weight/message/guidance/evidence/examples),
+  `run_all()` con **50+ checks** en 10 categorías: `meta`, `technical`, `social`,
+  `accessibility`, `semantic_html`, `performance`, `ai_readability`, `sxo`,
+  `security`, `compliance`.
+- `seo/audit.rs` — `AuditContext` (url, status, size, load_time, pagespeed_score,
+  `response_headers: HashMap<String,String>` lowercase), `CheckResult`
+  (id/category/severity/passed/weight/message/guidance/evidence/examples),
   `SeoAuditResult`. `audit_page()` orquesta.
 - `seo/score.rs` — `CATEGORY_ORDER` + `CATEGORY_WEIGHTS`, score 0-100 ponderado.
 - `seo/priority.rs` — prioridades: error→critical, warning→important, info→minor.
@@ -161,6 +163,42 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
     columnas SEO, nombres de hojas vía `workbook.worksheets()`+`name()`, archivo xlsx).
   - `cargo test --lib`: 126 OK. Clippy limpio (salvo warning pre-existente
     `run_default` en checks.rs).
+
+### Fase 5 — Security y Compliance (headers de respuesta) ✅ HECHO
+
+- **`seo/audit.rs`**: `AuditContext` gana `response_headers: HashMap<String,String>`
+  (claves lowercase). Se propaga desde `crawler/fetcher.rs` (reqwest normaliza a
+  lowercase) en los 3 call sites: `crawler/engine.rs`, `features/results/commands.rs`,
+  `features/seo/commands.rs` (2). Test helpers usan `Default::default()`.
+- **6 checks `security`** (categorías ya existían en score.rs, pesos 0.12/0.08):
+
+| check                      | severity | criterio                                 |
+| -------------------------- | -------- | ---------------------------------------- |
+| `hsts_header`              | warning  | `Strict-Transport-Security` presente     |
+| `x_content_type_options`   | warning  | header contiene `nosniff`                |
+| `x_frame_options`          | warning  | `X-Frame-Options` o CSP `frame-ancestors`|
+| `content_security_policy`  | warning  | `Content-Security-Policy` presente       |
+| `referrer_policy`          | info     | `Referrer-Policy` presente               |
+| `permissions_policy`       | info     | `Permissions-Policy` presente            |
+
+- **3 checks `compliance`**:
+
+| check                       | severity | criterio                                       |
+| --------------------------- | -------- | ---------------------------------------------- |
+| `privacy_policy_available`  | warning  | link privacy/cookies/terms/gdpr o schema       |
+| `cookie_consent_banner`     | warning  | marcadores CMP/banner en el HTML (`CONSENT_MARKERS`) |
+| `data_protection_schema`    | info     | JSON-LD con `privacyPolicy` o `policies`       |
+
+- `PageExtras` nuevos campos: `privacy_link_count` (enlaces cuyo href/texto contiene
+  privacy/cookies/gdpr/terms/legal/datenschutz), `consent_banner`. Helper nuevo
+  `json_ld_has_privacy` (recorre bloques JSON-LD).
+- Tests: audit.rs pasa de 8→10 categorías; export `page_values` 33→35 columnas
+  (SAMPLE_AUDIT ampliado con categorías security/compliance; `count_seo_rows` 4→6,
+  xlsx processed 7→9); 2 tests nuevos en checks.rs (headers security + compliance).
+  `cargo test --lib`: 128 OK. Clippy limpio.
+- i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts` (9 checks nuevos);
+  labels `seo.category.{security,compliance}` en `messages/{en,es}.json` y en los
+  maps de PageDetailPanel y SiteSeoPanel (regenerar paraglide con `bun run build`).
 
 ### Verificación
 

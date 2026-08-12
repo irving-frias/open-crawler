@@ -46,6 +46,8 @@ pub struct PageExtras {
     pub meta_robots: Option<String>,
     pub answer_section_words: usize,
     pub time_datetime_count: usize,
+    pub privacy_link_count: usize,
+    pub consent_banner: bool,
 }
 
 impl PageExtras {
@@ -183,6 +185,26 @@ impl PageExtras {
         // <time datetime> count (freshness signal)
         extras.time_datetime_count = count_selector(&document, "time[datetime]");
 
+        // Compliance: links pointing to privacy / cookies / terms pages
+        if let Ok(sel) = Selector::parse("a[href]") {
+            extras.privacy_link_count = document
+                .select(&sel)
+                .filter(|el| {
+                    let href = el.value().attr("href").unwrap_or("").to_ascii_lowercase();
+                    let text = el.text().collect::<Vec<_>>().join("").to_ascii_lowercase();
+                    ["privacy", "cookies", "cookie", "gdpr", "terms", "legal", "datenschutz"]
+                        .iter()
+                        .any(|k| href.contains(k) || text.contains(k))
+                })
+                .count();
+        }
+
+        // Compliance: cookie-consent banner / CMP markers
+        let lower_html = html.to_ascii_lowercase();
+        extras.consent_banner = CONSENT_MARKERS
+            .iter()
+            .any(|m| lower_html.contains(m));
+
         // URL heuristics
         if let Ok(parsed) = Url::parse(url) {
             extras.url_has_underscore = parsed.path().contains('_');
@@ -228,6 +250,27 @@ impl PageExtras {
 const QUESTION_WORDS: &[&str] = &[
     "what", "how", "why", "who", "where", "when", "which", "can", "could", "does", "do", "is",
     "are", "should",
+];
+
+/// Substrings that typically identify a cookie-consent banner or a consent
+/// management platform (CMP) in the raw HTML.
+const CONSENT_MARKERS: &[&str] = &[
+    "cookie-banner",
+    "cookie_banner",
+    "cookie-consent",
+    "cookie_consent",
+    "cookie-notice",
+    "cc-banner",
+    "onetrust",
+    "iubenda",
+    "cookiebot",
+    "didomi",
+    "consent-manager",
+    "accept cookies",
+    "accept all cookies",
+    "accept the use of cookies",
+    "cookie settings",
+    "manage consent",
 ];
 
 fn has_selector(document: &Html, selector_str: &str) -> bool {
@@ -444,6 +487,24 @@ fn block_has_freshness(value: &serde_json::Value) -> bool {
                 return true;
             }
             map.values().any(block_has_freshness)
+        }
+        _ => false,
+    }
+}
+
+/// Whether any JSON-LD block declares a privacy policy or data policies.
+fn json_ld_has_privacy(blocks: &[serde_json::Value]) -> bool {
+    blocks.iter().any(block_has_privacy)
+}
+
+fn block_has_privacy(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(block_has_privacy),
+        serde_json::Value::Object(map) => {
+            if map.contains_key("privacyPolicy") || map.contains_key("policies") {
+                return true;
+            }
+            map.values().any(block_has_privacy)
         }
         _ => false,
     }
@@ -1736,6 +1797,171 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
+    // ==================== SECURITY (response headers) ====================
+    let header = |name: &str| {
+        ctx.response_headers
+            .get(name)
+            .map(|v| v.to_ascii_lowercase())
+            .unwrap_or_default()
+    };
+    let has_header = |name: &str| ctx.response_headers.contains_key(name);
+
+    let hsts = has_header("strict-transport-security");
+    out.push(check(
+        "hsts_header",
+        "security",
+        "warning",
+        hsts,
+        2.0,
+        if hsts {
+            "HTTP Strict Transport Security (HSTS) header present"
+        } else {
+            "Missing Strict-Transport-Security header"
+        },
+        "Add Strict-Transport-Security so browsers always use HTTPS for the domain.",
+        Some(if hsts {
+            "strict-transport-security present".to_string()
+        } else {
+            "strict-transport-security absent".to_string()
+        }),
+    ));
+
+    let nosniff = header("x-content-type-options").contains("nosniff");
+    out.push(check(
+        "x_content_type_options",
+        "security",
+        "warning",
+        nosniff,
+        1.5,
+        if nosniff {
+            "X-Content-Type-Options: nosniff set"
+        } else {
+            "Missing X-Content-Type-Options: nosniff"
+        },
+        "Set X-Content-Type-Options: nosniff to stop MIME-sniffing attacks.",
+        Some(header("x-content-type-options")),
+    ));
+
+    let csp = header("content-security-policy");
+    let csp_present = !csp.is_empty();
+    let xfo = has_header("x-frame-options") || csp.contains("frame-ancestors");
+    out.push(check(
+        "x_frame_options",
+        "security",
+        "warning",
+        xfo,
+        2.0,
+        if xfo {
+            "Clickjacking protection present (X-Frame-Options or CSP frame-ancestors)"
+        } else {
+            "No clickjacking protection (X-Frame-Options / frame-ancestors)"
+        },
+        "Deny framing with X-Frame-Options or a CSP frame-ancestors directive.",
+        None,
+    ));
+
+    out.push(check(
+        "content_security_policy",
+        "security",
+        "warning",
+        csp_present,
+        2.0,
+        if csp_present {
+            "Content-Security-Policy header present"
+        } else {
+            "Missing Content-Security-Policy header"
+        },
+        "Add a Content-Security-Policy header restricting scripts and origins.",
+        Some(if csp.is_empty() {
+            "content-security-policy absent".to_string()
+        } else {
+            format!("policy length: {} chars", csp.len())
+        }),
+    ));
+
+    let referrer = has_header("referrer-policy");
+    out.push(check(
+        "referrer_policy",
+        "security",
+        "info",
+        referrer,
+        1.0,
+        if referrer {
+            "Referrer-Policy header present"
+        } else {
+            "Missing Referrer-Policy header"
+        },
+        "Set Referrer-Policy to control what URL data is shared in the Referer header.",
+        None,
+    ));
+
+    let permissions = has_header("permissions-policy");
+    out.push(check(
+        "permissions_policy",
+        "security",
+        "info",
+        permissions,
+        1.0,
+        if permissions {
+            "Permissions-Policy header present"
+        } else {
+            "Missing Permissions-Policy header"
+        },
+        "Add Permissions-Policy to restrict access to sensitive browser features.",
+        None,
+    ));
+
+    // ==================== COMPLIANCE (GDPR / privacy) ====================
+    let has_privacy_schema = json_ld_has_privacy(&extras.json_ld_raw);
+    let privacy_available = extras.privacy_link_count > 0 || has_privacy_schema;
+    out.push(check(
+        "privacy_policy_available",
+        "compliance",
+        "warning",
+        privacy_available,
+        2.0,
+        if privacy_available {
+            "Privacy policy reachable (link or schema)".to_string()
+        } else {
+            "No privacy policy link or schema found".to_string()
+        },
+        "Link a privacy policy (footer, header or schema.org privacyPolicy) so visitors and regulators can find it.",
+        Some(format!(
+            "{} privacy/legal links, privacyPolicy in schema: {}",
+            extras.privacy_link_count, has_privacy_schema
+        )),
+    ));
+
+    out.push(check(
+        "cookie_consent_banner",
+        "compliance",
+        "warning",
+        extras.consent_banner,
+        2.0,
+        if extras.consent_banner {
+            "Cookie-consent banner or CMP detected"
+        } else {
+            "No cookie-consent banner / CMP detected"
+        },
+        "Provide an explicit consent mechanism (banner or CMP) for non-essential cookies where required.",
+        None,
+    ));
+
+    out.push(check(
+        "data_protection_schema",
+        "compliance",
+        "info",
+        has_privacy_schema,
+        1.0,
+        if has_privacy_schema {
+            "Data protection references in structured data"
+        } else {
+            "No privacyPolicy/policies in structured data"
+        },
+        "Declare privacyPolicy or policies on Organization/WebPage schema to make data handling machine-readable.",
+        None,
+    ));
+
     attach_examples(&mut out, seo);
 
     out
@@ -1819,6 +2045,7 @@ mod tests {
             size_bytes: 4096,
             load_time_ms: 120,
             pagespeed_score: None,
+            response_headers: Default::default(),
         }
     }
 
@@ -1986,5 +2213,80 @@ mod tests {
         assert!(check(&out, "img_srcset").passed);
         assert!(check(&out, "lazy_loading").passed);
         assert!(!check(&out, "render_blocking_scripts").passed);
+    }
+
+    #[test]
+    fn test_security_headers_checks() {
+        let html = "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body></body></html>";
+        let extras = PageExtras::extract(html, "https://example.com/page");
+        let parser = crate::crawler::parser::SeoParser::new();
+        let (seo, _) = parser.parse(html, &Url::parse("https://example.com/page").unwrap());
+
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("strict-transport-security".to_string(), "max-age=63072000".to_string());
+        headers.insert("x-content-type-options".to_string(), "nosniff".to_string());
+        headers.insert("x-frame-options".to_string(), "DENY".to_string());
+        headers.insert(
+            "content-security-policy".to_string(),
+            "default-src 'self'; frame-ancestors 'none'".to_string(),
+        );
+        let secure = AuditContext {
+            url: "https://example.com/page".to_string(),
+            status_code: 200,
+            size_bytes: 4096,
+            load_time_ms: 120,
+            pagespeed_score: None,
+            response_headers: headers,
+        };
+        let out = run_all(&seo, &extras, &secure);
+        for id in [
+            "hsts_header",
+            "x_content_type_options",
+            "x_frame_options",
+            "content_security_policy",
+        ] {
+            assert!(check(&out, id).passed, "{id} should pass");
+        }
+        assert!(!check(&out, "referrer_policy").passed);
+        assert!(!check(&out, "permissions_policy").passed);
+
+        let bare_ctx = ctx("https://example.com/page");
+        let out = run_all(&seo, &extras, &bare_ctx);
+        assert!(!check(&out, "hsts_header").passed);
+        assert!(!check(&out, "x_frame_options").passed);
+        assert!(!check(&out, "content_security_policy").passed);
+    }
+
+    #[test]
+    fn test_compliance_checks_detect_privacy_and_consent() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>T</title>
+    <script type="application/ld+json">{
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Acme",
+        "privacyPolicy": "https://example.com/privacy"
+    }</script>
+</head>
+<body>
+    <footer>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms</a>
+    </footer>
+    <div id="cookie-banner"><button>Accept cookies</button></div>
+</body>
+</html>"#;
+        let out = run(html, "https://example.com/page");
+        assert!(check(&out, "privacy_policy_available").passed);
+        assert!(check(&out, "cookie_consent_banner").passed);
+        assert!(check(&out, "data_protection_schema").passed);
+
+        let bare = r#"<!DOCTYPE html><html lang="en"><head><title>T</title></head><body></body></html>"#;
+        let out = run(bare, "https://example.com/page");
+        assert!(!check(&out, "privacy_policy_available").passed);
+        assert!(!check(&out, "cookie_consent_banner").passed);
+        assert!(!check(&out, "data_protection_schema").passed);
     }
 }

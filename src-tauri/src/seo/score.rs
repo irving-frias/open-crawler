@@ -9,17 +9,21 @@ pub const CATEGORY_ORDER: &[&str] = &[
     "performance",
     "ai_readability",
     "sxo",
+    "security",
+    "compliance",
 ];
 
 pub const CATEGORY_WEIGHTS: &[(&str, f64)] = &[
-    ("meta", 0.25),
-    ("technical", 0.18),
+    ("meta", 0.18),
+    ("technical", 0.15),
     ("accessibility", 0.12),
-    ("semantic_html", 0.12),
-    ("social", 0.07),
-    ("performance", 0.10),
-    ("ai_readability", 0.08),
-    ("sxo", 0.08),
+    ("security", 0.12),
+    ("semantic_html", 0.10),
+    ("performance", 0.09),
+    ("compliance", 0.08),
+    ("ai_readability", 0.06),
+    ("sxo", 0.06),
+    ("social", 0.04),
 ];
 
 fn category_weight(category: &str) -> f64 {

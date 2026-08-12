@@ -357,6 +357,8 @@
   "seo.category.performance": "Performance",
   "seo.category.ai_readability": "AI Readability",
   "seo.category.sxo": "SXO",
+  "seo.category.security": "Security",
+  "seo.category.compliance": "Compliance",
   "seo.areas_to_improve": "Areas to improve",
   "seo.site.title": "Site SEO Overview",
   "seo.site.subtitle": "Aggregated audit results across every crawled page.",

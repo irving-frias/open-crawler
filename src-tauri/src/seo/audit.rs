@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::crawler::parser::SeoData;
@@ -17,6 +19,9 @@ pub struct AuditContext {
     /// When present it is merged into the performance category; when absent
     /// only local heuristics contribute.
     pub pagespeed_score: Option<f64>,
+    /// All response headers of the final document (lowercased names), used by
+    /// the security and compliance check groups.
+    pub response_headers: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +158,7 @@ mod tests {
             size_bytes: 4096,
             load_time_ms: 120,
             pagespeed_score: None,
+            response_headers: Default::default(),
         };
         let result = audit_page(&seo, HTML, &ctx);
 
@@ -167,8 +173,8 @@ mod tests {
         assert!(by_id("https_used").unwrap().passed);
         assert!(by_id("img_alt").unwrap().passed);
 
-        // 8 categories should be reported.
-        assert_eq!(result.categories.len(), 8);
+        // 10 categories should be reported (security + compliance added).
+        assert_eq!(result.categories.len(), 10);
     }
 
     #[test]
@@ -183,6 +189,7 @@ mod tests {
             size_bytes: 512,
             load_time_ms: 10,
             pagespeed_score: None,
+            response_headers: Default::default(),
         };
         let result = audit_page(&seo, html, &ctx);
         assert!(result.score < 50.0, "score should be low: {}", result.score);
@@ -245,6 +252,7 @@ mod tests {
             size_bytes: 4096,
             load_time_ms: 120,
             pagespeed_score: None,
+            response_headers: Default::default(),
         };
         let result = audit_page(&seo, html, &ctx);
 
