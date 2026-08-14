@@ -288,7 +288,7 @@ fn category_score(audit: &SeoAuditResult, category: &str) -> Option<f64> {
         .categories
         .iter()
         .find(|c| c.category == category)
-        .map(|c| c.score)
+        .and_then(|c| c.score)
 }
 
 fn category_label(category: &str) -> &'static str {
@@ -705,7 +705,10 @@ fn audit_row(
         let r = row + written;
         xlsx_str(ws, r, 0, &p.url, None)?;
         xlsx_str(ws, r, 1, category_label(&cat.category), None)?;
-        xlsx_num(ws, r, 2, cat.score, None)?;
+        match cat.score {
+            Some(score) => xlsx_num(ws, r, 2, score, None)?,
+            None => xlsx_str(ws, r, 2, "", None)?,
+        }
         xlsx_num(ws, r, 3, cat.weight, None)?;
         xlsx_num(ws, r, 4, cat.passed_checks as f64, None)?;
         xlsx_num(ws, r, 5, cat.total_checks as f64, None)?;

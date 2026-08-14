@@ -674,14 +674,22 @@
               <div class="seo-category">
                 <div class="seo-category-head">
                   <span class="seo-category-name">{seoCategoryLabel(cat.category)}</span>
-                  <span class="seo-category-score" style="color: {seoScoreColor(cat.score)}">
-                    {Math.round(cat.score)}
-                  </span>
+                  {#if cat.score !== null}
+                    <span class="seo-category-score" style="color: {seoScoreColor(cat.score)}">
+                      {Math.round(cat.score)}
+                    </span>
+                  {:else}
+                    <span class="seo-category-score seo-category-na">N/A</span>
+                  {/if}
                 </div>
-                <Progress value={cat.score} max={100} class="h-1.5" />
-                <span class="seo-category-meta">
-                  {cat.passed_checks}/{cat.total_checks}
-                </span>
+                {#if cat.score !== null}
+                  <Progress value={cat.score} max={100} class="h-1.5" />
+                  <span class="seo-category-meta">
+                    {cat.passed_checks}/{cat.total_checks}
+                  </span>
+                {:else}
+                  <span class="seo-category-meta">—</span>
+                {/if}
               </div>
             {/each}
           </div>
@@ -1443,6 +1451,11 @@
     font-size: 0.8rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+  }
+
+  .seo-category-score.seo-category-na {
+    color: var(--text-muted);
+    font-weight: 600;
   }
 
   .seo-category-meta {

@@ -693,7 +693,8 @@ mod tests {
                 "INSERT INTO seo_category_scores (page_id, project_id, category, score)
                  SELECT p.id, p.project_id, json_extract(c.value, '$.category'), json_extract(c.value, '$.score')
                  FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
-                 WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json);
+                 WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+                   AND json_extract(c.value, '$.score') IS NOT NULL;
 
                  INSERT INTO seo_check_issues
                      (page_id, project_id, category, severity, check_id, message, guidance, evidence, examples_json)

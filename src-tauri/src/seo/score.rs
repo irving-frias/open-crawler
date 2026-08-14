@@ -51,15 +51,26 @@ pub fn grade_for(score: f64) -> String {
 }
 
 /// Computes per-category scores, the overall 0-100 score and a letter grade.
-/// Categories without any applicable checks are excluded from the weighted
-/// average so they do not penalize the page.
+/// Categories without any applicable checks are emitted with `score: None`
+/// (skipped) so the UI can show "N/A"; they do not contribute to the weighted
+/// average and thus do not penalize the page.
 pub fn compute(checks: &[CheckResult]) -> (f64, String, Vec<CategoryResult>) {
     let mut categories: Vec<CategoryResult> = Vec::new();
 
     for category in CATEGORY_ORDER {
         let cat_checks: Vec<&CheckResult> =
             checks.iter().filter(|c| c.category == *category).collect();
+        let weight = category_weight(category);
         if cat_checks.is_empty() {
+            categories.push(CategoryResult {
+                category: category.to_string(),
+                score: None,
+                weight,
+                passed_weight: 0.0,
+                total_weight: 0.0,
+                passed_checks: 0,
+                total_checks: 0,
+            });
             continue;
         }
         let total_weight: f64 = cat_checks.iter().map(|c| c.weight).sum();
@@ -75,8 +86,8 @@ pub fn compute(checks: &[CheckResult]) -> (f64, String, Vec<CategoryResult>) {
         };
         categories.push(CategoryResult {
             category: category.to_string(),
-            score,
-            weight: category_weight(category),
+            score: Some(score),
+            weight,
             passed_weight,
             total_weight,
             passed_checks: cat_checks.iter().filter(|c| c.passed).count(),
@@ -84,8 +95,15 @@ pub fn compute(checks: &[CheckResult]) -> (f64, String, Vec<CategoryResult>) {
         });
     }
 
-    let present_weight: f64 = categories.iter().map(|c| c.weight).sum();
-    let weighted = categories.iter().map(|c| c.score * c.weight).sum::<f64>();
+    let present_weight: f64 = categories
+        .iter()
+        .filter(|c| c.score.is_some())
+        .map(|c| c.weight)
+        .sum();
+    let weighted = categories
+        .iter()
+        .filter_map(|c| c.score.map(|s| s * c.weight))
+        .sum::<f64>();
     let overall = if present_weight > 0.0 {
         weighted / present_weight
     } else {
@@ -156,8 +174,18 @@ mod tests {
         let (score, grade, categories) = compute(&checks);
         assert!((score - 100.0).abs() < 0.001, "score: {score}");
         assert_eq!(grade, "A");
-        assert_eq!(categories.len(), 3);
-        assert!(categories.iter().all(|c| c.score == 100.0));
+        // All weighted categories are emitted; categories without checks are
+        // skipped (score: None) and do not drag the overall score down.
+        assert_eq!(categories.len(), CATEGORY_ORDER.len());
+        assert!(categories
+            .iter()
+            .all(|c| c.score == Some(100.0) || c.score.is_none()));
+        let skipped: Vec<_> = categories.iter().filter(|c| c.total_checks == 0).collect();
+        assert!(
+            !skipped.is_empty(),
+            "expected at least one skipped category"
+        );
+        assert!(skipped.iter().all(|c| c.score.is_none()));
     }
 
     #[test]
@@ -166,9 +194,11 @@ mod tests {
             ck("meta", "error", false, 3.0),
             ck("technical", "warning", false, 2.0),
         ];
-        let (score, grade, _) = compute(&checks);
+        let (score, grade, categories) = compute(&checks);
         assert_eq!(score, 0.0);
         assert_eq!(grade, "F");
+        let present: Vec<_> = categories.iter().filter(|c| c.score.is_some()).collect();
+        assert_eq!(present.len(), 2, "meta and technical should be scored");
     }
 
     #[test]
@@ -180,7 +210,7 @@ mod tests {
         ];
         let (_, _, categories) = compute(&checks);
         let meta = categories.iter().find(|c| c.category == "meta").unwrap();
-        assert!((meta.score - 66.6666).abs() < 0.001); // 4 passed-weight / 6 total
+        assert!((meta.score.unwrap() - 66.6666).abs() < 0.001); // 4 passed-weight / 6 total
         assert_eq!(meta.passed_checks, 2);
         assert_eq!(meta.total_checks, 3);
     }

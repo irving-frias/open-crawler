@@ -29,13 +29,15 @@ CREATE INDEX IF NOT EXISTS idx_seo_check_issues_project
 
 ALTER TABLE crawled_pages ADD COLUMN seo_priority_fix_count INTEGER NOT NULL DEFAULT 0;
 
--- Backfill from audits already stored by previous engine versions.
+-- Backfill from audits already stored by previous engine versions. Skipped
+-- categories (score null) are excluded, matching `save_seo_normalized`.
 INSERT INTO seo_category_scores (page_id, project_id, category, score)
 SELECT p.id, p.project_id,
        json_extract(c.value, '$.category'),
        json_extract(c.value, '$.score')
 FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
-WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json);
+WHERE p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+  AND json_extract(c.value, '$.score') IS NOT NULL;
 
 INSERT INTO seo_check_issues
     (page_id, project_id, category, severity, check_id, message, guidance, evidence, examples_json)

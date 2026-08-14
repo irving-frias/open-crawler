@@ -418,19 +418,7 @@ fn collect_required(value: &serde_json::Value, present: &mut usize, required: &m
     let (entities, required_keys) = match value {
         serde_json::Value::Object(map) => {
             let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
-            let keys: &[&str] = match ty {
-                "Article" | "NewsArticle" | "BlogPosting" => {
-                    &["headline", "datePublished", "author"]
-                }
-                "Person" => &["name"],
-                "Organization" => &["name"],
-                "WebSite" => &["name"],
-                "FAQPage" => &["mainEntity"],
-                "Product" => &["name"],
-                "BreadcrumbList" => &["itemListElement"],
-                "Recipe" => &["name", "recipeIngredient", "recipeInstructions"],
-                _ => &[],
-            };
+            let keys = required_props(ty);
             let children: Vec<_> = map
                 .iter()
                 .filter(|(k, _)| !k.starts_with('@'))
@@ -458,6 +446,189 @@ fn collect_required(value: &serde_json::Value, present: &mut usize, required: &m
 
     for child in entities {
         collect_required(child, present, required);
+    }
+}
+
+/// Required schema.org properties for a given @type (used by completeness and
+/// evidence helpers). Types without a known requirement list return none.
+fn required_props(ty: &str) -> &'static [&'static str] {
+    match ty {
+        "Article" | "NewsArticle" | "BlogPosting" => &["headline", "datePublished", "author"],
+        "Person" => &["name"],
+        "Organization" => &["name"],
+        "WebSite" => &["name"],
+        "FAQPage" => &["mainEntity"],
+        "Product" => &["name"],
+        "BreadcrumbList" => &["itemListElement"],
+        "Recipe" => &["name", "recipeIngredient", "recipeInstructions"],
+        _ => &[],
+    }
+}
+
+/// Describes structurally invalid JSON-LD blocks, e.g. "Product (missing @context)".
+fn json_ld_invalid_summaries(blocks: &[serde_json::Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for block in blocks {
+        collect_invalid_json_ld(block, true, &mut out);
+    }
+    out
+}
+
+fn collect_invalid_json_ld(value: &serde_json::Value, top_level: bool, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_invalid_json_ld(item, top_level, out);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            let ty = map
+                .get("@type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown");
+            let mut problems: Vec<&str> = Vec::new();
+            if top_level && !map.contains_key("@context") {
+                problems.push("missing @context");
+            }
+            let has_type = match map.get("@type") {
+                Some(serde_json::Value::String(s)) => !s.is_empty(),
+                Some(serde_json::Value::Array(l)) => !l.is_empty(),
+                _ => false,
+            };
+            if !has_type {
+                problems.push("missing @type");
+            }
+            if !problems.is_empty() {
+                out.push(format!("{ty} ({})", problems.join(", ")));
+            }
+            for (key, child) in map {
+                if key == "@graph" || is_entity_value(child) {
+                    collect_invalid_json_ld(child, false, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Returns "Type: missing prop1, prop2" summaries for blocks whose required
+/// properties are incomplete.
+fn json_ld_missing_prop_summaries(blocks: &[serde_json::Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for block in blocks {
+        collect_missing_props(block, &mut out);
+    }
+    out
+}
+
+/// Builds concrete `SemanticIssue` examples for a JSON-LD check: one per block
+/// that `should_report` on, pointing at the <script type="application/ld+json">
+/// with a truncated snippet of the offending block.
+fn json_ld_examples(
+    blocks: &[serde_json::Value],
+    should_report: impl Fn(&serde_json::Value) -> bool,
+) -> Vec<SemanticIssue> {
+    let mut out = Vec::new();
+    for block in blocks {
+        if should_report(block) {
+            out.push(SemanticIssue {
+                issue_type: "json_ld_issue".to_string(),
+                severity: "warning".to_string(),
+                element: r#"<script type="application/ld+json">"#.to_string(),
+                message: "Invalid or incomplete JSON-LD block".to_string(),
+                selector: Some(r#"script[type="application/ld+json"]"#.to_string()),
+                xpath: None,
+                css_selector: Some(r#"script[type="application/ld+json"]"#.to_string()),
+                snippet: Some(truncate_snippet(&block.to_string(), 400)),
+                line: None,
+                column: None,
+            });
+        }
+    }
+    out.truncate(3);
+    out
+}
+
+/// Whether a JSON-LD block (at any nesting) fails the structural validity rule.
+fn json_ld_block_has_invalid(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(json_ld_block_has_invalid),
+        serde_json::Value::Object(map) => {
+            if !map.contains_key("@context") || !json_ld_type_present(map) {
+                return true;
+            }
+            for (key, child) in map {
+                if (key == "@graph" || is_entity_value(child)) && json_ld_block_has_invalid(child) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => true,
+    }
+}
+
+fn json_ld_type_present(map: &serde_json::Map<String, serde_json::Value>) -> bool {
+    match map.get("@type") {
+        Some(serde_json::Value::String(s)) => !s.is_empty(),
+        Some(serde_json::Value::Array(l)) => !l.is_empty(),
+        _ => false,
+    }
+}
+
+/// Whether a block is missing any of its required schema.org properties.
+fn json_ld_block_incomplete(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(json_ld_block_incomplete),
+        serde_json::Value::Object(map) => {
+            let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
+            let required = required_props(ty);
+            let incomplete = required
+                .iter()
+                .any(|k| map.get(*k).map(|v| v.is_null()).unwrap_or(true));
+            if incomplete {
+                return true;
+            }
+            map.values().any(json_ld_block_incomplete)
+        }
+        _ => false,
+    }
+}
+
+fn truncate_snippet(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max).collect();
+        format!("{truncated}…")
+    }
+}
+
+fn collect_missing_props(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_missing_props(item, out);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
+            let required = required_props(ty);
+            let missing: Vec<&str> = required
+                .iter()
+                .copied()
+                .filter(|k| map.get(*k).map(|v| v.is_null()).unwrap_or(true))
+                .collect();
+            if !missing.is_empty() {
+                out.push(format!("{ty}: missing {}", missing.join(", ")));
+            }
+            for child in map.values() {
+                if is_entity_value(child) {
+                    collect_missing_props(child, out);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -510,6 +681,52 @@ fn block_has_privacy(value: &serde_json::Value) -> bool {
                 return true;
             }
             map.values().any(block_has_privacy)
+        }
+        _ => false,
+    }
+}
+
+/// Whether a block contains an article entity but no author anywhere in it.
+fn json_ld_article_without_author(value: &serde_json::Value) -> bool {
+    if !block_contains_article(value) {
+        return false;
+    }
+    !block_has_author(value)
+}
+
+/// Whether a block contains an article entity but no freshness dates anywhere.
+fn json_ld_article_without_freshness(value: &serde_json::Value) -> bool {
+    if !block_contains_article(value) {
+        return false;
+    }
+    !block_has_freshness(value)
+}
+
+fn block_contains_article(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(block_contains_article),
+        serde_json::Value::Object(map) => {
+            let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
+            if matches!(ty, "Article" | "NewsArticle" | "BlogPosting") {
+                return true;
+            }
+            map.values().any(block_contains_article)
+        }
+        _ => false,
+    }
+}
+
+/// Whether a block references an Organization/WebSite/WebPage without privacy.
+fn json_ld_org_without_privacy(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(json_ld_org_without_privacy),
+        serde_json::Value::Object(map) => {
+            let ty = map.get("@type").and_then(|t| t.as_str()).unwrap_or("");
+            let is_org = matches!(ty, "Organization" | "WebSite" | "WebPage");
+            if is_org && !block_has_privacy(value) {
+                return true;
+            }
+            map.values().any(json_ld_org_without_privacy)
         }
         _ => false,
     }
@@ -1737,35 +1954,56 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Open with a focused 40-100 word passage that answers the main question directly.",
         Some(extras.answer_section_words.to_string()),
     ));
-    out.push(check(
+    let json_ld_valid_all = all_json_ld_valid(&extras.json_ld_raw);
+    let invalid_summaries = json_ld_invalid_summaries(&extras.json_ld_raw);
+    let mut json_ld_valid_check = check(
         "json_ld_valid",
         "sxo",
         "warning",
-        !extras.has_json_ld || all_json_ld_valid(&extras.json_ld_raw),
+        !extras.has_json_ld || json_ld_valid_all,
         2.0,
         if extras.json_ld_raw.is_empty() {
             "No JSON-LD to validate".to_string()
-        } else if all_json_ld_valid(&extras.json_ld_raw) {
+        } else if json_ld_valid_all {
             "JSON-LD blocks are structurally valid".to_string()
         } else {
             "At least one JSON-LD block is missing @context or @type".to_string()
         },
         "Every JSON-LD block needs @context and @type to be interpretable by Google and AI systems.",
-        None,
-    ));
-    out.push(check(
+        if json_ld_valid_all {
+            None
+        } else {
+            Some(invalid_summaries.join("; "))
+        },
+    );
+    if !json_ld_valid_all {
+        json_ld_valid_check.examples =
+            json_ld_examples(&extras.json_ld_raw, json_ld_block_has_invalid);
+    }
+    out.push(json_ld_valid_check);
+    let completeness_score = schema_completeness_score(&extras.json_ld_raw);
+    let mut schema_completeness_check = check(
         "schema_completeness",
         "sxo",
         "info",
-        schema_completeness_score(&extras.json_ld_raw) >= 0.6,
+        completeness_score >= 0.6,
         1.0,
         format!(
             "Schema completeness: {:.0}% of required properties present",
-            schema_completeness_score(&extras.json_ld_raw) * 100.0
+            completeness_score * 100.0
         ),
         "Add the required properties for each schema type (headline for Article, name for Person, etc.).",
-        None,
-    ));
+        if completeness_score >= 0.6 {
+            None
+        } else {
+            Some(json_ld_missing_prop_summaries(&extras.json_ld_raw).join("; "))
+        },
+    );
+    if completeness_score < 0.6 {
+        schema_completeness_check.examples =
+            json_ld_examples(&extras.json_ld_raw, json_ld_block_incomplete);
+    }
+    out.push(schema_completeness_check);
     let has_faq_schema = extras.json_ld_types.iter().any(|t| t == "FAQPage");
     let faq_like_markup = extras.details_summary > 0 || extras.question_headings > 0;
     out.push(check(
@@ -1790,7 +2028,13 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         .iter()
         .any(|t| matches!(t.as_str(), "Article" | "NewsArticle" | "BlogPosting"));
     let has_author = json_ld_has_author(&extras.json_ld_raw);
-    out.push(check(
+    let article_types = extras
+        .json_ld_types
+        .iter()
+        .filter(|t| matches!(t.as_str(), "Article" | "NewsArticle" | "BlogPosting"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut author_schema_check = check(
         "author_schema",
         "sxo",
         "info",
@@ -1802,11 +2046,20 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             (false, _) => "No article schema to check".to_string(),
         },
         "Declare author (Person) in article schema to strengthen E-E-A-T and entity attribution.",
-        None,
-    ));
+        if has_article_schema && !has_author {
+            Some(article_types.join(", "))
+        } else {
+            None
+        },
+    );
+    if has_article_schema && !has_author {
+        author_schema_check.examples =
+            json_ld_examples(&extras.json_ld_raw, json_ld_article_without_author);
+    }
+    out.push(author_schema_check);
     let has_freshness =
         json_ld_has_freshness(&extras.json_ld_raw) || extras.time_datetime_count > 0;
-    out.push(check(
+    let mut freshness_dates_check = check(
         "freshness_dates",
         "sxo",
         "info",
@@ -1818,8 +2071,19 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             "No freshness dates detected".to_string()
         },
         "Add datePublished/dateModified (or <time datetime>) so search and AI systems can trust content freshness.",
-        None,
-    ));
+        if has_freshness {
+            None
+        } else if !article_types.is_empty() {
+            Some(article_types.join(", "))
+        } else {
+            Some(format!("{} <time datetime> elements", extras.time_datetime_count))
+        },
+    );
+    if !has_freshness && !extras.json_ld_raw.is_empty() {
+        freshness_dates_check.examples =
+            json_ld_examples(&extras.json_ld_raw, json_ld_article_without_freshness);
+    }
+    out.push(freshness_dates_check);
 
     // ==================== SECURITY (response headers) ====================
     let header = |name: &str| {
@@ -1971,7 +2235,13 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
-    out.push(check(
+    let org_types = extras
+        .json_ld_types
+        .iter()
+        .filter(|t| matches!(t.as_str(), "Organization" | "WebSite" | "WebPage"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut data_protection_schema_check = check(
         "data_protection_schema",
         "compliance",
         "info",
@@ -1983,8 +2253,17 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             "No privacyPolicy/policies in structured data"
         },
         "Declare privacyPolicy or policies on Organization/WebPage schema to make data handling machine-readable.",
-        None,
-    ));
+        if has_privacy_schema || org_types.is_empty() {
+            None
+        } else {
+            Some(org_types.join(", "))
+        },
+    );
+    if !has_privacy_schema && !extras.json_ld_raw.is_empty() {
+        data_protection_schema_check.examples =
+            json_ld_examples(&extras.json_ld_raw, json_ld_org_without_privacy);
+    }
+    out.push(data_protection_schema_check);
 
     attach_examples(&mut out, seo);
 
@@ -2351,6 +2630,13 @@ mod tests {
         let out = run(&html(invalid), "https://example.com/page");
         assert!(!check(&out, "json_ld_valid").passed);
         assert!(check(&out, "author_schema").passed);
+        // Evidence pinpoints the offending block.
+        assert!(check(&out, "json_ld_valid")
+            .evidence
+            .as_deref()
+            .unwrap_or("")
+            .contains("missing @context"));
+        assert_eq!(check(&out, "json_ld_valid").examples.len(), 1);
 
         // Article without author fails author_schema
         let no_author = r#"{
@@ -2360,6 +2646,14 @@ mod tests {
         }"#;
         let out = run(&html(no_author), "https://example.com/page");
         assert!(!check(&out, "author_schema").passed);
+        assert!(check(&out, "author_schema")
+            .evidence
+            .as_deref()
+            .unwrap_or("")
+            .contains("Article"));
+        assert_eq!(check(&out, "author_schema").examples.len(), 1);
+        assert!(!check(&out, "freshness_dates").passed);
+        assert_eq!(check(&out, "freshness_dates").examples.len(), 1);
     }
 
     #[test]

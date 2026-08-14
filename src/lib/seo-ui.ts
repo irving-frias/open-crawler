@@ -29,14 +29,18 @@ export function seoVariant(score: number): 'default' | 'warning' | 'destructive'
 /**
  * Potential overall-score increase if a failing category were raised to 100.
  * Mirrors the backend weighted average: overall = Σ(score_c · weight_c) / Σ(weight_c)
- * over the categories present in the audit, so fixing every check of category `c`
+ * over the categories with a score, so fixing every check of category `c`
  * moves the overall score by `(100 - score_c) · weight_c / present_weight`.
+ * Skipped categories (score: null) are excluded.
  */
 export function seoCategoryGains(categories: SeoCategoryResult[]): Record<string, number> {
-  const presentWeight = categories.reduce((acc, c) => acc + c.weight, 0);
+  const scored = categories.filter(
+    (c): c is SeoCategoryResult & { score: number } => c.score !== null,
+  );
+  const presentWeight = scored.reduce((acc, c) => acc + c.weight, 0);
   if (presentWeight <= 0) return {};
   const gains: Record<string, number> = {};
-  for (const cat of categories) {
+  for (const cat of scored) {
     if (cat.score >= 100) continue;
     const gain = ((100 - cat.score) * cat.weight) / presentWeight;
     gains[cat.category] = gain;

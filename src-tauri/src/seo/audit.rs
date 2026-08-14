@@ -53,7 +53,10 @@ pub struct CheckResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryResult {
     pub category: String,
-    pub score: f64,
+    /// 0..100 score, or `None` when the category is skipped for this context
+    /// (no applicable checks, e.g. site-level "links" on a page audit). The UI
+    /// renders skipped categories as "N/A" instead of a misleading zero.
+    pub score: Option<f64>,
     pub weight: f64,
     pub passed_weight: f64,
     pub total_weight: f64,
@@ -173,8 +176,24 @@ mod tests {
         assert!(by_id("https_used").unwrap().passed);
         assert!(by_id("img_alt").unwrap().passed);
 
-        // 10 categories should be reported (security + compliance added).
-        assert_eq!(result.categories.len(), 10);
+        // All weighted categories should be reported (security + compliance
+        // added). "links" is included but skipped (score: None) on page audits.
+        assert_eq!(result.categories.len(), 11);
+        let links = result
+            .categories
+            .iter()
+            .find(|c| c.category == "links")
+            .unwrap();
+        assert!(links.score.is_none());
+        assert_eq!(links.total_checks, 0);
+        assert!(
+            result
+                .categories
+                .iter()
+                .filter(|c| c.score.is_some())
+                .count()
+                >= 10
+        );
     }
 
     #[test]

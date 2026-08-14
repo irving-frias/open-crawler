@@ -288,7 +288,8 @@ export interface SeoCheckResult {
 
 export interface SeoCategoryResult {
   category: string;
-  score: number;
+  /** 0..100, or null when the category is skipped (no applicable checks). */
+  score: number | null;
   weight: number;
   passed_weight: number;
   total_weight: number;
