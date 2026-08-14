@@ -114,11 +114,12 @@ impl<'a> CrawlRepo<'a> {
         page_id: &str,
         score: f64,
         json: Option<&str>,
+        response_headers_json: Option<&str>,
     ) -> Result<(), AppError> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(
-            "UPDATE crawled_pages SET seo_score = ?1, seo_audit_json = ?2 WHERE id = ?3",
-            params![score, json, page_id],
+            "UPDATE crawled_pages SET seo_score = ?1, seo_audit_json = ?2, response_headers_json = ?3 WHERE id = ?4",
+            params![score, json, response_headers_json, page_id],
         )?;
         // Keep normalized rows in sync after a re-audit.
         delete_seo_normalized(&tx, std::slice::from_ref(&page_id.to_string()))?;
@@ -137,6 +138,18 @@ impl<'a> CrawlRepo<'a> {
             |r| r.get(0),
         )?;
 
+        // Site-level link health: computed once per project from the link graph.
+        let (link_checks, link_score, link_grade) = {
+            let analysis = self.get_link_analysis(project_id)?;
+            if analysis.internal_pages == 0 && analysis.total_links == 0 {
+                (Vec::new(), None, None)
+            } else {
+                let checks = crate::seo::checks::run_site_link_checks(&analysis);
+                let (score, grade, _) = crate::seo::score::compute(&checks);
+                (checks, Some(score), Some(grade))
+            }
+        };
+
         let (audited_pages, avg_score, total_fixes): (u32, f64, i64) = self.conn.query_row(
             "SELECT COUNT(*), COALESCE(AVG(seo_score), 0),
                         COALESCE(SUM(seo_priority_fix_count), 0)
@@ -150,6 +163,9 @@ impl<'a> CrawlRepo<'a> {
             return Ok(SeoOverview {
                 audited_pages: 0,
                 total_pages,
+                link_checks,
+                link_score,
+                link_grade,
                 ..Default::default()
             });
         }
@@ -271,6 +287,9 @@ impl<'a> CrawlRepo<'a> {
             category_averages,
             top_issues,
             total_fixes: total_fixes as u32,
+            link_checks,
+            link_score,
+            link_grade,
         })
     }
 

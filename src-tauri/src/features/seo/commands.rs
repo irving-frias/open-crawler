@@ -99,8 +99,19 @@ pub async fn run_seo_audit(
     let score = audit.score;
     let pid = page_id.clone();
     let pid_project = original.project_id.clone();
+    let response_headers_json = if response.headers.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&response.headers).ok()
+    };
     with_repo(&state, move |repo| {
-        repo.update_seo_audit(&pid_project, &pid, score, json.as_deref())
+        repo.update_seo_audit(
+            &pid_project,
+            &pid,
+            score,
+            json.as_deref(),
+            response_headers_json.as_deref(),
+        )
     })
     .await?;
 
@@ -392,7 +403,12 @@ pub async fn run_seo_audit_all(
                 },
             );
             let json = serde_json::to_string(&audit).ok();
-            Ok((page_id, audit.score, json))
+            let headers_json = if response.headers.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&response.headers).ok()
+            };
+            Ok((page_id, audit.score, json, headers_json))
         }
     });
 
@@ -404,11 +420,17 @@ pub async fn run_seo_audit_all(
         }
 
         match outcome {
-            Ok((page_id, score, json)) => {
+            Ok((page_id, score, json, headers_json)) => {
                 let pid = page_id;
                 let pid_project = project_id.clone();
                 if with_repo(&state, move |repo| {
-                    repo.update_seo_audit(&pid_project, &pid, score, json.as_deref())
+                    repo.update_seo_audit(
+                        &pid_project,
+                        &pid,
+                        score,
+                        json.as_deref(),
+                        headers_json.as_deref(),
+                    )
                 })
                 .await
                 .is_err()

@@ -295,12 +295,15 @@ fn category_label(category: &str) -> &'static str {
     match category {
         "meta" => "Meta",
         "technical" => "Technical",
+        "links" => "Links",
         "social" => "Social",
         "accessibility" => "Accessibility",
         "semantic_html" => "Semantic HTML",
         "performance" => "Performance",
         "ai_readability" => "AI Readability",
         "sxo" => "SXO",
+        "security" => "Security",
+        "compliance" => "Compliance",
         _ => "Other",
     }
 }
@@ -1175,6 +1178,10 @@ mod tests {
             seo_score: Some(72.0),
             seo_audit_json: Some(SAMPLE_AUDIT.to_string()),
             redirect_from_url: Some("https://old.example.com/page".to_string()),
+            response_headers_json: Some(
+                r#"{"content-type":"text/html; charset=utf-8","strict-transport-security":"max-age=31536000"}"#
+                    .to_string(),
+            ),
         }
     }
 
@@ -1206,11 +1213,10 @@ mod tests {
     fn page_values_flatten_seo_data() {
         let p = sample_page("a", "https://x.com/a");
         let values = page_values(&p);
-        assert_eq!(
-            values.len(),
-            35,
-            "35 columns expected (33 + security + compliance)"
-        );
+        // Columns follow page_headers() and grow with CATEGORY_ORDER, so derive
+        // the expected count instead of hardcoding it (10 cats → 35, 11 → 36).
+        let expected = page_headers().len();
+        assert_eq!(values.len(), expected, "columns must match page_headers()");
 
         let seo_score = &values[15];
         assert!(matches!(seo_score, ExportValue::Num(n) if *n == 72.0));
@@ -1223,9 +1229,12 @@ mod tests {
         let redirect = &values[21];
         assert!(matches!(redirect, ExportValue::Str(s) if s == "https://old.example.com/page"));
 
-        // Category columns follow CATEGORY_ORDER at indices 22..32.
-        assert!(matches!(&values[22], ExportValue::Num(n) if *n == 80.0));
-        assert!(matches!(&values[22 + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0));
+        // Category columns follow CATEGORY_ORDER after the fixed prefix.
+        let cat_start = 22;
+        assert!(matches!(&values[cat_start], ExportValue::Num(n) if *n == 80.0));
+        assert!(
+            matches!(&values[cat_start + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0)
+        );
     }
 
     #[tokio::test]

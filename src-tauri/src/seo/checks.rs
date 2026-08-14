@@ -41,8 +41,6 @@ pub struct PageExtras {
     pub html_bytes: usize,
     pub div_with_direct_text: usize,
     pub scripts_render_blocking: usize,
-    pub internal_count: usize,
-    pub external_count: usize,
     pub meta_robots: Option<String>,
     pub answer_section_words: usize,
     pub time_datetime_count: usize,
@@ -224,31 +222,6 @@ impl PageExtras {
                 .and_then(|el| el.value().attr("content").map(|s| s.to_string()));
         }
 
-        // Internal / external link counts
-        if let Ok(sel) = Selector::parse("a[href]") {
-            let origin = Url::parse(url).ok();
-            for el in document.select(&sel) {
-                let Some(href) = el.value().attr("href") else {
-                    continue;
-                };
-                if !href.starts_with("http://") && !href.starts_with("https://") {
-                    continue;
-                }
-                let Ok(parsed) = Url::parse(href) else {
-                    continue;
-                };
-                let same_host = match &origin {
-                    Some(o) => parsed.host_str() == o.host_str(),
-                    None => false,
-                };
-                if same_host {
-                    extras.internal_count += 1;
-                } else if parsed.host_str().is_some() {
-                    extras.external_count += 1;
-                }
-            }
-        }
-
         extras
     }
 }
@@ -344,6 +317,32 @@ fn ratio_display(ratio: f64) -> String {
     } else {
         format!("{ratio:.1}")
     }
+}
+
+/// Counts internal vs external links from the same resolved outgoing links that
+/// populate the `page_links` table, so `internal_external_ratio` always agrees
+/// with the site link-analysis panel. A link is internal when its host matches
+/// the audited page's host; unresolvable hosts are ignored.
+fn link_counts(seo: &SeoData, page_url: &str) -> (usize, usize) {
+    let origin_host = Url::parse(page_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned));
+    let mut internal = 0usize;
+    let mut external = 0usize;
+    for link in &seo.outgoing_links {
+        let Some(target_host) = Url::parse(&link.url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+        else {
+            continue;
+        };
+        if origin_host.as_deref() == Some(target_host.as_str()) {
+            internal += 1;
+        } else {
+            external += 1;
+        }
+    }
+    (internal, external)
 }
 
 /// Every JSON-LD block must carry @context and @type to be valid structured data.
@@ -826,10 +825,13 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
-    // Internal:external ratio (10:1 recommended)
-    let ie_ratio = if extras.external_count > 0 {
-        extras.internal_count as f64 / extras.external_count as f64
-    } else if extras.internal_count > 0 {
+    // Internal:external ratio (10:1 recommended). Counts are derived from the
+    // same outgoing-link extraction that populates the `page_links` table, so
+    // this check always agrees with the site link-analysis panel.
+    let (internal_count, external_count) = link_counts(seo, &ctx.url);
+    let ie_ratio = if external_count > 0 {
+        internal_count as f64 / external_count as f64
+    } else if internal_count > 0 {
         f64::MAX
     } else {
         0.0
@@ -838,7 +840,7 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "internal_external_ratio",
         "meta",
         "info",
-        extras.internal_count > 0 && ie_ratio >= 10.0,
+        internal_count > 0 && ie_ratio >= 10.0,
         1.0,
         format!(
             "Internal/external link ratio: {}:1 (target ≥ 10:1)",
@@ -847,7 +849,7 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Link mostly within your own site; cite external sources sparingly.",
         Some(format!(
             "{} internal / {} external",
-            extras.internal_count, extras.external_count
+            internal_count, external_count
         )),
     ));
 
@@ -2056,6 +2058,113 @@ fn severity_rank(severity: &str) -> u8 {
     }
 }
 
+/// Runs the site-level link health checks from a project's [`LinkAnalysis`].
+/// Unlike the per-page checks in `run_all`, these operate on the whole crawl
+/// graph (orphans, dead ends, anchor quality, link-nature balance), so they are
+/// computed once per project and merged into the SEO overview.
+pub fn run_site_link_checks(analysis: &crate::models::LinkAnalysis) -> Vec<CheckResult> {
+    let mut out: Vec<CheckResult> = Vec::new();
+
+    // Orphans: pages with no incoming internal link. More than 10% is a
+    // discoverability problem (they only exist because a seed pointed at them).
+    let orphan_ratio = if analysis.internal_pages > 0 {
+        analysis.orphan_count as f64 / analysis.internal_pages as f64
+    } else {
+        0.0
+    };
+    out.push(check(
+        "link_orphan_ratio",
+        "links",
+        "warning",
+        analysis.internal_pages == 0 || orphan_ratio <= 0.10,
+        3.0,
+        format!(
+            "Orphan pages: {} of {} ({:.1}%)",
+            analysis.orphan_count,
+            analysis.internal_pages,
+            orphan_ratio * 100.0
+        ),
+        "Every page should be reachable through internal links. Add links from other pages to each orphan.",
+        Some(format!("{:.1}%", orphan_ratio * 100.0)),
+    ));
+
+    // Dead ends: pages that link to no internal page. More than 10% indicates
+    // thin navigation that leaves crawlers (and users) stuck.
+    let dead_end_ratio = if analysis.internal_pages > 0 {
+        analysis.dead_end_count as f64 / analysis.internal_pages as f64
+    } else {
+        0.0
+    };
+    out.push(check(
+        "link_dead_end_ratio",
+        "links",
+        "warning",
+        analysis.internal_pages == 0 || dead_end_ratio <= 0.10,
+        3.0,
+        format!(
+            "Dead-end pages: {} of {} ({:.1}%)",
+            analysis.dead_end_count,
+            analysis.internal_pages,
+            dead_end_ratio * 100.0
+        ),
+        "Dead-end pages stop crawling. Link each one to at least one related internal page.",
+        Some(format!("{:.1}%", dead_end_ratio * 100.0)),
+    ));
+
+    // Anchor quality: descriptive anchors vs generic/url/empty. At least 60% of
+    // anchors should describe their target.
+    let anchors = analysis.anchor_quality.descriptive
+        + analysis.anchor_quality.generic
+        + analysis.anchor_quality.url_anchors;
+    let descriptive_ratio = if anchors > 0 {
+        analysis.anchor_quality.descriptive as f64 / anchors as f64
+    } else {
+        1.0
+    };
+    out.push(check(
+        "link_anchor_quality",
+        "links",
+        "warning",
+        analysis.internal_links == 0 || descriptive_ratio >= 0.60,
+        2.0,
+        format!(
+            "Descriptive anchors: {:.1}% ({} descriptive, {} generic, {} URL-only, {} empty)",
+            descriptive_ratio * 100.0,
+            analysis.anchor_quality.descriptive,
+            analysis.anchor_quality.generic,
+            analysis.anchor_quality.url_anchors,
+            analysis.anchor_quality.empty
+        ),
+        "Use descriptive anchor text that names the destination instead of 'click here' or a bare URL.",
+        Some(format!("{:.1}%", descriptive_ratio * 100.0)),
+    ));
+
+    // Link-nature balance: an excessive share of nofollow links (vs followed)
+    // dilutes link equity. Pass when nofollow <= 30% of all links.
+    let nofollow_ratio = if analysis.total_links > 0 {
+        analysis.nofollow_links as f64 / analysis.total_links as f64
+    } else {
+        0.0
+    };
+    out.push(check(
+        "link_nofollow_ratio",
+        "links",
+        "info",
+        analysis.total_links == 0 || nofollow_ratio <= 0.30,
+        1.0,
+        format!(
+            "Nofollow links: {} of {} ({:.1}%)",
+            analysis.nofollow_links,
+            analysis.total_links,
+            nofollow_ratio * 100.0
+        ),
+        "Keep rel=\"nofollow\" for untrusted or paid links only; followed links pass more equity.",
+        Some(format!("{:.1}%", nofollow_ratio * 100.0)),
+    ));
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2139,7 +2248,10 @@ mod tests {
         let out = run(html, "https://example.com/page");
         let result = check(&out, "empty_tags");
         assert!(!result.passed, "empty tags should fail the check");
-        assert!(result.evidence.as_deref().is_some_and(|e| e.parse::<usize>().unwrap_or(0) >= 3));
+        assert!(result
+            .evidence
+            .as_deref()
+            .is_some_and(|e| e.parse::<usize>().unwrap_or(0) >= 3));
 
         let clean = r#"<!DOCTYPE html>
 <html lang="en">
@@ -2349,5 +2461,113 @@ mod tests {
         assert!(!check(&out, "privacy_policy_available").passed);
         assert!(!check(&out, "cookie_consent_banner").passed);
         assert!(!check(&out, "data_protection_schema").passed);
+    }
+
+    #[test]
+    fn test_site_link_checks_healthy_site_passes() {
+        let analysis = crate::models::LinkAnalysis {
+            total_links: 100,
+            internal_links: 90,
+            external_links: 10,
+            self_links: 2,
+            followed_links: 95,
+            nofollow_links: 5,
+            sponsored_links: 2,
+            ugc_links: 1,
+            unique_internal_targets: 80,
+            internal_pages: 50,
+            orphan_count: 2,
+            orphan_pages: vec![],
+            dead_end_count: 1,
+            dead_end_pages: vec![],
+            top_anchors: vec![],
+            anchor_quality: crate::models::AnchorQuality {
+                descriptive: 80,
+                generic: 8,
+                url_anchors: 2,
+                empty: 0,
+            },
+            external_domains: vec![],
+        };
+        let out = run_site_link_checks(&analysis);
+        assert_eq!(out.len(), 4);
+        for c in &out {
+            assert_eq!(c.category, "links", "{} should be in links category", c.id);
+            assert!(c.passed, "{} should pass on a healthy site", c.id);
+        }
+        assert_eq!(
+            out.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "link_orphan_ratio",
+                "link_dead_end_ratio",
+                "link_anchor_quality",
+                "link_nofollow_ratio",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_site_link_checks_bad_site_fails() {
+        let analysis = crate::models::LinkAnalysis {
+            total_links: 50,
+            internal_links: 40,
+            external_links: 10,
+            self_links: 0,
+            followed_links: 20,
+            nofollow_links: 30,
+            sponsored_links: 0,
+            ugc_links: 0,
+            unique_internal_targets: 5,
+            internal_pages: 20,
+            orphan_count: 8,
+            orphan_pages: vec![],
+            dead_end_count: 6,
+            dead_end_pages: vec![],
+            top_anchors: vec![],
+            anchor_quality: crate::models::AnchorQuality {
+                descriptive: 5,
+                generic: 20,
+                url_anchors: 15,
+                empty: 10,
+            },
+            external_domains: vec![],
+        };
+        let out = run_site_link_checks(&analysis);
+        // 8/20 orphans = 40% > 10% → fail; 6/20 dead ends = 30% > 10% → fail;
+        // 5/40 descriptive = 12.5% < 60% → fail; 30/50 nofollow = 60% > 30% → fail.
+        for c in &out {
+            assert!(!c.passed, "{} should fail on a bad site", c.id);
+        }
+    }
+
+    #[test]
+    fn test_site_link_checks_empty_graph() {
+        let analysis = crate::models::LinkAnalysis {
+            total_links: 0,
+            internal_links: 0,
+            external_links: 0,
+            self_links: 0,
+            followed_links: 0,
+            nofollow_links: 0,
+            sponsored_links: 0,
+            ugc_links: 0,
+            unique_internal_targets: 0,
+            internal_pages: 0,
+            orphan_count: 0,
+            orphan_pages: vec![],
+            dead_end_count: 0,
+            dead_end_pages: vec![],
+            top_anchors: vec![],
+            anchor_quality: crate::models::AnchorQuality {
+                descriptive: 0,
+                generic: 0,
+                url_anchors: 0,
+                empty: 0,
+            },
+            external_domains: vec![],
+        };
+        let out = run_site_link_checks(&analysis);
+        assert_eq!(out.len(), 4);
+        assert!(out.iter().all(|c| c.passed));
     }
 }

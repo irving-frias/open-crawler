@@ -76,6 +76,8 @@
         return m['tabs.schedule']();
       case 'seo':
         return m['tabs.seo']();
+      case 'links':
+        return m['tabs.links']();
     }
   }
 
@@ -213,6 +215,12 @@
     {#if components.seo}
       {@const SiteSeo = components.seo}
       <SiteSeo projectId={selectedProjectId} />
+    {/if}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'links'}>
+    {#if components.links}
+      {@const LinkPanel = components.links}
+      <LinkPanel projectId={selectedProjectId} />
     {/if}
   </div>
 </section>

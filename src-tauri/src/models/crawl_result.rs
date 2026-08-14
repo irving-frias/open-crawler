@@ -39,6 +39,11 @@ pub struct CrawlResult {
     /// Original URL before the redirect chain that reached this page, when any.
     #[serde(default)]
     pub redirect_from_url: Option<String>,
+    /// Final response headers (lowercased names) serialized as JSON, kept so
+    /// security/compliance checks can be recomputed offline and re-audits stay
+    /// faithful to what was actually served.
+    #[serde(default)]
+    pub response_headers_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

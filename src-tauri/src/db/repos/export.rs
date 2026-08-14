@@ -64,7 +64,7 @@ impl<'a> CrawlRepo<'a> {
         last_id: Option<&str>,
         limit: u32,
     ) -> Result<Vec<CrawlResult>, AppError> {
-        let cols = "id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, blocked, seo_score, seo_audit_json, readability_score, keywords_json, og_json, pagespeed_score, pagespeed_json, hreflang_json, redirect_from_url, duplicate_group_id";
+        let cols = "id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, blocked, seo_score, seo_audit_json, readability_score, keywords_json, og_json, pagespeed_score, pagespeed_json, hreflang_json, redirect_from_url, duplicate_group_id, response_headers_json";
         let query = if last_timestamp.is_some() {
             format!(
                 "SELECT {} FROM crawled_pages
@@ -161,6 +161,7 @@ impl<'a> CrawlRepo<'a> {
             seo_audit_json: row.get(19)?,
             blocked: row.get::<_, i32>(17)? != 0,
             redirect_from_url: row.get(26)?,
+            response_headers_json: row.get(28)?,
         })
     }
 

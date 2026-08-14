@@ -152,7 +152,7 @@ impl<'a> CrawlRepo<'a> {
         // small (less IPC payload, no per-row gzip+base64 decompression) and the
         // results cache does not hold megabytes of raw HTML.
         let query_sql = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json
              FROM crawled_pages WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
@@ -280,6 +280,7 @@ impl<'a> CrawlRepo<'a> {
             seo_audit_json: row.get(26)?,
             blocked: row.get::<_, i32>(27)? != 0,
             redirect_from_url: row.get(28)?,
+            response_headers_json: row.get(29)?,
         })
     }
 
@@ -316,12 +317,13 @@ impl<'a> CrawlRepo<'a> {
             seo_audit_json: row.get(27)?,
             blocked: row.get::<_, i32>(28)? != 0,
             redirect_from_url: row.get(29)?,
+            response_headers_json: row.get(30)?,
         })
     }
 
     pub fn get_page_detail(&self, page_id: &str) -> Result<PageDetail, AppError> {
         let result = self.conn.query_row(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json
              FROM crawled_pages WHERE id = ?1",
             params![page_id],
                             Self::row_to_result,

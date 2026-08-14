@@ -260,6 +260,11 @@ pub async fn recrawl_page(
         seo_score,
         seo_audit_json,
         redirect_from_url: None,
+        response_headers_json: if response.headers.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&response.headers).ok()
+        },
     };
 
     // Save to DB

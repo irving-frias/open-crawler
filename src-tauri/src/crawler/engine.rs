@@ -827,6 +827,11 @@ impl CrawlEngine {
             .collect();
 
         let result_id = Uuid::new_v4().to_string();
+        let response_headers_json = if response.headers.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&response.headers).ok()
+        };
         let result = CrawlResult {
             id: result_id.clone(),
             config_id: config_id.to_string(),
@@ -865,6 +870,7 @@ impl CrawlEngine {
             seo_score,
             seo_audit_json,
             redirect_from_url: response.redirect_from_url.clone(),
+            response_headers_json,
         };
 
         // Send result to DbWriter (async, non-blocking)

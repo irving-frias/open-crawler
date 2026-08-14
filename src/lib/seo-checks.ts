@@ -1005,6 +1005,54 @@ const DICT: Record<string, CheckDictEntry> = {
         'Declara privacyPolicy o policies en el schema de Organization/WebPage para que el tratamiento de datos sea legible por máquina.',
     },
   },
+  link_orphan_ratio: {
+    en: {
+      message: 'Orphan pages: {0} of internal pages (target ≤ 10%)',
+      guidance:
+        'Every page should be reachable through internal links. Add links from other pages to each orphan.',
+    },
+    es: {
+      message: 'Páginas huérfanas: {0} de las páginas internas (objetivo ≤ 10%)',
+      guidance:
+        'Toda página debería ser alcanzable mediante enlaces internos. Añade enlaces desde otras páginas a cada huérfana.',
+    },
+  },
+  link_dead_end_ratio: {
+    en: {
+      message: 'Dead-end pages: {0} of internal pages (target ≤ 10%)',
+      guidance:
+        'Dead-end pages stop crawling. Link each one to at least one related internal page.',
+    },
+    es: {
+      message: 'Páginas sin salida: {0} de las páginas internas (objetivo ≤ 10%)',
+      guidance:
+        'Las páginas sin salida detienen el rastreo. Enlaza cada una con al menos una página interna relacionada.',
+    },
+  },
+  link_anchor_quality: {
+    en: {
+      message: 'Descriptive anchors: {0} (target ≥ 60%)',
+      guidance:
+        "Use descriptive anchor text that names the destination instead of 'click here' or a bare URL.",
+    },
+    es: {
+      message: 'Anclas descriptivas: {0} (objetivo ≥ 60%)',
+      guidance:
+        "Usa texto de ancla descriptivo que nombre el destino en lugar de 'clic aquí' o una URL desnuda.",
+    },
+  },
+  link_nofollow_ratio: {
+    en: {
+      message: 'NoFollow share: {0} (target ≤ 30%)',
+      guidance:
+        'Keep rel="nofollow" for untrusted or paid links only; followed links pass more equity.',
+    },
+    es: {
+      message: 'Proporción de NoFollow: {0} (objetivo ≤ 30%)',
+      guidance:
+        'Reserva rel="nofollow" solo para enlaces no confiables o de pago; los enlaces seguidos transfieren más autoridad.',
+    },
+  },
 };
 
 const READABILITY_NO_TEXT = {
@@ -1399,6 +1447,22 @@ const WHY: Record<string, { en: string; es: string }> = {
   data_protection_schema: {
     en: 'Machine-readable privacy references help transparency systems and AI assistants surface how data is handled.',
     es: 'Las referencias de privacidad legibles por máquina ayudan a los sistemas de transparencia y a los asistentes de IA a mostrar cómo se tratan los datos.',
+  },
+  link_orphan_ratio: {
+    en: 'Orphan pages are invisible to crawlers through the link graph, so they rarely rank and may never be discovered.',
+    es: 'Las páginas huérfanas son invisibles para los rastreadores a través del grafo de enlaces, por lo que rara vez posicionan y pueden no descubrirse nunca.',
+  },
+  link_dead_end_ratio: {
+    en: 'Dead-end pages trap crawlers and users: without an outgoing internal link, navigation stops there.',
+    es: 'Las páginas sin salida atrapan a rastreadores y usuarios: sin un enlace interno saliente, la navegación se detiene ahí.',
+  },
+  link_anchor_quality: {
+    en: 'Descriptive anchors tell search engines what the linked page is about and help users decide before clicking.',
+    es: 'Las anclas descriptivas indican a los buscadores de qué trata la página enlazada y ayudan a los usuarios a decidir antes de hacer clic.',
+  },
+  link_nofollow_ratio: {
+    en: 'An excessive share of nofollow links dilutes link equity, so internal authority flows less effectively across the site.',
+    es: 'Una proporción excesiva de enlaces nofollow diluye la equidad de enlaces, por lo que la autoridad interna fluye con menos eficacia por el sitio.',
   },
 };
 
@@ -2367,6 +2431,46 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
       fix: 'Declara privacyPolicy en el schema de Organization.',
       expected:
         '<script type="application/ld+json">{"@type":"Organization","name":"Acme","privacyPolicy":"https://example.com/privacy"}</script>',
+    },
+  },
+  link_orphan_ratio: {
+    en: {
+      fix: 'Add internal links pointing to each orphan page from one or more related pages.',
+      expected: '<a href="/orphan-page">Related page</a>',
+    },
+    es: {
+      fix: 'Añade enlaces internos que apunten a cada página huérfana desde una o más páginas relacionadas.',
+      expected: '<a href="/pagina-huerfana">Página relacionada</a>',
+    },
+  },
+  link_dead_end_ratio: {
+    en: {
+      fix: 'Add at least one related internal link on every dead-end page.',
+      expected: '<a href="/related-target">Related target</a>',
+    },
+    es: {
+      fix: 'Añade al menos un enlace interno relacionado en cada página sin salida.',
+      expected: '<a href="/destino-relacionado">Destino relacionado</a>',
+    },
+  },
+  link_anchor_quality: {
+    en: {
+      fix: 'Replace generic anchors and bare URLs with descriptive text that names the destination.',
+      expected: '<a href="/guides/seo">Complete SEO guide</a>',
+    },
+    es: {
+      fix: 'Sustituye anclas genéricas y URLs desnudas por texto descriptivo que nombre el destino.',
+      expected: '<a href="/guias/seo">Guía completa de SEO</a>',
+    },
+  },
+  link_nofollow_ratio: {
+    en: {
+      fix: 'Remove rel="nofollow" from internal or trusted links unless they are sponsored or untrusted.',
+      expected: '<a href="/trusted-page">Trusted page</a>',
+    },
+    es: {
+      fix: 'Elimina rel="nofollow" de enlaces internos o de confianza salvo que sean patrocinados o no confiables.',
+      expected: '<a href="/pagina-confiable">Página confiable</a>',
     },
   },
 };

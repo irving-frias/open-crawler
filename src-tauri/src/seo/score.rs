@@ -3,6 +3,7 @@ use super::audit::{CategoryResult, CheckResult};
 pub const CATEGORY_ORDER: &[&str] = &[
     "meta",
     "technical",
+    "links",
     "social",
     "accessibility",
     "semantic_html",
@@ -13,17 +14,21 @@ pub const CATEGORY_ORDER: &[&str] = &[
     "compliance",
 ];
 
+/// Category weights, proportional to the number of checks in each category
+/// (94 per-page checks at the time of writing). Sums to exactly 1.0 — enforced
+/// by `test_weights_sum_to_one`.
 pub const CATEGORY_WEIGHTS: &[(&str, f64)] = &[
-    ("meta", 0.18),
-    ("technical", 0.15),
-    ("accessibility", 0.12),
-    ("security", 0.12),
-    ("semantic_html", 0.10),
+    ("meta", 0.16),
+    ("technical", 0.13),
+    ("sxo", 0.13),
+    ("accessibility", 0.11),
     ("performance", 0.09),
-    ("compliance", 0.08),
+    ("security", 0.09),
+    ("social", 0.08),
+    ("semantic_html", 0.08),
     ("ai_readability", 0.06),
-    ("sxo", 0.06),
-    ("social", 0.04),
+    ("compliance", 0.05),
+    ("links", 0.02),
 ];
 
 fn category_weight(category: &str) -> f64 {
@@ -96,6 +101,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_weights_sum_to_one_and_order_covered() {
+        let total: f64 = CATEGORY_WEIGHTS.iter().map(|(_, w)| w).sum();
+        assert!(
+            (total - 1.0).abs() < 1e-9,
+            "CATEGORY_WEIGHTS must sum to 1.0, got {total}"
+        );
+        // Every weight must be positive and no category may be duplicated.
+        let mut seen = std::collections::HashSet::new();
+        for (cat, w) in CATEGORY_WEIGHTS {
+            assert!(*w > 0.0, "category {cat} has a non-positive weight {w}");
+            assert!(seen.insert(*cat), "duplicate category in weights: {cat}");
+        }
+        // Every category in CATEGORY_ORDER must have a weight.
+        for cat in CATEGORY_ORDER {
+            assert!(
+                CATEGORY_WEIGHTS.iter().any(|(c, _)| c == cat),
+                "CATEGORY_ORDER entry {cat} has no weight"
+            );
+        }
+    }
+
+    #[test]
     fn test_grade_boundaries() {
         assert_eq!(grade_for(95.0), "A");
         assert_eq!(grade_for(89.9), "B");
@@ -156,5 +183,56 @@ mod tests {
         assert!((meta.score - 66.6666).abs() < 0.001); // 4 passed-weight / 6 total
         assert_eq!(meta.passed_checks, 2);
         assert_eq!(meta.total_checks, 3);
+    }
+
+    #[test]
+    fn test_every_weighted_category_has_checks() {
+        // Every category with a weight must actually be produced by run_all for
+        // a typical page, otherwise the weight silently no-ops. "links" is the
+        // exception: it is site-level (see run_site_link_checks), not per-page.
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A page used to assert that every weighted SEO category maps to at least one real check.">
+    <title>Category coverage test page</title>
+    <link rel="canonical" href="https://example.com/page">
+</head>
+<body>
+    <header>Header</header>
+    <nav><a href="/">Home</a></nav>
+    <main>
+        <h1>Category coverage</h1>
+        <h2>Section one</h2>
+        <p>This paragraph provides enough words for the audit to measure readability and paragraph structure, with several complete sentences.</p>
+        <p>A second paragraph expands the topic and keeps the page substantial enough for the content checks to run.</p>
+        <img src="/img.png" alt="Coverage image" width="800" height="600">
+    </main>
+    <footer>Footer</footer>
+</body>
+</html>"#;
+        let extras = crate::seo::checks::PageExtras::extract(html, "https://example.com/page");
+        let url = url::Url::parse("https://example.com/page").unwrap();
+        let parser = crate::crawler::parser::SeoParser::new();
+        let (seo, _) = parser.parse(html, &url);
+        let ctx = crate::seo::AuditContext {
+            url: "https://example.com/page".to_string(),
+            status_code: 200,
+            size_bytes: 4096,
+            load_time_ms: 120,
+            pagespeed_score: None,
+            response_headers: Default::default(),
+        };
+        let checks = crate::seo::checks::run_all(&seo, &extras, &ctx);
+        let mut produced: std::collections::HashSet<&str> =
+            checks.iter().map(|c| c.category.as_str()).collect();
+        produced.insert("links"); // site-level category, covered separately.
+        for (cat, _) in CATEGORY_WEIGHTS {
+            assert!(
+                produced.contains(cat),
+                "category {cat} has a weight but no per-page check produced it"
+            );
+        }
     }
 }

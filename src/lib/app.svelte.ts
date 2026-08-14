@@ -29,7 +29,8 @@ export type TabValue =
   | 'duplicates'
   | 'keywords'
   | 'schedule'
-  | 'seo';
+  | 'seo'
+  | 'links';
 
 export interface CrawlProgressState {
   crawled: number;

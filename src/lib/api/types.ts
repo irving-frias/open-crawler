@@ -336,6 +336,18 @@ export interface SeoIssueCount {
   examples?: SemanticIssue[];
 }
 
+export interface SeoCheckResult {
+  id: string;
+  category: string;
+  severity: string;
+  passed: boolean;
+  weight: number;
+  message: string;
+  guidance: string;
+  evidence?: string | null;
+  examples?: SemanticIssue[];
+}
+
 export interface SeoOverview {
   audited_pages: number;
   total_pages: number;
@@ -345,6 +357,49 @@ export interface SeoOverview {
   category_averages: SeoCategoryAvg[];
   top_issues: SeoIssueCount[];
   total_fixes: number;
+  link_checks?: SeoCheckResult[];
+  link_score?: number | null;
+  link_grade?: string | null;
+}
+
+export interface AnchorAgg {
+  anchor: string;
+  count: number;
+}
+
+export interface DomainAgg {
+  domain: string;
+  count: number;
+  nofollow: number;
+  sponsored: number;
+  ugc: number;
+}
+
+export interface AnchorQuality {
+  descriptive: number;
+  generic: number;
+  url_anchors: number;
+  empty: number;
+}
+
+export interface LinkAnalysis {
+  total_links: number;
+  internal_links: number;
+  external_links: number;
+  self_links: number;
+  followed_links: number;
+  nofollow_links: number;
+  sponsored_links: number;
+  ugc_links: number;
+  unique_internal_targets: number;
+  internal_pages: number;
+  orphan_count: number;
+  orphan_pages: string[];
+  dead_end_count: number;
+  dead_end_pages: string[];
+  top_anchors: AnchorAgg[];
+  anchor_quality: AnchorQuality;
+  external_domains: DomainAgg[];
 }
 
 export interface SeoAuditProgress {

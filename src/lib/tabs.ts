@@ -8,6 +8,7 @@ export const TAB_IDS = [
   'keywords',
   'schedule',
   'seo',
+  'links',
 ] as const;
 
 export type TabId = (typeof TAB_IDS)[number];
@@ -27,6 +28,7 @@ export const TAB_DEFS: TabDef[] = [
   { id: 'keywords' },
   { id: 'schedule' },
   { id: 'seo' },
+  { id: 'links' },
 ];
 
 type AnyComponent = any;
@@ -40,6 +42,7 @@ const loaders: Record<LazyTabId, () => Promise<{ default: AnyComponent }>> = {
   keywords: () => import('$lib/features/keywords/Keywords.svelte'),
   schedule: () => import('$lib/features/schedule/SchedulePanel.svelte'),
   seo: () => import('$lib/features/seo/SiteSeoPanel.svelte'),
+  links: () => import('$lib/features/links/LinkAnalysisPanel.svelte'),
 };
 
 const cache: Partial<Record<LazyTabId, AnyComponent>> = {};

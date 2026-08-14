@@ -39,6 +39,7 @@
     sxo: m['seo.category.sxo'],
     security: m['seo.category.security'],
     compliance: m['seo.category.compliance'],
+    links: m['seo.category.links'],
   };
 
   function categoryLabel(category: string): string {

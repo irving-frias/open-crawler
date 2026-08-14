@@ -19,6 +19,17 @@ pub struct SeoOverview {
     pub top_issues: Vec<SeoIssueCount>,
     /// Total priority fixes across all audited pages.
     pub total_fixes: u32,
+    /// Site-level link health checks (orphans, dead ends, anchor quality,
+    /// link-nature balance) computed from the crawl's `page_links` graph.
+    #[serde(default)]
+    pub link_checks: Vec<crate::seo::audit::CheckResult>,
+    /// 0..100 score derived from `link_checks` (None when there is no link
+    /// data yet, e.g. before the first crawl completes).
+    #[serde(default)]
+    pub link_score: Option<f64>,
+    /// Letter grade derived from `link_score`.
+    #[serde(default)]
+    pub link_grade: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
