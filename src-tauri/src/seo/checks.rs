@@ -1275,6 +1275,70 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
+    // Site-level technical resources (robots.txt / sitemap.xml) fetched once
+    // per origin; only evaluated when `ctx.site_resources` is available.
+    if let Some(site) = &ctx.site_resources {
+        let robots = site.robots_txt.as_ref();
+        let robots_ok = robots
+            .map(|r| r.status == 200 && !r.body.trim().is_empty())
+            .unwrap_or(false);
+        out.push(check(
+            "robots_txt_exists",
+            "technical",
+            "warning",
+            robots_ok,
+            2.0,
+            if robots_ok {
+                "robots.txt is present and non-empty"
+            } else {
+                "robots.txt is missing or empty"
+            },
+            "Publish a /robots.txt that allows crawlers and points to your sitemap.",
+            robots.map(|r| format!("HTTP {}", r.status)),
+        ));
+        let sitemap = site.sitemap_xml.as_ref();
+        let sitemap_ok = sitemap
+            .map(|s| s.status == 200 && super::site::is_valid_sitemap(&s.body))
+            .unwrap_or(false);
+        out.push(check(
+            "sitemap_xml_valid",
+            "technical",
+            "warning",
+            sitemap_ok,
+            2.0,
+            if sitemap_ok {
+                "sitemap.xml is present and well-formed"
+            } else {
+                "sitemap.xml is missing or malformed"
+            },
+            "Publish a valid /sitemap.xml (urlset or sitemapindex) so search engines can discover pages.",
+            sitemap.map(|s| format!("HTTP {}", s.status)),
+        ));
+    }
+
+    // hreflang sets should include a self-referencing alternate.
+    let hreflang_self = seo.hreflang_links.iter().any(|h| {
+        let href = h.href.trim_end_matches('#').trim_end_matches('/');
+        let url = ctx.url.trim_end_matches('#').trim_end_matches('/');
+        href == url
+    });
+    if !seo.hreflang_links.is_empty() {
+        out.push(check(
+            "hreflang_self_reference",
+            "technical",
+            "warning",
+            hreflang_self,
+            1.0,
+            if hreflang_self {
+                "hreflang set includes a self-referencing alternate"
+            } else {
+                "hreflang set lacks a self-referencing alternate"
+            },
+            "Each URL in an hreflang group should reference itself so crawlers can resolve the group.",
+            None,
+        ));
+    }
+
     // ==================== SOCIAL & OPEN GRAPH ====================
     let og = &seo.og_meta;
     out.push(check(
@@ -2456,6 +2520,7 @@ mod tests {
             load_time_ms: 120,
             pagespeed_score: None,
             response_headers: Default::default(),
+            site_resources: None,
         }
     }
 
@@ -2703,6 +2768,7 @@ mod tests {
             load_time_ms: 120,
             pagespeed_score: None,
             response_headers: headers,
+            site_resources: None,
         };
         let out = run_all(&seo, &extras, &secure);
         for id in [
@@ -2863,5 +2929,101 @@ mod tests {
         let out = run_site_link_checks(&analysis);
         assert_eq!(out.len(), 4);
         assert!(out.iter().all(|c| c.passed));
+    }
+
+    fn resource(status: u16, body: &str) -> crate::seo::site::SiteResource {
+        crate::seo::site::SiteResource {
+            status,
+            body: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_site_resource_checks_pass() {
+        let mut c = ctx("https://example.com/page");
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(200, "User-agent: *\nAllow: /")),
+            sitemap_xml: Some(resource(
+                200,
+                r#"<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>"#,
+            )),
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        let robots = check(&out, "robots_txt_exists");
+        assert!(robots.passed);
+        let sitemap = check(&out, "sitemap_xml_valid");
+        assert!(sitemap.passed);
+    }
+
+    #[test]
+    fn test_site_resource_checks_fail() {
+        let mut c = ctx("https://example.com/page");
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(404, "")),
+            sitemap_xml: Some(resource(200, "<html><body>oops</body></html>")),
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        let robots = check(&out, "robots_txt_exists");
+        assert!(!robots.passed);
+        let sitemap = check(&out, "sitemap_xml_valid");
+        assert!(!sitemap.passed);
+    }
+
+    #[test]
+    fn test_site_resource_checks_skip_without_resources() {
+        let out = run_all(
+            &SeoData::default(),
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(out.iter().all(|c| c.id != "robots_txt_exists"));
+        assert!(out.iter().all(|c| c.id != "sitemap_xml_valid"));
+    }
+
+    #[test]
+    fn test_hreflang_self_reference() {
+        let seo = SeoData {
+            hreflang_links: vec![
+                crate::crawler::parser::HreflangLink {
+                    lang: "en".to_string(),
+                    href: "https://example.com/page".to_string(),
+                },
+                crate::crawler::parser::HreflangLink {
+                    lang: "es".to_string(),
+                    href: "https://example.com/es".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+        let out = run_all(
+            &seo,
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(check(&out, "hreflang_self_reference").passed);
+
+        let seo = SeoData {
+            hreflang_links: vec![crate::crawler::parser::HreflangLink {
+                lang: "es".to_string(),
+                href: "https://example.com/es".to_string(),
+            }],
+            ..Default::default()
+        };
+        let out = run_all(
+            &seo,
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(!check(&out, "hreflang_self_reference").passed);
+    }
+
+    #[test]
+    fn test_hreflang_self_reference_skip_without_links() {
+        let out = run_all(
+            &SeoData::default(),
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(out.iter().all(|c| c.id != "hreflang_self_reference"));
     }
 }

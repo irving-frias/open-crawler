@@ -465,6 +465,7 @@ impl CrawlEngine {
                     let depth = entry.depth;
                     let db_tx_clone = db_tx.clone();
                     let db_tx_error = db_tx.clone();
+                    let site_client = self.client.clone();
 
                     tokio::spawn(async move {
                         let result = Self::fetch_and_parse(
@@ -481,6 +482,7 @@ impl CrawlEngine {
                             &exclude_patterns,
                             depth,
                             db_tx_clone,
+                            site_client.as_ref(),
                         )
                         .await;
 
@@ -736,6 +738,7 @@ impl CrawlEngine {
         exclude_patterns: &[String],
         depth: u32,
         db_tx: mpsc::Sender<CrawlResultMsg>,
+        site_client: Option<&reqwest::Client>,
     ) -> Result<(u32, u32), AppError> {
         let response = fetcher.fetch(url).await?;
 
@@ -748,18 +751,37 @@ impl CrawlEngine {
         info!("  -> Title: {:?}", seo_data.title);
 
         // Run the SEO audit (score + per-check details + priority fixes).
-        let seo_audit = crate::seo::audit::audit_page(
-            &seo_data,
-            &response.html,
-            &crate::seo::AuditContext {
-                url: response.url.to_string(),
-                status_code: response.status,
-                size_bytes: response.size_bytes,
-                load_time_ms: response.load_time_ms,
-                pagespeed_score: None,
-                response_headers: response.headers.clone(),
-            },
-        );
+        let seo_audit = if let Some(client) = site_client {
+            crate::seo::audit::audit_page_with_site(
+                &seo_data,
+                &response.html,
+                &crate::seo::AuditContext {
+                    url: response.url.to_string(),
+                    status_code: response.status,
+                    size_bytes: response.size_bytes,
+                    load_time_ms: response.load_time_ms,
+                    pagespeed_score: None,
+                    response_headers: response.headers.clone(),
+                    site_resources: None,
+                },
+                client,
+            )
+            .await
+        } else {
+            crate::seo::audit::audit_page(
+                &seo_data,
+                &response.html,
+                &crate::seo::AuditContext {
+                    url: response.url.to_string(),
+                    status_code: response.status,
+                    size_bytes: response.size_bytes,
+                    load_time_ms: response.load_time_ms,
+                    pagespeed_score: None,
+                    response_headers: response.headers.clone(),
+                    site_resources: None,
+                },
+            )
+        };
         let seo_audit_json = serde_json::to_string(&seo_audit).ok();
         let seo_score = Some(seo_audit.score);
 
@@ -1097,6 +1119,7 @@ mod tests {
             &[],
             0,
             db_tx,
+            None,
         )
         .await
         .unwrap();
@@ -1159,6 +1182,7 @@ mod tests {
             &[],
             0,
             db_tx,
+            None,
         )
         .await
         .unwrap();

@@ -160,7 +160,7 @@ pub async fn recrawl_page(
     let (seo_data, _outgoing_urls) = parser.parse(&response.html, &url);
 
     // Re-run the SEO audit for the fresh response.
-    let seo_audit = crate::seo::audit::audit_page(
+    let seo_audit = crate::seo::audit::audit_page_with_site(
         &seo_data,
         &response.html,
         &crate::seo::AuditContext {
@@ -170,8 +170,11 @@ pub async fn recrawl_page(
             load_time_ms: response.load_time_ms,
             pagespeed_score: None,
             response_headers: response.headers.clone(),
+            site_resources: None,
         },
-    );
+        http.inner(),
+    )
+    .await;
     let seo_audit_json = serde_json::to_string(&seo_audit).ok();
     let seo_score = Some(seo_audit.score);
 

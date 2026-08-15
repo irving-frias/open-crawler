@@ -10,7 +10,7 @@ use crate::crawler::fetcher::HttpFetcher;
 use crate::crawler::parser::SeoParser;
 use crate::error::AppError;
 use crate::features::with_repo;
-use crate::seo::audit::audit_page;
+use crate::seo::audit::audit_page_with_site;
 use crate::seo::AuditContext;
 use crate::seo::SeoAuditResult;
 use crate::AppState;
@@ -82,7 +82,7 @@ pub async fn run_seo_audit(
     let parser = crate::crawler::parser::SeoParser::new();
     let (seo_data, _) = parser.parse(&response.html, &url);
 
-    let audit = crate::seo::audit::audit_page(
+    let audit = crate::seo::audit::audit_page_with_site(
         &seo_data,
         &response.html,
         &crate::seo::AuditContext {
@@ -92,8 +92,11 @@ pub async fn run_seo_audit(
             load_time_ms: response.load_time_ms,
             pagespeed_score: None,
             response_headers: response.headers.clone(),
+            site_resources: None,
         },
-    );
+        http.inner(),
+    )
+    .await;
 
     let json = serde_json::to_string(&audit).ok();
     let score = audit.score;
@@ -378,9 +381,11 @@ pub async fn run_seo_audit_all(
     // buffer; DB writes stay serialized through `with_repo` in the consumer.
     const SEO_AUDIT_CONCURRENCY: usize = 4;
     let fetcher = Arc::new(fetcher);
+    let site_client = http.inner().clone();
     let work = pages.into_iter().map(|(page_id, url)| {
         let fetcher = fetcher.clone();
         let parser = parser.clone();
+        let site_client = site_client.clone();
         async move {
             let parsed = match url::Url::parse(&url) {
                 Ok(u) => u,
@@ -390,7 +395,7 @@ pub async fn run_seo_audit_all(
             };
             let response = fetcher.fetch(&parsed).await?;
             let (seo_data, _) = parser.parse(&response.html, &parsed);
-            let audit = audit_page(
+            let audit = audit_page_with_site(
                 &seo_data,
                 &response.html,
                 &AuditContext {
@@ -400,8 +405,11 @@ pub async fn run_seo_audit_all(
                     load_time_ms: response.load_time_ms,
                     pagespeed_score: None,
                     response_headers: response.headers.clone(),
+                    site_resources: None,
                 },
-            );
+                &site_client,
+            )
+            .await;
             let json = serde_json::to_string(&audit).ok();
             let headers_json = if response.headers.is_empty() {
                 None

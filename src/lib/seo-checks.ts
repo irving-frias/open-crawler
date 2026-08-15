@@ -1053,6 +1053,42 @@ const DICT: Record<string, CheckDictEntry> = {
         'Reserva rel="nofollow" solo para enlaces no confiables o de pago; los enlaces seguidos transfieren más autoridad.',
     },
   },
+  robots_txt_exists: {
+    en: {
+      message: 'robots.txt is present and non-empty',
+      guidance:
+        'Publish a /robots.txt that allows crawlers and points to your sitemap.',
+    },
+    es: {
+      message: 'robots.txt presente y no vacío',
+      guidance:
+        'Publica un /robots.txt que permita rastrear a los crawlers y apunte a tu sitemap.',
+    },
+  },
+  sitemap_xml_valid: {
+    en: {
+      message: 'sitemap.xml is present and well-formed',
+      guidance:
+        'Publish a valid /sitemap.xml (urlset or sitemapindex) so search engines can discover pages.',
+    },
+    es: {
+      message: 'sitemap.xml presente y bien formado',
+      guidance:
+        'Publica un /sitemap.xml válido (urlset o sitemapindex) para que los buscadores descubran las páginas.',
+    },
+  },
+  hreflang_self_reference: {
+    en: {
+      message: 'hreflang set lacks a self-referencing alternate',
+      guidance:
+        'Each URL in an hreflang group should reference itself so crawlers can resolve the group.',
+    },
+    es: {
+      message: 'El conjunto hreflang no se referencia a sí mismo',
+      guidance:
+        'Cada URL de un grupo hreflang debería referenciarse a sí misma para que los crawlers puedan resolver el grupo.',
+    },
+  },
 };
 
 const READABILITY_NO_TEXT = {
@@ -1463,6 +1499,18 @@ const WHY: Record<string, { en: string; es: string }> = {
   link_nofollow_ratio: {
     en: 'An excessive share of nofollow links dilutes link equity, so internal authority flows less effectively across the site.',
     es: 'Una proporción excesiva de enlaces nofollow diluye la equidad de enlaces, por lo que la autoridad interna fluye con menos eficacia por el sitio.',
+  },
+  robots_txt_exists: {
+    en: 'Without a robots.txt, crawlers have no direction on what to scan or exclude and where to find the sitemap.',
+    es: 'Sin un robots.txt, los crawlers no tienen indicaciones sobre qué rastrear o excluir ni dónde encontrar el sitemap.',
+  },
+  sitemap_xml_valid: {
+    en: 'A valid sitemap makes every page discoverable and signals priority, so no content is left unindexed.',
+    es: 'Un sitemap válido hace que cada página sea descubrible y señala su prioridad, para que ningún contenido quede sin indexar.',
+  },
+  hreflang_self_reference: {
+    en: 'Without a self-referencing alternate, crawlers may fail to resolve the language group and ignore the hreflang annotations.',
+    es: 'Sin una referencia a sí misma, los crawlers pueden no resolver el grupo de idiomas e ignorar las anotaciones hreflang.',
   },
 };
 
@@ -2471,6 +2519,36 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Elimina rel="nofollow" de enlaces internos o de confianza salvo que sean patrocinados o no confiables.',
       expected: '<a href="/pagina-confiable">Página confiable</a>',
+    },
+  },
+  robots_txt_exists: {
+    en: {
+      fix: 'Create /robots.txt allowing access and referencing your sitemap.',
+      expected: 'User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml',
+    },
+    es: {
+      fix: 'Crea /robots.txt permitiendo el acceso y referenciando tu sitemap.',
+      expected: 'User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml',
+    },
+  },
+  sitemap_xml_valid: {
+    en: {
+      fix: 'Publish a well-formed sitemap.xml with a urlset or sitemapindex root.',
+      expected: '<urlset>\n  <url><loc>https://example.com/</loc></url>\n</urlset>',
+    },
+    es: {
+      fix: 'Publica un sitemap.xml bien formado con raíz urlset o sitemapindex.',
+      expected: '<urlset>\n  <url><loc>https://example.com/</loc></url>\n</urlset>',
+    },
+  },
+  hreflang_self_reference: {
+    en: {
+      fix: 'Add an alternate pointing to the current URL in every hreflang group.',
+      expected: '<link rel="alternate" hreflang="en" href="https://example.com/page">',
+    },
+    es: {
+      fix: 'Añade un alternate que apunte a la URL actual en cada grupo hreflang.',
+      expected: '<link rel="alternate" hreflang="en" href="https://example.com/page">',
     },
   },
 };

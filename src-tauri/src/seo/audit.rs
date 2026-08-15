@@ -7,6 +7,7 @@ use crate::crawler::parser::SeoData;
 use super::checks::{self, PageExtras};
 use super::priority;
 use super::score;
+use super::site::SiteResources;
 
 /// Contextual, crawl-time metrics available to the audit engine.
 #[derive(Debug, Clone)]
@@ -22,6 +23,9 @@ pub struct AuditContext {
     /// All response headers of the final document (lowercased names), used by
     /// the security and compliance check groups.
     pub response_headers: HashMap<String, String>,
+    /// Site-level resources (robots.txt / sitemap.xml) fetched once per origin
+    /// and cached. When absent the corresponding checks are skipped.
+    pub site_resources: Option<std::sync::Arc<SiteResources>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +116,22 @@ pub fn audit_page(seo: &SeoData, html: &str, ctx: &AuditContext) -> SeoAuditResu
     }
 }
 
+/// Like [`audit_page`] but additionally fetches site-level resources
+/// (robots.txt / sitemap.xml) once per origin — cached for the process
+/// lifetime — and feeds them into the audit so the `robots_txt_exists` and
+/// `sitemap_xml_valid` checks can run.
+pub async fn audit_page_with_site(
+    seo: &SeoData,
+    html: &str,
+    ctx: &AuditContext,
+    client: &reqwest::Client,
+) -> SeoAuditResult {
+    let resources = super::site::fetch_site_resources(client, &ctx.url).await;
+    let mut ctx = ctx.clone();
+    ctx.site_resources = Some(resources);
+    audit_page(seo, html, &ctx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,9 +182,9 @@ mod tests {
             load_time_ms: 120,
             pagespeed_score: None,
             response_headers: Default::default(),
+            site_resources: None,
         };
         let result = audit_page(&seo, HTML, &ctx);
-
         assert!(result.score > 50.0, "score too low: {}", result.score);
         assert!(matches!(result.grade.as_str(), "A" | "B" | "C" | "D" | "F"));
 
@@ -209,6 +229,7 @@ mod tests {
             load_time_ms: 10,
             pagespeed_score: None,
             response_headers: Default::default(),
+            site_resources: None,
         };
         let result = audit_page(&seo, html, &ctx);
         assert!(result.score < 50.0, "score should be low: {}", result.score);
@@ -272,6 +293,7 @@ mod tests {
             load_time_ms: 120,
             pagespeed_score: None,
             response_headers: Default::default(),
+            site_resources: None,
         };
         let result = audit_page(&seo, html, &ctx);
 

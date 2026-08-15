@@ -253,6 +253,7 @@ mod tests {
             load_time_ms: 120,
             pagespeed_score: None,
             response_headers: Default::default(),
+            site_resources: None,
         };
         let checks = crate::seo::checks::run_all(&seo, &extras, &ctx);
         let mut produced: std::collections::HashSet<&str> =
