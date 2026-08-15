@@ -200,6 +200,49 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
   labels `seo.category.{security,compliance}` en `messages/{en,es}.json` y en los
   maps de PageDetailPanel y SiteSeoPanel (regenerar paraglide con `bun run build`).
 
+### Fase 6 — Evidence en JSON-LD y categorías skipped (F2.9 + F3.12) ✅ HECHO
+
+- **F2.9**: `CheckResult.examples` poblado para JSON-LD (json_ld_valid, schema_completeness,
+  faq_accordion_without_schema, author_schema, freshness_dates, data_protection_schema,
+  privacy_policy_available): hasta 3 ejemplos con `{ block, type, evidence, snippet }`.
+  Helpers en checks.rs (`json_ld_block_examples`, `json_ld_evidence_of`). Tests nuevos.
+- **F3.12**: `CategoryResult.score: Option<f64>` (None = categoría skipped, ej. `links`
+  en audit de página). `compute()` emite las 11 categorías de CATEGORY_ORDER (antes 10);
+  weighted avg solo suma categorías con `score.is_some()`.
+- Persistencia: `save_seo_normalized` omite categorías con score None
+  (`seo_category_scores.score` es `REAL NOT NULL`); backfill migración
+  `011_seo_overview.sql` filtra `json_extract(c.value,'$.score') IS NOT NULL`
+  (espejado en test de `db/repos/mod.rs`).
+- Export: `category_score()` con `.and_then(|c| c.score)`; `audit_row` XLSX escribe
+  `""` para None; CSV ya mapeaba None→blank.
+- Frontend: `types.ts` `SeoCategoryResult.score: number | null`; `seo-ui.ts`
+  `seoCategoryGains` con type guard; `PageDetailPanel.svelte` muestra "N/A" +
+  `seo-category-na` cuando null. `cargo test --lib`: 141 OK. Commit `9fdfad7`.
+
+### Fase 7 — Site resources: robots.txt, sitemap.xml y hreflang (F4.13) ✅ HECHO
+
+- **`seo/site.rs`** (nuevo): `SiteResource {status, body}`, `SiteResources {robots_txt,
+  sitemap_xml}`, `origin_of()`, `fetch_site_resources(client, page_url)` cacheado por
+  origin (OnceLock<Mutex<HashMap>>, lifetime del proceso), `is_valid_sitemap()`
+  (quick_xml: root `urlset`/`sitemapindex`, todas las etiquetas cerradas, EOF sin errores).
+- **`seo/audit.rs`**: `AuditContext` gana `site_resources: Option<Arc<SiteResources>>` y
+  `audit_page_with_site(seo, html, ctx, client)` async que fetches los recursos (cacheados)
+  y delega en `audit_page`. Call sites: `crawler/engine.rs` (`fetch_and_parse` con param
+  `site_client: Option<&reqwest::Client>`), `features/results/commands.rs`,
+  `features/seo/commands.rs` (single + bulk con `site_client` clonado).
+- **3 checks nuevos en `run_all`** (technical):
+
+| check                     | severity | criterio                                              |
+| ------------------------- | -------- | ----------------------------------------------------- |
+| `robots_txt_exists`       | warning  | robots.txt con status 200 y body no vacío (skip sin resources) |
+| `sitemap_xml_valid`       | warning  | sitemap status 200 + `is_valid_sitemap(body)` (skip sin resources) |
+| `hreflang_self_reference` | warning  | si hay hreflang_links, alguno apunta a la propia URL (per-page, sin fetch) |
+
+- Tests: 5 nuevos en checks.rs (pass/fail/skip de site resources + hreflang pass/fail/skip),
+  1 corregido en site.rs (well-formedness completa). `cargo test --lib`: 148 OK.
+  Clippy/fmt limpios, svelte-check 0, eslint 0, build OK. i18n en seo-checks.ts
+  (DICT/WHY/CHECK_FIXES). Commit `21484b0`.
+
 ### Verificación
 
 - `cargo test --lib` en `src-tauri/` (tests unit de parser/checks/audit/score/export)
