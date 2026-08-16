@@ -1089,6 +1089,63 @@ const DICT: Record<string, CheckDictEntry> = {
         'Cada URL de un grupo hreflang debería referenciarse a sí misma para que los crawlers puedan resolver el grupo.',
     },
   },
+  last_modified_header: {
+    en: {
+      message: 'Last-Modified response header present',
+      guidance: 'Serve a Last-Modified header so crawlers can evaluate content freshness.',
+    },
+    es: {
+      message: 'Cabecera de respuesta Last-Modified presente',
+      guidance:
+        'Sirve una cabecera Last-Modified para que los crawlers puedan evaluar la frescura del contenido.',
+    },
+  },
+  web_app_manifest: {
+    en: {
+      message: 'Web app manifest linked from the page',
+      guidance: 'Link a manifest.json so browsers and agents can read app identity and metadata.',
+    },
+    es: {
+      message: 'Manifest de aplicación web enlazado desde la página',
+      guidance:
+        'Enlaza un manifest.json para que navegadores y agentes puedan leer la identidad y los metadatos de la app.',
+    },
+  },
+  og_locale: {
+    en: {
+      message: 'og:locale present and coherent with html lang',
+      guidance: 'Declare og:locale (e.g. en_US) so social platforms localize the shared card.',
+    },
+    es: {
+      message: 'og:locale presente y coherente con el html lang',
+      guidance:
+        'Declara og:locale (p. ej. es_ES) para que las plataformas sociales localicen la tarjeta compartida.',
+    },
+  },
+  sectioned_content: {
+    en: {
+      message: 'Substantial content not organized into sections',
+      guidance:
+        'Split substantial content into <section>/<article> elements each with a heading so AI tools can extract passages.',
+    },
+    es: {
+      message: 'Contenido sustancial no organizado en secciones',
+      guidance:
+        'Divide el contenido sustancial en <section>/<article> con un heading cada uno para que las herramientas de IA puedan extraer pasajes.',
+    },
+  },
+  external_sources_cited: {
+    en: {
+      message: 'Substantial content cites no external sources',
+      guidance:
+        'Link out to authoritative sources so answer engines can verify claims and attribute credibility.',
+    },
+    es: {
+      message: 'El contenido sustancial no cita fuentes externas',
+      guidance:
+        'Enlaza fuentes autorizadas para que los motores de respuestas puedan verificar las afirmaciones y atribuir credibilidad.',
+    },
+  },
 };
 
 const READABILITY_NO_TEXT = {
@@ -1511,6 +1568,26 @@ const WHY: Record<string, { en: string; es: string }> = {
   hreflang_self_reference: {
     en: 'Without a self-referencing alternate, crawlers may fail to resolve the language group and ignore the hreflang annotations.',
     es: 'Sin una referencia a sí misma, los crawlers pueden no resolver el grupo de idiomas e ignorar las anotaciones hreflang.',
+  },
+  last_modified_header: {
+    en: 'A visible last-change date helps crawlers and AI systems judge whether the page is current enough to rank and cite.',
+    es: 'Una fecha de última modificación visible ayuda a crawlers y sistemas de IA a juzgar si la página está lo bastante actualizada para posicionarse y citarse.',
+  },
+  web_app_manifest: {
+    en: 'A manifest signals a proper application shell with metadata that browsers and agents use to identify and describe the site.',
+    es: 'Un manifest señala una app con estructura propia y metadatos que los navegadores y agentes usan para identificar y describir el sitio.',
+  },
+  og_locale: {
+    en: 'Social platforms localize shared cards from og:locale; a mismatch with html lang confuses both users and crawlers.',
+    es: 'Las plataformas sociales localizan las tarjetas compartidas con og:locale; un desajuste con el html lang confunde a usuarios y crawlers.',
+  },
+  sectioned_content: {
+    en: 'AI extractors cite passages; headed sections and articles make those passages addressable and coherent.',
+    es: 'Los extractores de IA citan pasajes; las secciones y artículos con heading hacen esos pasajes localizables y coherentes.',
+  },
+  external_sources_cited: {
+    en: 'Answer engines trust claims backed by external references; sourcing also strengthens E-E-A-T signals.',
+    es: 'Los motores de respuestas confían en afirmaciones respaldadas por referencias externas; citar fuentes también refuerza las señales E-E-A-T.',
   },
 };
 
@@ -2549,6 +2626,56 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Añade un alternate que apunte a la URL actual en cada grupo hreflang.',
       expected: '<link rel="alternate" hreflang="en" href="https://example.com/page">',
+    },
+  },
+  last_modified_header: {
+    en: {
+      fix: 'Configure the server to send a Last-Modified header based on the source content update time.',
+      expected: 'Last-Modified: Wed, 13 Aug 2025 09:30:00 GMT',
+    },
+    es: {
+      fix: 'Configura el servidor para enviar una cabecera Last-Modified según la fecha de actualización del contenido.',
+      expected: 'Last-Modified: Wed, 13 Aug 2025 09:30:00 GMT',
+    },
+  },
+  web_app_manifest: {
+    en: {
+      fix: 'Add a manifest.json and link it from the head of the page.',
+      expected: '<link rel="manifest" href="/manifest.json">',
+    },
+    es: {
+      fix: 'Añade un manifest.json y enlázalo desde el head de la página.',
+      expected: '<link rel="manifest" href="/manifest.json">',
+    },
+  },
+  og_locale: {
+    en: {
+      fix: 'Add an og:locale meta matching the html lang (BCP-47 locale, e.g. en_US).',
+      expected: '<meta property="og:locale" content="en_US">',
+    },
+    es: {
+      fix: 'Añade una meta og:locale que coincida con el html lang (locale BCP-47, p. ej. es_ES).',
+      expected: '<meta property="og:locale" content="es_ES">',
+    },
+  },
+  sectioned_content: {
+    en: {
+      fix: 'Wrap each content block in a <section> or <article> with its own <h2>-<h6> heading.',
+      expected: '<section>\n  <h2>Topic</h2>\n  <p>Passage text…</p>\n</section>',
+    },
+    es: {
+      fix: 'Envuelve cada bloque de contenido en un <section> o <article> con su propio heading <h2>-<h6>.',
+      expected: '<section>\n  <h2>Tema</h2>\n  <p>Texto del pasaje…</p>\n</section>',
+    },
+  },
+  external_sources_cited: {
+    en: {
+      fix: 'Link out to at least one authoritative external source supporting your claims.',
+      expected: '<p>Per <a href="https://wikipedia.org/wiki/Example">the source</a>, …</p>',
+    },
+    es: {
+      fix: 'Enlaza al menos una fuente externa autorizada que respalde tus afirmaciones.',
+      expected: '<p>Según <a href="https://es.wikipedia.org/wiki/Ejemplo">la fuente</a>, …</p>',
     },
   },
 };

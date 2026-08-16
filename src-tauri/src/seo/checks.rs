@@ -46,6 +46,9 @@ pub struct PageExtras {
     pub time_datetime_count: usize,
     pub privacy_link_count: usize,
     pub consent_banner: bool,
+    pub manifest: bool,
+    pub section_total: usize,
+    pub section_with_heading: usize,
 }
 
 impl PageExtras {
@@ -208,6 +211,26 @@ impl PageExtras {
         // Compliance: cookie-consent banner / CMP markers
         let lower_html = html.to_ascii_lowercase();
         extras.consent_banner = CONSENT_MARKERS.iter().any(|m| lower_html.contains(m));
+
+        // Web app manifest (PWA/installability signal)
+        if let Ok(sel) = Selector::parse(r#"link[rel~="manifest"][href]"#) {
+            extras.manifest = document.select(&sel).next().is_some();
+        }
+
+        // Semantic sections: <section>/<article> with an internal heading,
+        // favouring passage-oriented AIO/AEO content extraction.
+        if let Ok(sel) = Selector::parse("section, article") {
+            let heading_sel = Selector::parse("h1, h2, h3, h4, h5, h6").ok();
+            for el in document.select(&sel) {
+                extras.section_total += 1;
+                if heading_sel
+                    .as_ref()
+                    .is_some_and(|hs| el.select(hs).next().is_some())
+                {
+                    extras.section_with_heading += 1;
+                }
+            }
+        }
 
         // URL heuristics
         if let Ok(parsed) = Url::parse(url) {
@@ -1086,6 +1109,28 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         None,
     ));
 
+    // Freshness signal: a Last-Modified response header tells crawlers when
+    // the content was last changed, supporting freshness evaluation.
+    let last_modified = ctx
+        .response_headers
+        .get("last-modified")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty());
+    out.push(check(
+        "last_modified_header",
+        "meta",
+        "info",
+        last_modified.is_some(),
+        1.0,
+        if last_modified.is_some() {
+            "Last-Modified response header present"
+        } else {
+            "Missing Last-Modified response header"
+        },
+        "Serve a Last-Modified header so crawlers can evaluate content freshness.",
+        last_modified.map(str::to_string),
+    ));
+
     // ==================== TECHNICAL & MOBILE ====================
     let https = ctx.url.starts_with("https://");
     out.push(check(
@@ -1339,6 +1384,22 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         ));
     }
 
+    // PWA / installability signal: a linked web app manifest.
+    out.push(check(
+        "web_app_manifest",
+        "technical",
+        "info",
+        extras.manifest,
+        1.0,
+        if extras.manifest {
+            "Web app manifest linked from the page"
+        } else {
+            "No web app manifest linked"
+        },
+        "Link a manifest.json so browsers and agents can read app identity and metadata.",
+        None,
+    ));
+
     // ==================== SOCIAL & OPEN GRAPH ====================
     let og = &seo.og_meta;
     out.push(check(
@@ -1494,6 +1555,33 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         },
         "Add a twitter:image meta tag.",
         None,
+    ));
+
+    // og:locale should be present and coherent with the HTML lang.
+    let og_locale_ok = match (&og.og_locale, &seo.html_lang) {
+        (Some(locale), Some(lang)) => {
+            locale.len() >= 2 && locale[..2].eq_ignore_ascii_case(&lang[..2.min(lang.len())])
+        }
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    out.push(check(
+        "og_locale",
+        "social",
+        "info",
+        og_locale_ok,
+        1.0,
+        if let Some(locale) = &og.og_locale {
+            if seo.html_lang.is_some() {
+                format!("og:locale {locale} present and coherent with html lang")
+            } else {
+                format!("og:locale {locale} present")
+            }
+        } else {
+            "Missing og:locale meta tag".to_string()
+        },
+        "Declare og:locale (e.g. en_US) so social platforms localize the shared card.",
+        og.og_locale.clone(),
     ));
 
     // ==================== ACCESSIBILITY ====================
@@ -1693,6 +1781,32 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             extras.video_accessible, extras.video_total
         )),
     ));
+
+    // Passage-oriented content: substantial pages should be organized into
+    // headed <section>/<article> blocks so AI extractors can cite passages.
+    let substantial = extras.word_count >= 300;
+    let sectioned_ok = !substantial
+        || (extras.section_total > 0 && extras.section_with_heading == extras.section_total);
+    out.push(check(
+        "sectioned_content",
+        "semantic_html",
+        "warning",
+        sectioned_ok,
+        2.0,
+        if !substantial {
+            "Content below 300 words; sectioning not required".to_string()
+        } else if extras.section_total == 0 {
+            "Substantial content not organized into sections".to_string()
+        } else {
+            format!(
+                "Sections/articles with a heading: {}/{}",
+                extras.section_with_heading, extras.section_total
+            )
+        },
+        "Split substantial content into <section>/<article> elements each with a heading so AI tools can extract passages.",
+        Some(format!("{} sections", extras.section_total)),
+    ));
+
     out.push(check(
         "autocomplete_inputs",
         "accessibility",
@@ -2148,6 +2262,30 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             json_ld_examples(&extras.json_ld_raw, json_ld_article_without_freshness);
     }
     out.push(freshness_dates_check);
+
+    // GEO credibility: substantial content should cite external sources so
+    // answer engines can verify claims. Skip thin pages.
+    let (int_links, ext_links) = link_counts(seo, &ctx.url);
+    let external_cited_ok = !substantial || ext_links > 0;
+    out.push(check(
+        "external_sources_cited",
+        "sxo",
+        "warning",
+        external_cited_ok,
+        1.5,
+        if !substantial {
+            "Content below 300 words; external citation not required".to_string()
+        } else if ext_links == 0 {
+            "Substantial content cites no external sources".to_string()
+        } else {
+            format!(
+                "Cites {} external source(s) across {} internal links",
+                ext_links, int_links
+            )
+        },
+        "Link out to authoritative sources so answer engines can verify claims and attribute credibility.",
+        Some(format!("{} external / {} internal", ext_links, int_links)),
+    ));
 
     // ==================== SECURITY (response headers) ====================
     let header = |name: &str| {
@@ -3025,5 +3163,184 @@ mod tests {
             &ctx("https://example.com/page"),
         );
         assert!(out.iter().all(|c| c.id != "hreflang_self_reference"));
+    }
+
+    #[test]
+    fn test_last_modified_header_check() {
+        let html =
+            "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body></body></html>";
+        let extras = PageExtras::extract(html, "https://example.com/page");
+        let seo = SeoData::default();
+
+        let mut headers = std::collections::HashMap::new();
+        headers.insert(
+            "last-modified".to_string(),
+            "Tue, 12 Aug 2025 10:00:00 GMT".to_string(),
+        );
+        let mut c = ctx("https://example.com/page");
+        c.response_headers = headers;
+        let out = run_all(&seo, &extras, &c);
+        assert!(check(&out, "last_modified_header").passed);
+
+        let out = run_all(&seo, &extras, &ctx("https://example.com/page"));
+        assert!(!check(&out, "last_modified_header").passed);
+    }
+
+    #[test]
+    fn test_web_app_manifest_check() {
+        let with_manifest = r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>T</title><link rel="manifest" href="/manifest.json"></head>
+<body></body>
+</html>"#;
+        let extras = PageExtras::extract(with_manifest, "https://example.com/page");
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(check(&out, "web_app_manifest").passed);
+
+        let extras = PageExtras::extract(
+            "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body></body></html>",
+            "https://example.com/page",
+        );
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(!check(&out, "web_app_manifest").passed);
+    }
+
+    #[test]
+    fn test_og_locale_check() {
+        let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>T</title>
+    <meta property="og:locale" content="en_US">
+</head>
+<body></body>
+</html>"#;
+        let extras = PageExtras::extract(html, "https://example.com/page");
+        let parser = crate::crawler::parser::SeoParser::new();
+        let (seo, _) = parser.parse(html, &Url::parse("https://example.com/page").unwrap());
+        assert!(seo.og_meta.og_locale.is_some());
+        let out = run_all(&seo, &extras, &ctx("https://example.com/page"));
+        assert!(check(&out, "og_locale").passed);
+
+        let mismatched = r#"<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>T</title>
+    <meta property="og:locale" content="en_US">
+</head>
+<body></body>
+</html>"#;
+        let extras = PageExtras::extract(mismatched, "https://example.com/page");
+        let (seo, _) = parser.parse(mismatched, &Url::parse("https://example.com/page").unwrap());
+        let out = run_all(&seo, &extras, &ctx("https://example.com/page"));
+        assert!(!check(&out, "og_locale").passed);
+    }
+
+    #[test]
+    fn test_sectioned_content_check() {
+        let thin = "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body><p>Short</p></body></html>";
+        let extras = PageExtras::extract(thin, "https://example.com/page");
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(
+            check(&out, "sectioned_content").passed,
+            "thin content skips"
+        );
+
+        let mut body = String::new();
+        body.push_str("<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body>");
+        for _ in 0..40 {
+            body.push_str("<p>Substantial sentence with enough words to count toward the word total used by this test fixture.</p>");
+        }
+        body.push_str("</body></html>");
+        let extras = PageExtras::extract(&body, "https://example.com/page");
+        assert!(extras.word_count >= 300);
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(!check(&out, "sectioned_content").passed);
+
+        let mut sections = String::new();
+        sections.push_str("<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body>");
+        for i in 0..12 {
+            sections.push_str(&format!(
+                "<section><h2>Section {i}</h2><p>Substantial sentence with enough words to count toward the word total used by this test fixture.</p><p>More words inside the section to reach the threshold while remaining readable.</p></section>"
+            ));
+        }
+        sections.push_str("</body></html>");
+        let extras = PageExtras::extract(&sections, "https://example.com/page");
+        assert!(extras.word_count >= 300);
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(check(&out, "sectioned_content").passed);
+    }
+
+    #[test]
+    fn test_external_sources_cited_check() {
+        let mut body = String::new();
+        body.push_str("<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body>");
+        for _ in 0..40 {
+            body.push_str("<p>Substantial sentence with enough words to count toward the word total used by this test fixture.</p>");
+        }
+        body.push_str("</body></html>");
+        let extras = PageExtras::extract(&body, "https://example.com/page");
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(!check(&out, "external_sources_cited").passed);
+
+        let mut with_links = String::new();
+        with_links.push_str("<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body>");
+        for _ in 0..40 {
+            with_links.push_str("<p>Substantial sentence with enough words to count toward the word total used by this test fixture.</p>");
+        }
+        with_links.push_str(
+            r#"<p>According to <a href="https://wikipedia.org/wiki/Example">the source</a>.</p>"#,
+        );
+        with_links.push_str("</body></html>");
+        let extras = PageExtras::extract(&with_links, "https://example.com/page");
+        let seo = SeoData {
+            outgoing_links: vec![crate::crawler::parser::OutgoingLink {
+                url: "https://wikipedia.org/wiki/Example".to_string(),
+                anchor_text: "the source".to_string(),
+                rel_tokens: vec![],
+                is_follow: true,
+                is_sponsored: false,
+                is_ugc: false,
+            }],
+            ..Default::default()
+        };
+        let out = run_all(&seo, &extras, &ctx("https://example.com/page"));
+        assert!(check(&out, "external_sources_cited").passed);
+
+        let thin = "<!DOCTYPE html><html lang=\"en\"><head><title>T</title></head><body><p>Short</p></body></html>";
+        let extras = PageExtras::extract(thin, "https://example.com/page");
+        let out = run_all(
+            &SeoData::default(),
+            &extras,
+            &ctx("https://example.com/page"),
+        );
+        assert!(
+            check(&out, "external_sources_cited").passed,
+            "thin content skips"
+        );
     }
 }

@@ -73,6 +73,7 @@ pub struct OgMeta {
     pub og_type: Option<String>,
     pub og_url: Option<String>,
     pub og_site_name: Option<String>,
+    pub og_locale: Option<String>,
     pub twitter_card: Option<String>,
     pub twitter_title: Option<String>,
     pub twitter_description: Option<String>,
@@ -88,6 +89,7 @@ impl OgMeta {
             && self.og_type.is_none()
             && self.og_url.is_none()
             && self.og_site_name.is_none()
+            && self.og_locale.is_none()
             && self.twitter_card.is_none()
             && self.twitter_title.is_none()
             && self.twitter_description.is_none()
@@ -1719,6 +1721,7 @@ impl SeoParser {
                 "og:type" => meta.og_type = Some(content),
                 "og:url" => meta.og_url = Some(content),
                 "og:site_name" => meta.og_site_name = Some(content),
+                "og:locale" => meta.og_locale = Some(content),
                 _ => {}
             }
         }
