@@ -393,6 +393,9 @@ anterior de SEO y optimización ya está commiteado (`b3c28dd`, `3147f58`).
   `updater.*` en `messages/{en,es}.json`.
 - `tauri-action` genera `latest.json`/`.sig` automáticamente (secrets
   `TAURI_SIGNING_PRIVATE_KEY*` ya configurados).
+- **IMPORTANTE**: el bundle necesita `"createUpdaterArtifacts": true` en
+  `tauri.conf.json` para que Tauri genere los `.sig`; sin él, tauri-action no
+  sube `latest.json` ("Signature not found for the updater JSON").
 
 ### Fase 3 — Docs y licencia ✅ HECHO
 
@@ -409,12 +412,21 @@ anterior de SEO y optimización ya está commiteado (`b3c28dd`, `3147f58`).
   `android/opencrawler.keystore.dev.bak`. Secrets `ANDROID_*` actualizados vía
   `gh secret set` (base64 + alias + passwords). `ANDROID_SETUP.md` actualizado.
 
-### Fase 5 — Commit y release ✅ EN CURSO
+### Fase 5 — Commit y release ✅ HECHO
 
 - Commit de todo el trabajo 1.0, push, `git tag v1.0.0`, push del tag.
 - release.yml dispara con tags `v*`: macOS ARM/Intel + Linux + Windows + Android
   (APK/AAB firmados) + latest.json para el updater. `update-readme` regenera la
   tabla de descargas.
+- **Incidente resuelto**: la primera release v1.0.0 se publicó sin `latest.json`
+  (updater roto, 404 en el endpoint). Causa: faltaba `"createUpdaterArtifacts": true`
+  en el bundle de `tauri.conf.json` (issue tauri-action #1098). Fix commit `c38e1d5`;
+  se borró tag+release v1.0.0 y se re-pusheó el tag sobre el commit fijado.
+  Run `31925399852` success; release re-publicada con 19 assets (latest.json +
+  .sig por plataforma) y endpoint `.../latest/download/latest.json` → 200.
+- Verificación local del fix: `bun run tauri bundle --target aarch64-apple-darwin
+  --bundles app,dmg` con `TAURI_SIGNING_PRIVATE_KEY` (de `.secrets/tauri.key`) y
+  password `opencrawler2026` genera `Open Crawler.app.tar.gz.sig`.
 
 **Guardar el password del keystore Android** (`bx067ADsyJeDRluvPazxW6aH9AHXpDkK`)
 — es el único respaldo; si se pierde no se pueden publicar actualizaciones del
