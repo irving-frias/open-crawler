@@ -30,6 +30,8 @@
       "identifier": "fs:allow-mkdir",
       "allow": [{ "path": "$APPDATA/transfers" }, { "path": "$APPDATA/transfers/**" }]
     },
-    "notification:default"
+    "notification:default",
+    "process:default",
+    "updater:default"
   ]
 }

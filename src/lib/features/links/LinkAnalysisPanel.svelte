@@ -9,7 +9,13 @@
     getExternalDomainsPage,
   } from '$lib/api/links';
   import { getSeoOverview } from '$lib/api/seo';
-  import type { LinkAnalysis, SeoCheckResult, SeoOverview, AnchorAgg, DomainAgg } from '$lib/api/types';
+  import type {
+    LinkAnalysis,
+    SeoCheckResult,
+    SeoOverview,
+    AnchorAgg,
+    DomainAgg,
+  } from '$lib/api/types';
   import { localizeSeoCheck } from '$lib/seo-checks';
   import { seoScoreColor } from '$lib/seo-ui';
   import { cn } from '$lib/utils.js';
@@ -89,10 +95,7 @@
     return initialFull;
   }
 
-  async function showMore(
-    kind: 'orphan' | 'deadEnd' | 'anchor' | 'domain',
-    page: number
-  ) {
+  async function showMore(kind: 'orphan' | 'deadEnd' | 'anchor' | 'domain', page: number) {
     if (!projectId) return;
     const seq = linksSeq;
     const s =
@@ -279,9 +282,7 @@
                   onclick={() => showMore('orphan', Math.ceil(orphanState.items.length / 10) + 1)}
                   disabled={orphanState.loading}
                 >
-                  <ChevronDown
-                    class={cn('size-3.5', orphanState.loading && 'animate-pulse')}
-                  />
+                  <ChevronDown class={cn('size-3.5', orphanState.loading && 'animate-pulse')} />
                   <span>{m['comparator.show_more']()}</span>
                 </button>
               {/if}
@@ -313,13 +314,10 @@
                 <button
                   type="button"
                   class="links-more"
-                  onclick={() =>
-                    showMore('deadEnd', Math.ceil(deadEndState.items.length / 10) + 1)}
+                  onclick={() => showMore('deadEnd', Math.ceil(deadEndState.items.length / 10) + 1)}
                   disabled={deadEndState.loading}
                 >
-                  <ChevronDown
-                    class={cn('size-3.5', deadEndState.loading && 'animate-pulse')}
-                  />
+                  <ChevronDown class={cn('size-3.5', deadEndState.loading && 'animate-pulse')} />
                   <span>{m['comparator.show_more']()}</span>
                 </button>
               {/if}
@@ -394,8 +392,7 @@
                   <button
                     type="button"
                     class="links-more"
-                    onclick={() =>
-                      showMore('anchor', Math.ceil(anchorState.items.length / 20) + 1)}
+                    onclick={() => showMore('anchor', Math.ceil(anchorState.items.length / 20) + 1)}
                     disabled={anchorState.loading}
                   >
                     <ChevronDown class={cn('size-3.5', anchorState.loading && 'animate-pulse')} />
@@ -436,8 +433,7 @@
                 <button
                   type="button"
                   class="links-more"
-                  onclick={() =>
-                    showMore('domain', Math.ceil(domainState.items.length / 50) + 1)}
+                  onclick={() => showMore('domain', Math.ceil(domainState.items.length / 50) + 1)}
                   disabled={domainState.loading}
                 >
                   <ChevronDown class={cn('size-3.5', domainState.loading && 'animate-pulse')} />

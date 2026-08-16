@@ -80,7 +80,9 @@ impl<'a> CrawlRepo<'a> {
         let limit = page_size as i64;
         let mut stmt = self.conn.prepare(&format!("{where_} LIMIT ?2 OFFSET ?3"))?;
         let urls = stmt
-            .query_map(params![project_id, limit, offset], |row| row.get::<_, String>(0))?
+            .query_map(params![project_id, limit, offset], |row| {
+                row.get::<_, String>(0)
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok((urls, count as usize))
     }
@@ -111,7 +113,9 @@ impl<'a> CrawlRepo<'a> {
         let limit = page_size as i64;
         let mut stmt = self.conn.prepare(&format!("{where_} LIMIT ?2 OFFSET ?3"))?;
         let urls = stmt
-            .query_map(params![project_id, limit, offset], |row| row.get::<_, String>(0))?
+            .query_map(params![project_id, limit, offset], |row| {
+                row.get::<_, String>(0)
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok((urls, count as usize))
     }
@@ -481,7 +485,9 @@ mod tests {
     #[test]
     fn test_paginated_link_lists() {
         let repo = test_repo();
-        let pages: Vec<CrawlResult> = (b'a'..=b'o').map(|c| page(&format!("https://x.com/{}", c as char))).collect();
+        let pages: Vec<CrawlResult> = (b'a'..=b'o')
+            .map(|c| page(&format!("https://x.com/{}", c as char)))
+            .collect();
         repo.save_results_batch(&pages).unwrap();
 
         let mut links = Vec::new();
@@ -492,7 +498,12 @@ mod tests {
             links.push(link(&p, "https://x.com/root", Some("back"), &[]));
         }
         // One external link so the external-domains aggregation has a row.
-        links.push(link("https://x.com/root", "https://ext.example.com", Some("ext"), &[]));
+        links.push(link(
+            "https://x.com/root",
+            "https://ext.example.com",
+            Some("ext"),
+            &[],
+        ));
         // k..o (5 pages) get no links at all: orphans + dead ends.
         for l in &mut links {
             let from_host = l
@@ -516,7 +527,9 @@ mod tests {
         assert_eq!(page2.len(), 2);
         let mut combined = page1;
         combined.extend(page2);
-        let expected: Vec<String> = (b'k'..=b'o').map(|c| format!("https://x.com/{}", c as char)).collect();
+        let expected: Vec<String> = (b'k'..=b'o')
+            .map(|c| format!("https://x.com/{}", c as char))
+            .collect();
         assert_eq!(combined, expected);
 
         let (dead, dtotal) = repo.dead_end_pages_page("p1", 1, 10).unwrap();
@@ -524,7 +537,10 @@ mod tests {
         assert_eq!(dead, expected);
 
         let (anchors, atotal) = repo.top_anchors_page("p1", 1, 2).unwrap();
-        assert_eq!(atotal, 3, "hit, back and ext are the distinct non-empty anchors");
+        assert_eq!(
+            atotal, 3,
+            "hit, back and ext are the distinct non-empty anchors"
+        );
         assert_eq!(anchors.len(), 2);
         let (anchors2, _) = repo.top_anchors_page("p1", 2, 2).unwrap();
         assert_eq!(anchors2.len(), 1);

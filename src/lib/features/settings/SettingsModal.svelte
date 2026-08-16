@@ -11,6 +11,8 @@
   import { Checkbox } from '$lib/components/ui/checkbox/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Separator } from '$lib/components/ui/separator/index.js';
+  import { checkForUpdates, downloadAndInstall, relaunchApp } from '$lib/updater';
+  import type { UpdaterStatus } from '$lib/updater';
 
   let {
     open = $bindable(false),
@@ -39,6 +41,10 @@
   let aiBaseUrl = $state('https://api.openai.com/v1');
   let aiModel = $state('gpt-4o-mini');
   let saving = $state(false);
+  let updaterStatus: UpdaterStatus = $state('idle');
+  let updaterVersion: string | null = $state(null);
+  let updaterError: string | null = $state(null);
+  let updaterProgress = $state(0);
 
   $effect(() => {
     if (open) loadSettings();
@@ -103,6 +109,41 @@
   }
 
   const languageLabel = $derived(language === 'en' ? m['language.en']() : m['language.es']());
+
+  async function checkUpdates() {
+    updaterStatus = 'checking';
+    updaterError = null;
+    updaterVersion = null;
+    updaterProgress = 0;
+    const result = await checkForUpdates();
+    if (result.error) {
+      updaterError = result.error;
+      updaterStatus = 'idle';
+      return;
+    }
+    if (result.version) {
+      updaterVersion = result.version;
+      updaterStatus = 'available';
+    } else {
+      updaterStatus = 'idle';
+      updaterError = null;
+      updaterVersion = null;
+    }
+  }
+
+  async function installUpdate() {
+    updaterStatus = 'installing';
+    updaterError = null;
+    updaterProgress = 0;
+    try {
+      await downloadAndInstall((percent) => (updaterProgress = percent));
+    } catch (e) {
+      updaterError = e instanceof Error ? e.message : String(e);
+      updaterStatus = updaterVersion ? 'available' : 'idle';
+      return;
+    }
+    updaterStatus = 'restart';
+  }
 </script>
 
 <Dialog.Root bind:open>
@@ -292,6 +333,48 @@
           >
         </div>
       </div>
+    </div>
+
+    <Separator />
+
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {m['settings.update']()}
+    </h3>
+    <div class="flex flex-col gap-2">
+      {#if updaterStatus === 'available'}
+        <p class="text-sm text-muted-foreground">
+          {m['updater.available']({ version: updaterVersion ?? '' })}
+        </p>
+        <Button onclick={installUpdate}>{m['updater.download']()}</Button>
+      {:else if updaterStatus === 'installing'}
+        <div class="flex items-center gap-2">
+          <span
+            class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          ></span>
+          <span class="text-sm text-muted-foreground"
+            >{m['updater.installing']()} {updaterProgress}%</span
+          >
+        </div>
+      {:else if updaterStatus === 'restart'}
+        <p class="text-sm text-muted-foreground">{m['updater.install']()}</p>
+        <Button onclick={relaunchApp}>{m['updater.install']()}</Button>
+      {:else if updaterStatus === 'checking'}
+        <div class="flex items-center gap-2">
+          <span
+            class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          ></span>
+          <span class="text-sm text-muted-foreground">{m['updater.checking']()}</span>
+        </div>
+      {:else}
+        <div class="flex items-center gap-2">
+          <Button variant="outline" onclick={checkUpdates}>{m['updater.check']()}</Button>
+          {#if updaterError}
+            <span class="text-sm text-destructive"
+              >{m['updater.error']({ error: updaterError })}</span
+            >
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <Dialog.Footer>

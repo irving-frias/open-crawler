@@ -487,7 +487,10 @@ mod tests {
         let (page2, total) = repo.get_duplicate_groups_page("p1", 2, 1).unwrap();
         assert_eq!(total, 2);
         assert_eq!(page2.len(), 1);
-        assert_ne!(page1[0].id, page2[0].id, "pages must return distinct groups");
+        assert_ne!(
+            page1[0].id, page2[0].id,
+            "pages must return distinct groups"
+        );
 
         let (all, total) = repo.get_duplicate_groups_page("p1", 1, 10).unwrap();
         assert_eq!(total, 2);
@@ -917,7 +920,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].seo_score, Some(75.0), "scalar score must be present");
+        assert_eq!(
+            items[0].seo_score,
+            Some(75.0),
+            "scalar score must be present"
+        );
         assert_eq!(items[0].pagespeed_score, Some(80.0));
         assert_eq!(items[0].hreflang_json, None);
         assert_eq!(items[0].keywords_json, None);
@@ -928,12 +935,27 @@ mod tests {
 
         // The detail path still returns the full blobs.
         let detail = repo.get_page_detail("pg1").unwrap();
-        assert_eq!(detail.page.hreflang_json.as_deref(), Some(r#"[{"hreflang":"en","href":"https://x.com/a"}]"#));
-        assert_eq!(detail.page.keywords_json.as_deref(), Some(r#"[{"keyword":"seo","count":2}]"#));
+        assert_eq!(
+            detail.page.hreflang_json.as_deref(),
+            Some(r#"[{"hreflang":"en","href":"https://x.com/a"}]"#)
+        );
+        assert_eq!(
+            detail.page.keywords_json.as_deref(),
+            Some(r#"[{"keyword":"seo","count":2}]"#)
+        );
         assert_eq!(detail.page.og_json.as_deref(), Some(r#"{"title":"OG"}"#));
-        assert_eq!(detail.page.pagespeed_json.as_deref(), Some(r#"{"score":80}"#));
-        assert_eq!(detail.page.seo_audit_json.as_deref(), Some(r#"{"score":75,"categories":[]}"#));
-        assert_eq!(detail.page.response_headers_json.as_deref(), Some(r#"{"content-type":"text/html"}"#));
+        assert_eq!(
+            detail.page.pagespeed_json.as_deref(),
+            Some(r#"{"score":80}"#)
+        );
+        assert_eq!(
+            detail.page.seo_audit_json.as_deref(),
+            Some(r#"{"score":75,"categories":[]}"#)
+        );
+        assert_eq!(
+            detail.page.response_headers_json.as_deref(),
+            Some(r#"{"content-type":"text/html"}"#)
+        );
         assert_eq!(detail.page.seo_score, Some(75.0));
     }
 
@@ -988,11 +1010,12 @@ mod tests {
         assert_eq!(changed.total, 1);
         assert_eq!(changed.changed_urls.len(), 1);
         assert_eq!(changed.changed_urls[0].url, "https://x.com/a");
-        assert!(changed
-            .changed_urls[0]
+        assert!(changed.changed_urls[0]
             .diffs
             .iter()
-            .any(|d| d.field == "title" && d.before.as_deref() == Some("A") && d.after.as_deref() == Some("A2")));
+            .any(|d| d.field == "title"
+                && d.before.as_deref() == Some("A")
+                && d.after.as_deref() == Some("A2")));
         assert_eq!(changed.unchanged_count, 1);
 
         // pagination: page size 1 must page over the section
@@ -1011,9 +1034,8 @@ mod tests {
     fn test_page_keywords_materialized_and_aggregated() {
         let repo = test_repo();
         let mut a = page("a", "https://x.com/a", Some("A"), 200, true);
-        a.keywords_json = Some(
-            r#"[{"keyword":"seo","count":3},{"keyword":"crawl","count":2}]"#.to_string(),
-        );
+        a.keywords_json =
+            Some(r#"[{"keyword":"seo","count":3},{"keyword":"crawl","count":2}]"#.to_string());
         let mut b = page("b", "https://x.com/b", Some("B"), 200, true);
         b.keywords_json = Some(r#"[{"keyword":"seo","count":1}]"#.to_string());
         repo.save_results_batch(&[a, b]).unwrap();
@@ -1022,7 +1044,10 @@ mod tests {
             .conn
             .query_row("SELECT COUNT(*) FROM page_keywords", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(rows, 3, "keywords_json must be materialized row per keyword");
+        assert_eq!(
+            rows, 3,
+            "keywords_json must be materialized row per keyword"
+        );
 
         let keywords = repo.get_keywords("p1", 10).unwrap();
         assert_eq!(keywords.len(), 2);
@@ -1062,7 +1087,10 @@ mod tests {
         repo.save_results_batch(&pages).unwrap();
 
         let (page1, total) = repo.get_keywords_page("p1", 1, 2).unwrap();
-        assert_eq!(total, 5, "k0 shared by all 5 pages plus one unique per page");
+        assert_eq!(
+            total, 5,
+            "k0 shared by all 5 pages plus one unique per page"
+        );
         assert_eq!(page1.len(), 2);
         assert_eq!(page1[0].keyword, "k0");
         assert_eq!(page1[0].count, 5);

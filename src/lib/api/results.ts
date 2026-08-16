@@ -70,10 +70,7 @@ export function getSiteTreeFull(projectId: string): Promise<SiteTreeFullNode[]> 
   return invoke<SiteTreeFullNode[]>('get_site_tree_full', { projectId });
 }
 
-export function getSiteTreeStream(
-  projectId: string,
-  batchSize?: number | null
-): Promise<number> {
+export function getSiteTreeStream(projectId: string, batchSize?: number | null): Promise<number> {
   return invoke<number>('get_site_tree_stream', {
     projectId,
     batchSize: batchSize ?? null,

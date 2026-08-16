@@ -77,8 +77,7 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
   video_without_track_or_controls: () => m['issue.video_without_track_or_controls.message'](),
   empty_heading: (p) => m['issue.empty_heading.message']({ tag: String(p?.tag ?? '') }),
   empty_paragraph: () => m['issue.empty_paragraph.message'](),
-  empty_content_tag: (p) =>
-    m['issue.empty_content_tag.message']({ tag: String(p?.tag ?? '') }),
+  empty_content_tag: (p) => m['issue.empty_content_tag.message']({ tag: String(p?.tag ?? '') }),
 };
 
 /**

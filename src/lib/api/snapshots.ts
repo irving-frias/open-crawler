@@ -14,7 +14,7 @@ export function compareCrawlsPage(
   snapshotB: string,
   section: 'new' | 'removed' | 'changed',
   page: number,
-  pageSize: number,
+  pageSize: number
 ): Promise<ComparePageResult> {
   return invoke<ComparePageResult>('compare_crawls_page', {
     snapshotA,

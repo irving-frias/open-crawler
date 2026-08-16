@@ -113,7 +113,10 @@ impl<'a> CrawlRepo<'a> {
         tx.execute("DELETE FROM page_issues WHERE project_id = ?1", params![id])?;
 
         // 5c. Delete materialized page_keywords (no FK; keyed by project_id)
-        tx.execute("DELETE FROM page_keywords WHERE project_id = ?1", params![id])?;
+        tx.execute(
+            "DELETE FROM page_keywords WHERE project_id = ?1",
+            params![id],
+        )?;
 
         // 6. Delete crawl_snapshot_data (child of crawl_snapshots)
         tx.execute(

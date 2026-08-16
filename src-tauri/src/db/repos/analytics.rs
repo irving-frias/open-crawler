@@ -247,19 +247,15 @@ impl<'a> CrawlRepo<'a> {
         after_url: Option<&str>,
         limit: u32,
     ) -> Result<(Vec<SiteTreeStreamNode>, u32), AppError> {
-        let total: u32 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(DISTINCT url) FROM crawled_pages WHERE project_id = ?1",
-                params![project_id],
-                |row| row.get(0),
-            )?;
+        let total: u32 = self.conn.query_row(
+            "SELECT COUNT(DISTINCT url) FROM crawled_pages WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
 
-        let (sql, row_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(
-            after_url,
-        ) = after_url
-        {
-            let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
+        let (sql, row_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            if let Some(after_url) = after_url {
+                let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
                        FROM crawled_pages cp
                        LEFT JOIN (
                            SELECT page_id, COUNT(*) AS cnt
@@ -271,15 +267,15 @@ impl<'a> CrawlRepo<'a> {
                        GROUP BY cp.url
                        ORDER BY cp.url
                        LIMIT ?3"
-                .to_string();
-            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-                Box::new(project_id.to_string()),
-                Box::new(after_url.to_string()),
-                Box::new(limit as i32),
-            ];
-            (sql, params)
-        } else {
-            let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
+                    .to_string();
+                let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                    Box::new(project_id.to_string()),
+                    Box::new(after_url.to_string()),
+                    Box::new(limit as i32),
+                ];
+                (sql, params)
+            } else {
+                let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
                        FROM crawled_pages cp
                        LEFT JOIN (
                            SELECT page_id, COUNT(*) AS cnt
@@ -291,13 +287,11 @@ impl<'a> CrawlRepo<'a> {
                        GROUP BY cp.url
                        ORDER BY cp.url
                        LIMIT ?2"
-                .to_string();
-            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-                Box::new(project_id.to_string()),
-                Box::new(limit as i32),
-            ];
-            (sql, params)
-        };
+                    .to_string();
+                let params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                    vec![Box::new(project_id.to_string()), Box::new(limit as i32)];
+                (sql, params)
+            };
 
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt
@@ -623,7 +617,9 @@ impl<'a> CrawlRepo<'a> {
             params.push(Box::new(*gid));
         }
         let rows = member_stmt
-            .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
+            .query_map(
+                rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+                |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, Option<String>>(1)?,

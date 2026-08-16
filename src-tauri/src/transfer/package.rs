@@ -1266,8 +1266,17 @@ mod tests {
         let src_conn = temp_conn(&src_path);
         rm_default(&src_conn);
         let pid = seed_project(&src_conn, "Site A");
-        let (_, src_links, src_errors, src_issues, src_snaps, src_snapdata, src_sess, src_queue, src_kw) =
-            counts(&src_conn, &pid);
+        let (
+            _,
+            src_links,
+            src_errors,
+            src_issues,
+            src_snaps,
+            src_snapdata,
+            src_sess,
+            src_queue,
+            src_kw,
+        ) = counts(&src_conn, &pid);
 
         let repo = CrawlRepo::new(&src_conn, None);
         export_package_inner(&repo, &work.0, None, false, false, &pkg_path).unwrap();

@@ -43,10 +43,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "015_response_headers",
         include_str!("015_response_headers.sql"),
     ),
-    (
-        "016_perf_indexes",
-        include_str!("016_perf_indexes.sql"),
-    ),
+    ("016_perf_indexes", include_str!("016_perf_indexes.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -273,9 +270,11 @@ mod tests {
         assert_eq!(seo, 5, "seo count aggregated across both pages");
         assert_eq!(crawl, 1);
         let pages: i64 = conn
-            .query_row("SELECT COUNT(DISTINCT page_id) FROM page_keywords", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(DISTINCT page_id) FROM page_keywords",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(pages, 2);
     }

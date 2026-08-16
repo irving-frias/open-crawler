@@ -1056,13 +1056,11 @@ const DICT: Record<string, CheckDictEntry> = {
   robots_txt_exists: {
     en: {
       message: 'robots.txt is present and non-empty',
-      guidance:
-        'Publish a /robots.txt that allows crawlers and points to your sitemap.',
+      guidance: 'Publish a /robots.txt that allows crawlers and points to your sitemap.',
     },
     es: {
       message: 'robots.txt presente y no vacío',
-      guidance:
-        'Publica un /robots.txt que permita rastrear a los crawlers y apunte a tu sitemap.',
+      guidance: 'Publica un /robots.txt que permita rastrear a los crawlers y apunte a tu sitemap.',
     },
   },
   sitemap_xml_valid: {

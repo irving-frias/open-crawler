@@ -35,7 +35,7 @@ export function seoVariant(score: number): 'default' | 'warning' | 'destructive'
  */
 export function seoCategoryGains(categories: SeoCategoryResult[]): Record<string, number> {
   const scored = categories.filter(
-    (c): c is SeoCategoryResult & { score: number } => c.score !== null,
+    (c): c is SeoCategoryResult & { score: number } => c.score !== null
   );
   const presentWeight = scored.reduce((acc, c) => acc + c.weight, 0);
   if (presentWeight <= 0) return {};

@@ -14,6 +14,7 @@ import { applyTheme } from '$lib/theme.js';
 import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
 import { m } from '$lib/paraglide/messages.js';
 import { notify } from '$lib/utils';
+import { checkForUpdates } from '$lib/updater';
 import { getContext, setContext } from 'svelte';
 import type { FilterState } from '$lib/features/results/FilterBar.svelte';
 
@@ -362,6 +363,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     setupListeners();
     loadProjects();
     loadSettings();
+    autoCheckUpdates();
     return () => {
       disposed = true;
       unlistenFns.forEach((fn) => fn());
@@ -549,6 +551,23 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       }
     } catch (e) {
       console.error('[Projects] Refresh failed:', e);
+    }
+  }
+
+  let autoUpdateChecked = false;
+
+  async function autoCheckUpdates() {
+    // Only the launcher window checks for updates once per session; project
+    // windows and mobile skip it (updates are managed per store there).
+    if (!isLauncher || autoUpdateChecked) return;
+    autoUpdateChecked = true;
+    try {
+      const result = await checkForUpdates();
+      if (result.version) {
+        await notify(m['updater.check'](), m['updater.available']({ version: result.version }));
+      }
+    } catch {
+      // Silent: a manual check button is available in Settings.
     }
   }
 

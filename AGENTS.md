@@ -222,7 +222,7 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
 ### Fase 7 — Site resources: robots.txt, sitemap.xml y hreflang (F4.13) ✅ HECHO
 
 - **`seo/site.rs`** (nuevo): `SiteResource {status, body}`, `SiteResources {robots_txt,
-  sitemap_xml}`, `origin_of()`, `fetch_site_resources(client, page_url)` cacheado por
+sitemap_xml}`, `origin_of()`, `fetch_site_resources(client, page_url)` cacheado por
   origin (OnceLock<Mutex<HashMap>>, lifetime del proceso), `is_valid_sitemap()`
   (quick_xml: root `urlset`/`sitemapindex`, todas las etiquetas cerradas, EOF sin errores).
 - **`seo/audit.rs`**: `AuditContext` gana `site_resources: Option<Arc<SiteResources>>` y
@@ -232,10 +232,10 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
   `features/seo/commands.rs` (single + bulk con `site_client` clonado).
 - **3 checks nuevos en `run_all`** (technical):
 
-| check                     | severity | criterio                                              |
-| ------------------------- | -------- | ----------------------------------------------------- |
-| `robots_txt_exists`       | warning  | robots.txt con status 200 y body no vacío (skip sin resources) |
-| `sitemap_xml_valid`       | warning  | sitemap status 200 + `is_valid_sitemap(body)` (skip sin resources) |
+| check                     | severity | criterio                                                                   |
+| ------------------------- | -------- | -------------------------------------------------------------------------- |
+| `robots_txt_exists`       | warning  | robots.txt con status 200 y body no vacío (skip sin resources)             |
+| `sitemap_xml_valid`       | warning  | sitemap status 200 + `is_valid_sitemap(body)` (skip sin resources)         |
 | `hreflang_self_reference` | warning  | si hay hreflang_links, alguno apunta a la propia URL (per-page, sin fetch) |
 
 - Tests: 5 nuevos en checks.rs (pass/fail/skip de site resources + hreflang pass/fail/skip),
@@ -285,7 +285,7 @@ para `get_results`; `get_page_detail` intacto (full). Test
 - Migración `016_perf_indexes.sql` (`migrations/mod.rs`): índices
   `idx_pages_project_{seo_score,load_ms,size_bytes,duplicate_group,title}`,
   `idx_links_project_internal_from`, tabla `page_keywords(project_id, page_id,
-  keyword, count)` + backfill desde `keywords_json` vía `json_each` (una sola vez).
+keyword, count)` + backfill desde `keywords_json` vía `json_each` (una sola vez).
 - Helpers `delete_page_keywords`/`save_page_keywords` (`crawl.rs`), llamados en
   `save_result` y `save_results_batch`; limpieza en `delete_project` y transfer.
 - `get_keywords` (analytics.rs) con agregación SQL (`SUM(count)`,
@@ -305,7 +305,7 @@ para `get_results`; `get_page_detail` intacto (full). Test
   para `issue_count`; `COUNT(DISTINCT url)` para total. Test
   `test_site_tree_pages_stream_batches`.
 - **`features/results/commands.rs`**: `get_site_tree_stream(app, state, project_id,
-  batch_size=500)` emite eventos `site-tree-batch` `{project_id, nodes, total}`
+batch_size=500)` emite eventos `site-tree-batch` `{project_id, nodes, total}`
   por lote (clones `pid`/`cursor` por iteración para el closure `move`) y devuelve
   el total. Registrado en `lib.rs` tras `get_site_tree_full`. `get_site_tree_full`
   intacto (sigue funcionando como fallback).
@@ -332,7 +332,7 @@ manteniendo el contenido ya renderizado mientras llegan más datos.
   límites 10/10/20/50 como antes. SQL de external domains extraído a
   `external_domain_rows_sql()`.
 - **Backend `db/repos/analytics.rs`**: `get_keywords_page(project_id, page,
-  page_size)` → `(rows, total)` con `COUNT(DISTINCT keyword)`; `get_keywords`
+page_size)` → `(rows, total)` con `COUNT(DISTINCT keyword)`; `get_keywords`
   delega en page 1.
 - **Comandos nuevos** en `features/links/commands.rs` y
   `features/analytics/commands.rs` (`get_orphan_pages_page`,
@@ -360,6 +360,62 @@ manteniendo el contenido ya renderizado mientras llegan más datos.
 - `cargo test --lib` en `src-tauri/`
 - `bun run check`, `bun run lint`, `bun run build` en la raíz
 
-**Nota de sesión:** hay cambios sin commitear previos (checks SEO F5.14-18
-aprobados en `crawler/parser.rs`, `seo/checks.rs`, `seo-checks.ts`) — no mezclarlos
-en commits de esta línea de trabajo.
+## Trabajo en curso: lanzamiento v1.0.0 ✅ PREPARADO
+
+Preparación de release 1.0.0 (Desktop + Android, con auto-updater). El trabajo
+anterior de SEO y optimización ya está commiteado (`b3c28dd`, `3147f58`).
+
+### Fase 0 — CI y advisories ✅ HECHO
+
+- `cargo fmt` + `prettier --write` (AGENTS.md, api/results.ts, api/snapshots.ts,
+  Comparador.svelte, LinkAnalysisPanel.svelte, i18n-issues.ts, seo-checks.ts,
+  seo-ui.ts).
+- `lru` 0.12.5 → **0.18.2** (Cargo.toml `lru = "0.18"`), resuelve advisory low.
+- `glib` 0.18.5 (RUSTSEC-2024-0429, medium) queda como **warning permitido**:
+  transitiva de `gtk 0.18` (GTK3) fijado por Tauri 2.11.5; no hay fix sin GTK4.
+  `cargo audit` exit 0 ("18 allowed warnings"). `cargo test --lib` 162 OK.
+
+### Fase 1 — Versión ✅ HECHO
+
+- `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`: **1.0.0**.
+
+### Fase 2 — Auto-updater ✅ HECHO
+
+- `tauri-plugin-updater = "2"` + `tauri-plugin-process = "2"` (Cargo.toml) y
+  registrados en `lib.rs`. `tauri.conf.json` `plugins.updater` (pubkey de
+  `.secrets/tauri.key.pub`, endpoint `.../releases/latest/download/latest.json`).
+  `capabilities/default.json`: `updater:default` + `process:default`.
+- Frontend: `@tauri-apps/plugin-updater@2.10.1` + `@tauri-apps/plugin-process@2.3.1`.
+  `src/lib/updater.ts` (`checkForUpdates`, `downloadAndInstall` con progreso,
+  `relaunchApp`). `SettingsModal.svelte` con UI de update (checking/available/
+  installing %/restart). Check automático en el launcher (`app.svelte.ts`
+  `autoCheckUpdates`, una vez por sesión, silencioso). i18n `settings.update` +
+  `updater.*` en `messages/{en,es}.json`.
+- `tauri-action` genera `latest.json`/`.sig` automáticamente (secrets
+  `TAURI_SIGNING_PRIVATE_KEY*` ya configurados).
+
+### Fase 3 — Docs y licencia ✅ HECHO
+
+- `LICENSE` (MIT, Irving Frias 2026), `CHANGELOG.md` (entrada 1.0.0 + 0.3.0),
+  `CONTRIBUTING.md`, README actualizado (33 checks semánticos, 97 SEO checks en
+  10 categorías, arquitectura con seo/links/schedule/site-map/transfer, sin iOS,
+  screenshots placeholder en `docs/screenshots/`). Tag local huérfano `main`
+  borrado.
+
+### Fase 4 — Keystore Android de producción ✅ HECHO
+
+- Keystore nuevo en `android/opencrawler.keystore` (alias `opencrawler-prod`,
+  password generado aleatorio, validez 10000 días); dev respaldado en
+  `android/opencrawler.keystore.dev.bak`. Secrets `ANDROID_*` actualizados vía
+  `gh secret set` (base64 + alias + passwords). `ANDROID_SETUP.md` actualizado.
+
+### Fase 5 — Commit y release ✅ EN CURSO
+
+- Commit de todo el trabajo 1.0, push, `git tag v1.0.0`, push del tag.
+- release.yml dispara con tags `v*`: macOS ARM/Intel + Linux + Windows + Android
+  (APK/AAB firmados) + latest.json para el updater. `update-readme` regenera la
+  tabla de descargas.
+
+**Guardar el password del keystore Android** (`bx067ADsyJeDRluvPazxW6aH9AHXpDkK`)
+— es el único respaldo; si se pierde no se pueden publicar actualizaciones del
+APK. Guardar también `android/opencrawler.keystore` en un gestor seguro.

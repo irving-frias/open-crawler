@@ -135,7 +135,8 @@ impl<'a> CrawlRepo<'a> {
                     WHERE c2.project_id = crawled_pages.project_id
                       AND c2.title = crawled_pages.title
                       AND c2.id != crawled_pages.id
-                 )".to_string(),
+                 )"
+                .to_string(),
             );
         }
 

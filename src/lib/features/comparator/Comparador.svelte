@@ -26,12 +26,14 @@
   type SectionState = { total: number; items: string[]; page: number; loading: boolean };
   let newState = $state<SectionState>({ total: 0, items: [], page: 0, loading: false });
   let removedState = $state<SectionState>({ total: 0, items: [], page: 0, loading: false });
-  let changedState = $state<{ total: number; items: ChangedUrl[]; page: number; loading: boolean }>({
-    total: 0,
-    items: [],
-    page: 0,
-    loading: false,
-  });
+  let changedState = $state<{ total: number; items: ChangedUrl[]; page: number; loading: boolean }>(
+    {
+      total: 0,
+      items: [],
+      page: 0,
+      loading: false,
+    }
+  );
   let unchangedCount = $state(0);
   let before = $state<SnapshotStats | null>(null);
   let after = $state<SnapshotStats | null>(null);
@@ -113,11 +115,26 @@
     try {
       const r = await compareCrawlsPage(snapshotA, snapshotB, section, s.page + 1, PAGE_SIZE);
       if (section === 'new') {
-        newState = { ...newState, items: [...newState.items, ...r.new_urls], page: s.page + 1, loading: false };
+        newState = {
+          ...newState,
+          items: [...newState.items, ...r.new_urls],
+          page: s.page + 1,
+          loading: false,
+        };
       } else if (section === 'removed') {
-        removedState = { ...removedState, items: [...removedState.items, ...r.removed_urls], page: s.page + 1, loading: false };
+        removedState = {
+          ...removedState,
+          items: [...removedState.items, ...r.removed_urls],
+          page: s.page + 1,
+          loading: false,
+        };
       } else {
-        changedState = { ...changedState, items: [...changedState.items, ...r.changed_urls], page: s.page + 1, loading: false };
+        changedState = {
+          ...changedState,
+          items: [...changedState.items, ...r.changed_urls],
+          page: s.page + 1,
+          loading: false,
+        };
       }
       unchangedCount = r.unchanged_count;
     } catch (e) {
@@ -238,25 +255,19 @@
           <CardContent>
             <div class="comp-summary-grid">
               <div class="comp-summary-item comp-new">
-                <span class="comp-summary-value">{newState.total.toLocaleString()}</span
-                >
+                <span class="comp-summary-value">{newState.total.toLocaleString()}</span>
                 <span class="comp-summary-label">{m['comparator.new']()}</span>
               </div>
               <div class="comp-summary-item comp-removed">
-                <span class="comp-summary-value"
-                  >{removedState.total.toLocaleString()}</span
-                >
+                <span class="comp-summary-value">{removedState.total.toLocaleString()}</span>
                 <span class="comp-summary-label">{m['comparator.removed']()}</span>
               </div>
               <div class="comp-summary-item comp-changed">
-                <span class="comp-summary-value"
-                  >{changedState.total.toLocaleString()}</span
-                >
+                <span class="comp-summary-value">{changedState.total.toLocaleString()}</span>
                 <span class="comp-summary-label">{m['comparator.changed']()}</span>
               </div>
               <div class="comp-summary-item">
-                <span class="comp-summary-value">{unchangedCount.toLocaleString()}</span
-                >
+                <span class="comp-summary-value">{unchangedCount.toLocaleString()}</span>
                 <span class="comp-summary-label">{m['comparator.unchanged']()}</span>
               </div>
             </div>
