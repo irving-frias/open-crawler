@@ -390,6 +390,56 @@ mod tests {
     }
 
     #[test]
+    fn test_site_tree_pages_stream_batches() {
+        let repo = test_repo();
+        let mut pages = Vec::new();
+        for i in 0..5 {
+            let mut p = page(
+                &format!("p{i}"),
+                &format!("https://x.com/page-{i}"),
+                Some(&format!("Page {i}")),
+                200,
+                true,
+            );
+            p.depth = i as u32;
+            pages.push(p);
+        }
+        repo.save_results_batch(&pages).unwrap();
+
+        // First batch (keyset from the start, ordered by URL).
+        let (first, total) = repo.get_site_tree_pages("p1", None, 2).unwrap();
+        assert_eq!(total, 5);
+        assert_eq!(first.len(), 2);
+        assert!(first[0].url < first[1].url);
+
+        // Second batch continues right after the last URL of the previous one.
+        let (second, _) = repo
+            .get_site_tree_pages("p1", Some(&first.last().unwrap().url), 2)
+            .unwrap();
+        assert_eq!(second.len(), 2);
+        assert!(second[0].url > first.last().unwrap().url);
+        assert!(second[0].url < second[1].url);
+
+        // Third batch drains the remainder.
+        let (third, _) = repo
+            .get_site_tree_pages("p1", Some(&second.last().unwrap().url), 2)
+            .unwrap();
+        assert_eq!(third.len(), 1);
+
+        // Collecting everything reconstructs the full sorted set.
+        let all: Vec<String> = first
+            .iter()
+            .chain(second.iter())
+            .chain(third.iter())
+            .map(|n| n.url.clone())
+            .collect();
+        let mut sorted = all.clone();
+        sorted.sort();
+        assert_eq!(all, sorted);
+        assert_eq!(all.len(), 5);
+    }
+
+    #[test]
     fn test_duplicate_groups() {
         let repo = test_repo();
         let mut p_a = page("a", "https://x.com/a", Some("A"), 200, true);
@@ -409,6 +459,39 @@ mod tests {
         let urls: Vec<&str> = groups[0].urls.iter().map(|u| u.url.as_str()).collect();
         assert!(urls.contains(&"https://x.com/a"));
         assert!(urls.contains(&"https://x.com/b"));
+    }
+
+    #[test]
+    fn test_duplicate_groups_pagination() {
+        let repo = test_repo();
+        // Two groups: a/b (hash 0x0000) and c/d (hash 0xFFFF). The hashes are
+        // 16 bits apart so the LSH similarity pass never merges the groups.
+        for (id, url, hash) in [
+            ("a", "https://x.com/a", 0x0000_u64),
+            ("b", "https://x.com/b", 0x0000_u64),
+            ("c", "https://x.com/c", 0xFFFF_u64),
+            ("d", "https://x.com/d", 0xFFFF_u64),
+        ] {
+            let mut p = page(id, url, Some(id), 200, true);
+            p.content_hash = Some(format!("{:016x}", hash));
+            repo.save_results_batch(&[p]).unwrap();
+        }
+        repo.compute_duplicate_groups("p1").unwrap();
+
+        // Page size 1 returns one group per page plus the correct total.
+        let (page1, total) = repo.get_duplicate_groups_page("p1", 1, 1).unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(page1.len(), 1);
+        assert_eq!(page1[0].size, 2);
+
+        let (page2, total) = repo.get_duplicate_groups_page("p1", 2, 1).unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(page2.len(), 1);
+        assert_ne!(page1[0].id, page2[0].id, "pages must return distinct groups");
+
+        let (all, total) = repo.get_duplicate_groups_page("p1", 1, 10).unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(all.len(), 2);
     }
 
     #[test]
@@ -809,5 +892,222 @@ mod tests {
             )
             .unwrap();
         assert_eq!(orphaned_data, 0, "pruned snapshots must not leak data rows");
+    }
+
+    #[test]
+    fn test_list_projection_drops_heavy_json_blobs_but_detail_keeps_them() {
+        let repo = test_repo();
+        let mut p = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        p.hreflang_json = Some(r#"[{"hreflang":"en","href":"https://x.com/a"}]"#.to_string());
+        p.keywords_json = Some(r#"[{"keyword":"seo","count":2}]"#.to_string());
+        p.og_json = Some(r#"{"title":"OG"}"#.to_string());
+        p.pagespeed_json = Some(r#"{"score":80}"#.to_string());
+        p.seo_audit_json = Some(r#"{"score":75,"categories":[]}"#.to_string());
+        p.response_headers_json = Some(r#"{"content-type":"text/html"}"#.to_string());
+        p.seo_score = Some(75.0);
+        p.pagespeed_score = Some(80.0);
+        repo.save_results_batch(&[p]).unwrap();
+
+        // The list view only needs scalars + semantic issues: the heavy per-page
+        // JSON blobs must not cross the IPC boundary (they are served by
+        // get_page_detail / the SEO audit command on demand).
+        let (items, _) = repo
+            .get_results(
+                "p1", 1, 100, None, None, None, None, None, None, false, false, false, false,
+            )
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].seo_score, Some(75.0), "scalar score must be present");
+        assert_eq!(items[0].pagespeed_score, Some(80.0));
+        assert_eq!(items[0].hreflang_json, None);
+        assert_eq!(items[0].keywords_json, None);
+        assert_eq!(items[0].og_json, None);
+        assert_eq!(items[0].pagespeed_json, None);
+        assert_eq!(items[0].seo_audit_json, None);
+        assert_eq!(items[0].response_headers_json, None);
+
+        // The detail path still returns the full blobs.
+        let detail = repo.get_page_detail("pg1").unwrap();
+        assert_eq!(detail.page.hreflang_json.as_deref(), Some(r#"[{"hreflang":"en","href":"https://x.com/a"}]"#));
+        assert_eq!(detail.page.keywords_json.as_deref(), Some(r#"[{"keyword":"seo","count":2}]"#));
+        assert_eq!(detail.page.og_json.as_deref(), Some(r#"{"title":"OG"}"#));
+        assert_eq!(detail.page.pagespeed_json.as_deref(), Some(r#"{"score":80}"#));
+        assert_eq!(detail.page.seo_audit_json.as_deref(), Some(r#"{"score":75,"categories":[]}"#));
+        assert_eq!(detail.page.response_headers_json.as_deref(), Some(r#"{"content-type":"text/html"}"#));
+        assert_eq!(detail.page.seo_score, Some(75.0));
+    }
+
+    #[test]
+    fn test_compare_crawl_snapshots_page_sections() {
+        let repo = test_repo();
+        repo.save_results_batch(&[
+            page("pg1", "https://x.com/a", Some("A"), 200, true),
+            page("pg2", "https://x.com/b", Some("B"), 200, true),
+            page("pg3", "https://x.com/c", Some("C"), 404, false),
+        ])
+        .unwrap();
+        let snap_a = repo.create_crawl_snapshot("p1", "cfg").unwrap();
+
+        // Second crawl: /a title changes, /b disappears, /d appears.
+        repo.save_results_batch(&[
+            page("pg1", "https://x.com/a", Some("A2"), 200, true),
+            page("pg3", "https://x.com/c", Some("C"), 404, false),
+            page("pg4", "https://x.com/d", Some("D"), 200, true),
+        ])
+        .unwrap();
+        repo.conn
+            .execute(
+                "DELETE FROM crawled_pages WHERE project_id = 'p1' AND url = 'https://x.com/b'",
+                [],
+            )
+            .unwrap();
+        let snap_b = repo.create_crawl_snapshot("p1", "cfg").unwrap();
+
+        // new: only /d
+        let new = repo
+            .compare_crawl_snapshots_page(&snap_a.id, &snap_b.id, "new", 1, 10)
+            .unwrap();
+        assert_eq!(new.total, 1);
+        assert_eq!(new.new_urls, vec!["https://x.com/d"]);
+        assert!(new.removed_urls.is_empty());
+        assert!(new.changed_urls.is_empty());
+
+        // removed: only /b
+        let removed = repo
+            .compare_crawl_snapshots_page(&snap_a.id, &snap_b.id, "removed", 1, 10)
+            .unwrap();
+        assert_eq!(removed.total, 1);
+        assert_eq!(removed.removed_urls, vec!["https://x.com/b"]);
+        assert!(removed.new_urls.is_empty());
+        assert!(removed.changed_urls.is_empty());
+
+        // changed: only /a (title changed), unchanged: /c
+        let changed = repo
+            .compare_crawl_snapshots_page(&snap_a.id, &snap_b.id, "changed", 1, 10)
+            .unwrap();
+        assert_eq!(changed.total, 1);
+        assert_eq!(changed.changed_urls.len(), 1);
+        assert_eq!(changed.changed_urls[0].url, "https://x.com/a");
+        assert!(changed
+            .changed_urls[0]
+            .diffs
+            .iter()
+            .any(|d| d.field == "title" && d.before.as_deref() == Some("A") && d.after.as_deref() == Some("A2")));
+        assert_eq!(changed.unchanged_count, 1);
+
+        // pagination: page size 1 must page over the section
+        let p1 = repo
+            .compare_crawl_snapshots_page(&snap_a.id, &snap_b.id, "new", 1, 1)
+            .unwrap();
+        let p2 = repo
+            .compare_crawl_snapshots_page(&snap_a.id, &snap_b.id, "new", 2, 1)
+            .unwrap();
+        assert_eq!(p1.total, 1);
+        assert_eq!(p1.new_urls.len(), 1);
+        assert_eq!(p2.new_urls.len(), 0);
+    }
+
+    #[test]
+    fn test_page_keywords_materialized_and_aggregated() {
+        let repo = test_repo();
+        let mut a = page("a", "https://x.com/a", Some("A"), 200, true);
+        a.keywords_json = Some(
+            r#"[{"keyword":"seo","count":3},{"keyword":"crawl","count":2}]"#.to_string(),
+        );
+        let mut b = page("b", "https://x.com/b", Some("B"), 200, true);
+        b.keywords_json = Some(r#"[{"keyword":"seo","count":1}]"#.to_string());
+        repo.save_results_batch(&[a, b]).unwrap();
+
+        let rows: i64 = repo
+            .conn
+            .query_row("SELECT COUNT(*) FROM page_keywords", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 3, "keywords_json must be materialized row per keyword");
+
+        let keywords = repo.get_keywords("p1", 10).unwrap();
+        assert_eq!(keywords.len(), 2);
+        assert_eq!(keywords[0].keyword, "seo");
+        assert_eq!(keywords[0].count, 4, "counts aggregate across pages");
+        assert_eq!(keywords[0].pages, 2, "distinct pages per keyword");
+        assert_eq!(keywords[1].keyword, "crawl");
+
+        // Re-crawl replacing the page must not duplicate materialized rows.
+        let mut a2 = page("a", "https://x.com/a", Some("A2"), 200, true);
+        a2.keywords_json = Some(r#"[{"keyword":"seo","count":5}]"#.to_string());
+        repo.save_results_batch(&[a2]).unwrap();
+        let rows: i64 = repo
+            .conn
+            .query_row("SELECT COUNT(*) FROM page_keywords", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 2, "re-crawl replaces page keywords, no duplicates");
+    }
+
+    #[test]
+    fn test_keywords_page_pagination() {
+        let repo = test_repo();
+        let mut pages = Vec::new();
+        for i in 0..5 {
+            let mut p = page(
+                &format!("k{i}"),
+                &format!("https://x.com/k{i}"),
+                Some(&format!("K{i}")),
+                200,
+                true,
+            );
+            p.keywords_json = Some(format!(
+                r#"[{{"keyword":"k0","count":1}},{{"keyword":"k{i}","count":1}}]"#
+            ));
+            pages.push(p);
+        }
+        repo.save_results_batch(&pages).unwrap();
+
+        let (page1, total) = repo.get_keywords_page("p1", 1, 2).unwrap();
+        assert_eq!(total, 5, "k0 shared by all 5 pages plus one unique per page");
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page1[0].keyword, "k0");
+        assert_eq!(page1[0].count, 5);
+        assert_eq!(page1[0].pages, 5);
+
+        let (page2, _) = repo.get_keywords_page("p1", 2, 2).unwrap();
+        assert_eq!(page2.len(), 2);
+        assert_ne!(page1[0].keyword, page2[0].keyword);
+
+        let (page3, _) = repo.get_keywords_page("p1", 3, 2).unwrap();
+        assert_eq!(page3.len(), 1);
+
+        // The full report (get_keywords) matches the concatenation of pages.
+        let all = repo.get_keywords("p1", 100).unwrap();
+        assert_eq!(all.len(), 5);
+        let mut collected: Vec<String> = page1
+            .iter()
+            .chain(page2.iter())
+            .chain(page3.iter())
+            .map(|k| k.keyword.clone())
+            .collect();
+        let mut all_keys: Vec<String> = all.iter().map(|k| k.keyword.clone()).collect();
+        collected.sort();
+        all_keys.sort();
+        assert_eq!(collected, all_keys);
+    }
+
+    #[test]
+    fn test_duplicate_title_filter_uses_existence() {
+        let repo = test_repo();
+        repo.save_results_batch(&[
+            page("a", "https://x.com/a", Some("Shared"), 200, true),
+            page("b", "https://x.com/b", Some("Shared"), 200, true),
+            page("c", "https://x.com/c", Some("Unique"), 200, true),
+        ])
+        .unwrap();
+
+        let (items, total) = repo
+            .get_results(
+                "p1", 1, 100, None, None, None, None, None, None, false, true, false, false,
+            )
+            .unwrap();
+        assert_eq!(total, 2, "both pages sharing a title are flagged");
+        let urls: Vec<&str> = items.iter().map(|p| p.url.as_str()).collect();
+        assert!(urls.contains(&"https://x.com/a"));
+        assert!(urls.contains(&"https://x.com/b"));
     }
 }

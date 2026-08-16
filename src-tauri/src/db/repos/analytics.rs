@@ -3,7 +3,7 @@ use rusqlite::params;
 use crate::error::AppError;
 use crate::models::{
     DashboardStats, DuplicateGroup, DuplicateGroupUrl, IssueCount, KeywordAggregate,
-    SiteTreeFullNode, SiteTreeNode, StatusBucket,
+    SiteTreeFullNode, SiteTreeNode, SiteTreeStreamNode, StatusBucket,
 };
 
 use super::CrawlRepo;
@@ -234,6 +234,92 @@ impl<'a> CrawlRepo<'a> {
         }
 
         Ok(roots)
+    }
+
+    /// Returns a flat, paginated slice of the site tree ordered by URL. Uses
+    /// keyset pagination (`after_url`) so it is stable and index-friendly even
+    /// on very large sites; the caller emits batches as events so the frontend
+    /// renders progressively. The frontend re-groups these flat nodes into the
+    /// URL-path hierarchy, so no parent/child shape is needed here.
+    pub fn get_site_tree_pages(
+        &self,
+        project_id: &str,
+        after_url: Option<&str>,
+        limit: u32,
+    ) -> Result<(Vec<SiteTreeStreamNode>, u32), AppError> {
+        let total: u32 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(DISTINCT url) FROM crawled_pages WHERE project_id = ?1",
+                params![project_id],
+                |row| row.get(0),
+            )?;
+
+        let (sql, row_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(
+            after_url,
+        ) = after_url
+        {
+            let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
+                       FROM crawled_pages cp
+                       LEFT JOIN (
+                           SELECT page_id, COUNT(*) AS cnt
+                           FROM page_issues
+                           WHERE project_id = ?1
+                           GROUP BY page_id
+                       ) pi ON pi.page_id = cp.id
+                       WHERE cp.project_id = ?1 AND cp.url > ?2
+                       GROUP BY cp.url
+                       ORDER BY cp.url
+                       LIMIT ?3"
+                .to_string();
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                Box::new(project_id.to_string()),
+                Box::new(after_url.to_string()),
+                Box::new(limit as i32),
+            ];
+            (sql, params)
+        } else {
+            let sql = "SELECT cp.url, cp.title, cp.status_code, cp.depth, COALESCE(pi.cnt, 0)
+                       FROM crawled_pages cp
+                       LEFT JOIN (
+                           SELECT page_id, COUNT(*) AS cnt
+                           FROM page_issues
+                           WHERE project_id = ?1
+                           GROUP BY page_id
+                       ) pi ON pi.page_id = cp.id
+                       WHERE cp.project_id = ?1
+                       GROUP BY cp.url
+                       ORDER BY cp.url
+                       LIMIT ?2"
+                .to_string();
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                Box::new(project_id.to_string()),
+                Box::new(limit as i32),
+            ];
+            (sql, params)
+        };
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(
+                rusqlite::params_from_iter(row_params.iter().map(|p| p.as_ref())),
+                Self::row_to_site_tree_stream_node,
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok((rows, total))
+    }
+
+    fn row_to_site_tree_stream_node(
+        row: &rusqlite::Row,
+    ) -> Result<SiteTreeStreamNode, rusqlite::Error> {
+        Ok(SiteTreeStreamNode {
+            url: row.get(0)?,
+            title: row.get(1)?,
+            status_code: row.get::<_, Option<i32>>(2)?.map(|s| s as u16),
+            depth: row.get::<_, i32>(3)? as u32,
+            issue_count: row.get::<_, i64>(4)? as u32,
+        })
     }
 
     pub fn get_semantic_issue_counts(&self, project_id: &str) -> Result<Vec<IssueCount>, AppError> {
@@ -475,26 +561,83 @@ impl<'a> CrawlRepo<'a> {
     }
 
     pub fn get_duplicate_groups(&self, project_id: &str) -> Result<Vec<DuplicateGroup>, AppError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT url, title, status_code, duplicate_group_id FROM crawled_pages
-             WHERE project_id = ?1 AND duplicate_group_id IS NOT NULL
-             ORDER BY duplicate_group_id ASC",
+        let (groups, _) = self.get_duplicate_groups_page(project_id, 1, u32::MAX)?;
+        Ok(groups)
+    }
+
+    /// Paginated variant of [`get_duplicate_groups`]. Groups are ranked by
+    /// size (descending, then by group id) and the rows are aggregated in SQL,
+    /// so a large duplicate set only materializes the requested page instead
+    /// of loading every duplicate URL in the project.
+    pub fn get_duplicate_groups_page(
+        &self,
+        project_id: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<DuplicateGroup>, u32), AppError> {
+        let offset = (page.saturating_sub(1)) as i64 * page_size as i64;
+        let limit = page_size as i64;
+
+        // Total number of duplicate groups (groups with more than one URL).
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM (
+                 SELECT duplicate_group_id FROM crawled_pages
+                 WHERE project_id = ?1 AND duplicate_group_id IS NOT NULL
+                 GROUP BY duplicate_group_id HAVING COUNT(*) > 1
+             )",
+            params![project_id],
+            |row| row.get(0),
         )?;
-        let rows = stmt
-            .query_map(params![project_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<i32>>(2)?.map(|s| s as u16),
-                    row.get::<_, i64>(3)?,
-                ))
-            })?
+
+        // The group ids for this page, ordered by size desc then id.
+        let mut id_stmt = self.conn.prepare(
+            "SELECT duplicate_group_id
+             FROM crawled_pages
+             WHERE project_id = ?1 AND duplicate_group_id IS NOT NULL
+             GROUP BY duplicate_group_id
+             HAVING COUNT(*) > 1
+             ORDER BY COUNT(*) DESC, duplicate_group_id ASC
+             LIMIT ?2 OFFSET ?3",
+        )?;
+        let group_ids: Vec<i64> = id_stmt
+            .query_map(params![project_id, limit, offset], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut groups: std::collections::HashMap<i64, Vec<DuplicateGroupUrl>> =
+        if group_ids.is_empty() {
+            return Ok((Vec::new(), total as u32));
+        }
+
+        // Fetch the member URLs for exactly these groups, in one round-trip.
+        let placeholders: Vec<String> = (1..=group_ids.len())
+            .map(|i| format!("?{}", i + 1))
+            .collect();
+        let mut member_stmt = self.conn.prepare(&format!(
+            "SELECT url, title, status_code, duplicate_group_id FROM crawled_pages
+             WHERE project_id = ?1 AND duplicate_group_id IN ({})
+             ORDER BY duplicate_group_id ASC",
+            placeholders.join(",")
+        ))?;
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        params.push(Box::new(project_id.to_string()));
+        for gid in &group_ids {
+            params.push(Box::new(*gid));
+        }
+        let rows = member_stmt
+            .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<i32>>(2)?.map(|s| s as u16),
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut by_id: std::collections::HashMap<i64, Vec<DuplicateGroupUrl>> =
             std::collections::HashMap::new();
         for (url, title, status_code, gid) in rows {
-            let entry = groups.entry(gid).or_default();
+            let entry = by_id.entry(gid).or_default();
             if entry.iter().any(|u| u.url == url) {
                 continue;
             }
@@ -505,59 +648,63 @@ impl<'a> CrawlRepo<'a> {
             });
         }
 
-        let mut result: Vec<DuplicateGroup> = groups
+        let groups: Vec<DuplicateGroup> = by_id
             .into_iter()
-            .filter(|(_, urls)| urls.len() > 1)
             .map(|(id, urls)| {
                 let size = urls.len() as u32;
                 DuplicateGroup { id, size, urls }
             })
             .collect();
-        result.sort_by(|a, b| b.size.cmp(&a.size).then(a.id.cmp(&b.id)));
-        Ok(result)
+
+        Ok((groups, total as u32))
     }
 
     /// Aggregates per-page keyword frequency lists into project-wide totals.
+    /// Backed by the materialized `page_keywords` table (populated alongside
+    /// `save_results_batch`), so the report is a single GROUP BY instead of
+    /// loading and re-parsing every page's keywords_json.
     pub fn get_keywords(
         &self,
         project_id: &str,
         limit: u32,
     ) -> Result<Vec<KeywordAggregate>, AppError> {
+        let (rows, _) = self.get_keywords_page(project_id, 1, limit)?;
+        Ok(rows)
+    }
+
+    /// Paginated variant of [`get_keywords`]: returns `(rows, total)` for
+    /// `page` (1-based) with `page_size` rows. The total is the number of
+    /// distinct keywords, so large keyword sets render incrementally.
+    pub fn get_keywords_page(
+        &self,
+        project_id: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<KeywordAggregate>, u32), AppError> {
+        let total: i64 = self.conn.query_row(
+            "SELECT COUNT(DISTINCT keyword) FROM page_keywords WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )?;
+        let offset = (page.saturating_sub(1)) as i64 * page_size as i64;
+        let limit = page_size as i64;
         let mut stmt = self.conn.prepare(
-            "SELECT keywords_json FROM crawled_pages
-                 WHERE project_id = ?1 AND keywords_json IS NOT NULL",
+            "SELECT keyword, SUM(count), COUNT(DISTINCT page_id)
+             FROM page_keywords
+             WHERE project_id = ?1
+             GROUP BY keyword
+             ORDER BY SUM(count) DESC, keyword ASC
+             LIMIT ?2 OFFSET ?3",
         )?;
         let rows = stmt
-            .query_map(params![project_id], |row| row.get::<_, String>(0))?
+            .query_map(params![project_id, limit, offset], |row| {
+                Ok(KeywordAggregate {
+                    keyword: row.get(0)?,
+                    count: row.get::<_, i64>(1)? as u64,
+                    pages: row.get::<_, i64>(2)? as u32,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
-
-        let mut totals: std::collections::HashMap<String, (u64, u32)> =
-            std::collections::HashMap::new();
-        for json in rows {
-            let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&json) else {
-                continue;
-            };
-            for item in items {
-                let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) else {
-                    continue;
-                };
-                let count = item.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                let entry = totals.entry(keyword.to_string()).or_insert((0, 0));
-                entry.0 += count;
-                entry.1 += 1;
-            }
-        }
-
-        let mut result: Vec<KeywordAggregate> = totals
-            .into_iter()
-            .map(|(keyword, (count, pages))| KeywordAggregate {
-                keyword,
-                count,
-                pages,
-            })
-            .collect();
-        result.sort_by(|a, b| b.count.cmp(&a.count).then(a.keyword.cmp(&b.keyword)));
-        result.truncate(limit as usize);
-        Ok(result)
+        Ok((rows, total as u32))
     }
 }

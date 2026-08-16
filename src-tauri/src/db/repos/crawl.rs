@@ -39,6 +39,48 @@ fn delete_page_issues(tx: &Transaction<'_>, page_ids: &[String]) -> Result<(), A
     Ok(())
 }
 
+/// Deletes the materialized `page_keywords` rows for the given page ids.
+fn delete_page_keywords(tx: &Transaction<'_>, page_ids: &[String]) -> Result<(), AppError> {
+    if page_ids.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = tx.prepare("DELETE FROM page_keywords WHERE page_id = ?1")?;
+    for id in page_ids {
+        stmt.execute(params![id])?;
+    }
+    Ok(())
+}
+
+/// Re-inserts the materialized keyword rows for the given results from their
+/// `keywords_json` payload. Kept in sync with what the parser stored per page
+/// so the project-wide keyword report is a plain GROUP BY.
+fn save_page_keywords(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    page_id: &str,
+    keywords_json: Option<&str>,
+) -> Result<(), AppError> {
+    let items: Vec<serde_json::Value> = match keywords_json {
+        Some(json) => serde_json::from_str(json).unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if items.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = tx.prepare(
+        "INSERT OR REPLACE INTO page_keywords (project_id, page_id, keyword, count)
+         VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for item in items {
+        let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let count = item.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as i64;
+        stmt.execute(params![project_id, page_id, keyword, count])?;
+    }
+    Ok(())
+}
+
 /// Writes one `page_issues` row per issue occurrence parsed from the page's
 /// `semantic_issues_json`, preserving the array position for stable ordering.
 fn save_page_issues(
@@ -185,6 +227,9 @@ impl<'a> CrawlRepo<'a> {
         delete_seo_normalized(&tx, &old_ids)?;
         delete_seo_normalized(&tx, std::slice::from_ref(&result.id))?;
         save_seo_normalized(&tx, project_id, &result.id, &result.seo_audit_json)?;
+        delete_page_keywords(&tx, &old_ids)?;
+        delete_page_keywords(&tx, std::slice::from_ref(&result.id))?;
+        save_page_keywords(&tx, project_id, &result.id, result.keywords_json.as_deref())?;
 
         tx.commit()?;
         self.invalidate_cache_for_project(project_id);
@@ -223,6 +268,7 @@ impl<'a> CrawlRepo<'a> {
         }
         delete_page_issues(&tx, &old_ids)?;
         delete_seo_normalized(&tx, &old_ids)?;
+        delete_page_keywords(&tx, &old_ids)?;
 
         {
             let mut del =
@@ -313,6 +359,16 @@ impl<'a> CrawlRepo<'a> {
         // Normalized SEO rows for the freshly written pages.
         for result in unique.values() {
             save_seo_normalized(&tx, &result.project_id, &result.id, &result.seo_audit_json)?;
+        }
+
+        // Materialized keyword rows for the freshly written pages.
+        for result in unique.values() {
+            save_page_keywords(
+                &tx,
+                &result.project_id,
+                &result.id,
+                result.keywords_json.as_deref(),
+            )?;
         }
 
         tx.commit()?;

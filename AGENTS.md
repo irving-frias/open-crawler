@@ -252,3 +252,114 @@ checks.rs (6 tests). i18n: `DICT`/`WHY`/`CHECK_FIXES` en `src/lib/seo-checks.ts`
 
 `llms.txt` (Google no le da trato especial), chunking/rewriting para IA, entity
 coverage/NLP, checks que requieran navegador (contraste de color, INP/CLS reales).
+
+## Trabajo en curso: optimización para sitios grandes
+
+Objetivo: renderizado parcial + relleno en segundo plano para sitios con
+decenas de miles de páginas. Orden de ejecución: 1→2→4→3→5.
+
+### Fase 1 — Proyección ligera del listado ✅ HECHO
+
+`db/repos/results.rs`: `row_to_result_light` (índices 0-23, sin blobs HTML/JSON)
+para `get_results`; `get_page_detail` intacto (full). Test
+`test_list_projection_drops_heavy_json_blobs_but_detail_keeps_them`.
+
+### Fase 2 — Agregaciones SQL y comparador paginado ✅ HECHO
+
+- `external_domains` reescrito con agregación SQL (`links.rs`).
+- `get_duplicate_groups_page` (`analytics.rs`, agregación SQL + fetch por `IN`) +
+  comando `get_duplicate_groups_page`; fix `params_from_iter` con `Vec<Box<dyn ToSql>>`.
+- **`compare_crawl_snapshots_page`** (snapshots.rs): diff en SQL puro (new/removed
+  con `NOT EXISTS`, changed con JOIN + comparación `ROUND(...,1)`/`IS NOT`),
+  `unchanged_count` en SQL; argumentos antes=snapshot_a, después=snapshot_b.
+  Modelo `ComparePageResult`, comando `compare_crawls_page` (lib.rs ~232), test
+  `test_compare_crawl_snapshots_page_sections` (en `/b` hay que borrarlo de
+  `crawled_pages` para que aparezca como removed).
+- Frontend `Comparador.svelte`: carga página 1 de las 3 secciones en paralelo
+  (`PAGE_SIZE=100`), estado por sección, botón show-more con `compareCrawlsPage`.
+  `compareCrawls`/`CompareResult` se mantienen exportados sin uso.
+- `orphan_pages`/`dead_end_pages` con `limit=10` en `get_link_analysis`.
+
+### Fase 4 — Índices y page_keywords materializado ✅ HECHO
+
+- Migración `016_perf_indexes.sql` (`migrations/mod.rs`): índices
+  `idx_pages_project_{seo_score,load_ms,size_bytes,duplicate_group,title}`,
+  `idx_links_project_internal_from`, tabla `page_keywords(project_id, page_id,
+  keyword, count)` + backfill desde `keywords_json` vía `json_each` (una sola vez).
+- Helpers `delete_page_keywords`/`save_page_keywords` (`crawl.rs`), llamados en
+  `save_result` y `save_results_batch`; limpieza en `delete_project` y transfer.
+- `get_keywords` (analytics.rs) con agregación SQL (`SUM(count)`,
+  `COUNT(DISTINCT page_id)`); `duplicate_title` (results.rs) con `EXISTS`.
+- `transfer/package.rs`: `copy_page_keywords` + DELETE destino + seed + `counts()` 9 tuplas.
+- Tests: `test_page_keywords_materialized_and_aggregated`,
+  `test_duplicate_title_filter_uses_existence`,
+  `test_page_keywords_backfill_from_keywords_json`, verificación índices 016.
+
+### Fase 3 — SiteTree streaming ✅ HECHO
+
+- **`models/crawl_result.rs`**: `SiteTreeStreamNode` (url, title, status_code,
+  depth, issue_count; plano, sin children). Reexportado en `models/mod.rs`.
+- **`db/repos/analytics.rs`**: `get_site_tree_pages(project_id, after_url, limit)`
+  → `(Vec<SiteTreeStreamNode>, total)`: keyset pagination sobre `url` (usa índice
+  `idx_pages_project_url`), `GROUP BY url` + LEFT JOIN agregado de `page_issues`
+  para `issue_count`; `COUNT(DISTINCT url)` para total. Test
+  `test_site_tree_pages_stream_batches`.
+- **`features/results/commands.rs`**: `get_site_tree_stream(app, state, project_id,
+  batch_size=500)` emite eventos `site-tree-batch` `{project_id, nodes, total}`
+  por lote (clones `pid`/`cursor` por iteración para el closure `move`) y devuelve
+  el total. Registrado en `lib.rs` tras `get_site_tree_full`. `get_site_tree_full`
+  intacto (sigue funcionando como fallback).
+- **Frontend**: `SiteTreeStreamNode`/`SiteTreeBatch` en `types.ts`; `getSiteTreeStream`
+  en `api/results.ts`. `SiteTree.svelte` consume el stream: acumula nodos planos,
+  `buildTree` (ya no aplana children, agrupa por ruta) con rebuild debounced (40ms),
+  skeleton solo al inicio, footer `tree-streaming` con `{count} of {total}` (nueva
+  clave `tree.streaming` en `messages/{en,es}.json`). Cleanup de listener en el
+  `$effect` (unlisten + `treeSeq++`).
+- Verificación: `cargo test --lib` 160 OK, clippy limpio, svelte-check 0,
+  eslint 0, `bun run build` OK. Regenerar paraglide con
+  `npx @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide`
+  o `bun run build`.
+
+### Fase 5 — Show-more paginado + skeletons preservando contenido ✅ HECHO
+
+Objetivo: evitar cargar listas completas en sitios con decenas de miles de
+páginas; cargar la página 1 y rellenar bajo demanda con botón "show more",
+manteniendo el contenido ya renderizado mientras llegan más datos.
+
+- **Backend `db/repos/links.rs`**: `orphan_pages_page`, `dead_end_pages_page`,
+  `top_anchors_page`, `external_domains_page` (públicas, `page` 1-based +
+  `page_size`, retornan `(items, total)`). `get_link_analysis` usa page 1 con
+  límites 10/10/20/50 como antes. SQL de external domains extraído a
+  `external_domain_rows_sql()`.
+- **Backend `db/repos/analytics.rs`**: `get_keywords_page(project_id, page,
+  page_size)` → `(rows, total)` con `COUNT(DISTINCT keyword)`; `get_keywords`
+  delega en page 1.
+- **Comandos nuevos** en `features/links/commands.rs` y
+  `features/analytics/commands.rs` (`get_orphan_pages_page`,
+  `get_dead_end_pages_page`, `get_top_anchors_page`, `get_external_domains_page`,
+  `get_project_keywords_page`), registrados en `lib.rs`.
+- **Frontend**:
+  - `api/links.ts`: `getOrphanPagesPage`, `getDeadEndPagesPage`,
+    `getTopAnchorsPage`, `getExternalDomainsPage` (tupla `[items, total]`).
+  - `api/analytics.ts`: `getDuplicateGroupsPage`, `getProjectKeywordsPage`.
+  - `Duplicates.svelte`: página 1 (`PAGE_SIZE=25`) + `showMore()` acumulando
+    (dedupe por `group.id`), badge con `total`, skeleton solo si no hay datos,
+    botón show-more con `comparator.show_more`.
+  - `Keywords.svelte`: igual con `PAGE_SIZE=100` (dedupe por keyword).
+  - `LinkAnalysisPanel.svelte`: estado `MoreState<T>` por sección (orphans,
+    dead ends, top anchors, external domains); la página 1 viene del
+    `LinkAnalysis` y `showMore()` fetches páginas siguientes (lotes 10/10/20/50).
+    `hasMore(s, initialFull)` oculta el botón cuando el total inicial es
+    conocido o la página inicial no está completa (anchors/domains).
+- Tests: `test_paginated_link_lists` (links.rs) y `test_keywords_page_pagination`
+  (mod.rs). `cargo test --lib` **162 OK**, clippy limpio, svelte-check 0,
+  eslint 0, `bun run build` OK.
+
+### Verificación
+
+- `cargo test --lib` en `src-tauri/`
+- `bun run check`, `bun run lint`, `bun run build` en la raíz
+
+**Nota de sesión:** hay cambios sin commitear previos (checks SEO F5.14-18
+aprobados en `crawler/parser.rs`, `seo/checks.rs`, `seo-checks.ts`) — no mezclarlos
+en commits de esta línea de trabajo.

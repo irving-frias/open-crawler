@@ -103,6 +103,20 @@ export interface SiteTreeFullNode {
   children: SiteTreeFullNode[];
 }
 
+export interface SiteTreeStreamNode {
+  url: string;
+  title: string | null;
+  status_code: number | null;
+  depth: number;
+  issue_count: number;
+}
+
+export interface SiteTreeBatch {
+  project_id: string;
+  nodes: SiteTreeStreamNode[];
+  total: number;
+}
+
 export interface StatusBucket {
   status: number;
   count: number;
@@ -159,6 +173,18 @@ export interface ChangedUrl {
 }
 
 export interface CompareResult {
+  new_urls: string[];
+  removed_urls: string[];
+  changed_urls: ChangedUrl[];
+  unchanged_count: number;
+  before: SnapshotStats;
+  after: SnapshotStats;
+}
+
+export interface ComparePageResult {
+  section: 'new' | 'removed' | 'changed';
+  total: number;
+  page: number;
   new_urls: string[];
   removed_urls: string[];
   changed_urls: ChangedUrl[];

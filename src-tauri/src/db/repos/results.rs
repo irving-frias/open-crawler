@@ -126,8 +126,16 @@ impl<'a> CrawlRepo<'a> {
         }
 
         if duplicate_title {
+            // Correlated COUNT over the whole project is O(n^2); the new
+            // (project_id, title) index turns this into a short-circuiting
+            // index range scan looking for a second row with the same title.
             filter_clauses.push(
-                "title IS NOT NULL AND trim(title) <> '' AND (SELECT COUNT(*) FROM crawled_pages c2 WHERE c2.project_id = crawled_pages.project_id AND c2.title = crawled_pages.title) > 1".to_string(),
+                "title IS NOT NULL AND trim(title) <> '' AND EXISTS (
+                    SELECT 1 FROM crawled_pages c2
+                    WHERE c2.project_id = crawled_pages.project_id
+                      AND c2.title = crawled_pages.title
+                      AND c2.id != crawled_pages.id
+                 )".to_string(),
             );
         }
 
@@ -151,8 +159,15 @@ impl<'a> CrawlRepo<'a> {
         // is only served by get_page_detail/get_page_html, so list queries stay
         // small (less IPC payload, no per-row gzip+base64 decompression) and the
         // results cache does not hold megabytes of raw HTML.
+        //
+        // The same reasoning applies to the large per-page JSON blobs
+        // (hreflang_json, keywords_json, og_json, pagespeed_json,
+        // seo_audit_json, response_headers_json): the list view only reads
+        // scalar columns plus semantic_issues_json, so shipping those blobs
+        // over IPC (and storing them in the results cache) is pure overhead.
+        // get_page_detail/get_seo_audit serve them on demand.
         let query_sql = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, readability_score, content_hash, duplicate_group_id, pagespeed_score, seo_score, blocked, redirect_from_url
              FROM crawled_pages WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
@@ -246,7 +261,9 @@ impl<'a> CrawlRepo<'a> {
     }
 
     /// Row mapper for the list query (get_results). Same projection as
-    /// `row_to_result` but without `html_body` — the column is not selected.
+    /// `row_to_result` but without `html_body` and the large per-page JSON
+    /// blobs — those columns are not selected. The corresponding fields are
+    /// left `None` and only populated by get_page_detail.
     fn row_to_result_light(row: &rusqlite::Row) -> Result<CrawlResult, rusqlite::Error> {
         Ok(CrawlResult {
             id: row.get(0)?,
@@ -266,21 +283,21 @@ impl<'a> CrawlRepo<'a> {
             crawl_timestamp: row.get(14)?,
             links: Vec::new(),
             html_lang: row.get(15)?,
-            hreflang_json: row.get(16)?,
-            semantic_issues_json: row.get(17)?,
+            hreflang_json: None,
+            semantic_issues_json: row.get(16)?,
             html_body: None,
-            readability_score: row.get(18)?,
-            content_hash: row.get(19)?,
-            duplicate_group_id: row.get(20)?,
-            keywords_json: row.get(21)?,
-            og_json: row.get(22)?,
-            pagespeed_score: row.get(23)?,
-            pagespeed_json: row.get(24)?,
-            seo_score: row.get(25)?,
-            seo_audit_json: row.get(26)?,
-            blocked: row.get::<_, i32>(27)? != 0,
-            redirect_from_url: row.get(28)?,
-            response_headers_json: row.get(29)?,
+            readability_score: row.get(17)?,
+            content_hash: row.get(18)?,
+            duplicate_group_id: row.get(19)?,
+            keywords_json: None,
+            og_json: None,
+            pagespeed_score: row.get(20)?,
+            pagespeed_json: None,
+            seo_score: row.get(21)?,
+            seo_audit_json: None,
+            blocked: row.get::<_, i32>(22)? != 0,
+            redirect_from_url: row.get(23)?,
+            response_headers_json: None,
         })
     }
 

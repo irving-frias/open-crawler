@@ -25,6 +25,19 @@ pub async fn get_duplicate_groups(
 }
 
 #[tauri::command]
+pub async fn get_duplicate_groups_page(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    page: u32,
+    page_size: u32,
+) -> Result<(Vec<DuplicateGroup>, u32), AppError> {
+    with_repo(&state, move |repo| {
+        repo.get_duplicate_groups_page(&project_id, page, page_size)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn get_project_keywords(
     state: State<'_, Arc<RwLock<AppState>>>,
     project_id: String,
@@ -32,6 +45,19 @@ pub async fn get_project_keywords(
 ) -> Result<Vec<KeywordAggregate>, AppError> {
     with_repo(&state, move |repo| {
         repo.get_keywords(&project_id, limit.unwrap_or(100))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_project_keywords_page(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    page: u32,
+    page_size: u32,
+) -> Result<(Vec<KeywordAggregate>, u32), AppError> {
+    with_repo(&state, move |repo| {
+        repo.get_keywords_page(&project_id, page, page_size)
     })
     .await
 }

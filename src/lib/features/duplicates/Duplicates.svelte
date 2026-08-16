@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { getDuplicateGroups } from '$lib/api/analytics';
+  import { getDuplicateGroupsPage } from '$lib/api/analytics';
   import type { DuplicateGroup } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { Copy, Check, RefreshCw, TriangleAlert, Files } from '@lucide/svelte';
+  import { Copy, Check, RefreshCw, TriangleAlert, Files, ChevronDown } from '@lucide/svelte';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import { cn } from '$lib/utils.js';
+
+  const PAGE_SIZE = 25;
 
   let {
     projectId,
@@ -16,7 +18,9 @@
   } = $props();
 
   let groups = $state<DuplicateGroup[]>([]);
+  let total = $state(0);
   let loading = $state(false);
+  let loadingMore = $state(false);
   let error = $state('');
   let groupsSeq = 0;
 
@@ -26,9 +30,10 @@
     loading = true;
     error = '';
     try {
-      const data = await getDuplicateGroups(projectId);
+      const [data, t] = await getDuplicateGroupsPage(projectId, 1, PAGE_SIZE);
       if (seq !== groupsSeq) return;
       groups = data;
+      total = t;
     } catch (e) {
       if (seq === groupsSeq) error = String(e);
     } finally {
@@ -36,9 +41,33 @@
     }
   }
 
+  async function showMore() {
+    if (!projectId || loadingMore) return;
+    const seq = groupsSeq;
+    loadingMore = true;
+    error = '';
+    try {
+      const page = Math.floor(groups.length / PAGE_SIZE) + 1;
+      const [data, t] = await getDuplicateGroupsPage(projectId, page, PAGE_SIZE);
+      if (seq !== groupsSeq) return;
+      const seen = new Set(groups.map((g) => g.id));
+      groups = [...groups, ...data.filter((g) => !seen.has(g.id))];
+      total = t;
+    } catch (e) {
+      if (seq === groupsSeq) error = String(e);
+    } finally {
+      if (seq === groupsSeq) loadingMore = false;
+    }
+  }
+
+  const hasMore = $derived(groups.length > 0 && groups.length < total);
+
   $effect(() => {
     if (projectId) loadGroups();
-    else groups = [];
+    else {
+      groups = [];
+      total = 0;
+    }
   });
 
   let copiedUrl = $state('');
@@ -69,8 +98,8 @@
     <div class="flex items-center gap-2 text-sm font-semibold">
       <Files class="size-4" />
       {m['duplicates.title']()}
-      {#if groups.length > 0}
-        <Badge variant="warning" class="ml-1">{groups.length}</Badge>
+      {#if total > 0}
+        <Badge variant="warning" class="ml-1">{total.toLocaleString()}</Badge>
       {/if}
     </div>
     <div class="flex items-center gap-2">
@@ -88,7 +117,7 @@
       <Skeleton class="h-20 w-full" />
       <Skeleton class="h-20 w-full" />
     </div>
-  {:else if error}
+  {:else if error && groups.length === 0}
     <div class="flex items-center gap-2 p-3 text-sm text-destructive">
       <TriangleAlert class="size-4" />
       {error}
@@ -137,6 +166,19 @@
           </CardContent>
         </Card>
       {/each}
+
+      {#if loadingMore}
+        <div class="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton class="h-20 w-full" />
+        </div>
+      {/if}
+
+      {#if hasMore}
+        <Button variant="outline" class="gap-1.5" onclick={showMore} disabled={loadingMore}>
+          <ChevronDown class={cn('size-4', loadingMore && 'animate-pulse')} />
+          {m['comparator.show_more']()}
+        </Button>
+      {/if}
     </div>
   {/if}
 </div>

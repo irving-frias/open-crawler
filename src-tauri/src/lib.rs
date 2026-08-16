@@ -214,6 +214,7 @@ pub fn run() {
             crate::commands::get_results,
             crate::commands::get_site_tree,
             crate::commands::get_site_tree_full,
+            crate::commands::get_site_tree_stream,
             crate::commands::get_page_detail,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,
@@ -223,12 +224,19 @@ pub fn run() {
             // analytics
             crate::commands::get_dashboard_stats,
             crate::commands::get_duplicate_groups,
+            crate::commands::get_duplicate_groups_page,
             crate::commands::get_project_keywords,
+            crate::commands::get_project_keywords_page,
             crate::commands::get_link_analysis,
             crate::commands::get_project_has_links,
+            crate::commands::get_orphan_pages_page,
+            crate::commands::get_dead_end_pages_page,
+            crate::commands::get_top_anchors_page,
+            crate::commands::get_external_domains_page,
             // snapshots
             crate::commands::list_crawl_snapshots,
             crate::commands::compare_crawls,
+            crate::commands::compare_crawls_page,
             // pagespeed
             crate::commands::get_pagespeed_score,
             // seo

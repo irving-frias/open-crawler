@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -76,6 +76,44 @@ pub async fn get_site_tree_full(
     project_id: String,
 ) -> Result<Vec<SiteTreeFullNode>, AppError> {
     with_repo(&state, move |repo| repo.get_site_tree_full(&project_id)).await
+}
+
+/// Streams the site tree in flat, URL-ordered batches via `site-tree-batch`
+/// events, returning the total page count when done. The frontend accumulates
+/// the batches and rebuilds the path hierarchy progressively, so very large
+/// sites render incrementally instead of one big IPC round-trip.
+#[tauri::command]
+pub async fn get_site_tree_stream(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    batch_size: Option<u32>,
+) -> Result<u32, AppError> {
+    let batch_size = batch_size.unwrap_or(500).max(50);
+    let mut after_url: Option<String> = None;
+    loop {
+        let pid = project_id.clone();
+        let cursor = after_url.clone();
+        let (nodes, count) = with_repo(&state, move |repo| {
+            repo.get_site_tree_pages(&pid, cursor.as_deref(), batch_size)
+        })
+        .await?;
+        let _ = app.emit(
+            "site-tree-batch",
+            serde_json::json!({
+                "project_id": project_id,
+                "nodes": nodes,
+                "total": count,
+            }),
+        );
+        match nodes.last() {
+            Some(last) => after_url = Some(last.url.clone()),
+            None => return Ok(count),
+        }
+        if nodes.len() < batch_size as usize {
+            return Ok(count);
+        }
+    }
 }
 
 #[tauri::command]

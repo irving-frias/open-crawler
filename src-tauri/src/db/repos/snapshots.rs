@@ -1,7 +1,9 @@
 use rusqlite::params;
 
 use crate::error::AppError;
-use crate::models::{ChangedUrl, CompareResult, CrawlSnapshot, SnapshotStats, UrlFieldDiff};
+use crate::models::{
+    ChangedUrl, ComparePageResult, CompareResult, CrawlSnapshot, SnapshotStats, UrlFieldDiff,
+};
 
 use super::CrawlRepo;
 
@@ -401,5 +403,190 @@ impl<'a> CrawlRepo<'a> {
             before: self.snapshot_stats(snapshot_a)?,
             after: self.snapshot_stats(snapshot_b)?,
         })
+    }
+
+    /// Paginated variant of [`compare_crawl_snapshots`]. The diff is computed
+    /// in SQL (set difference / field comparison per page), so a large pair of
+    /// snapshots never materializes two full URL maps in memory or over IPC.
+    ///
+    /// `section` is one of `new`, `removed`, `changed`; the matching list of
+    /// the returned [`ComparePageResult`] is populated, the others stay empty.
+    pub fn compare_crawl_snapshots_page(
+        &self,
+        snapshot_a: &str,
+        snapshot_b: &str,
+        section: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<ComparePageResult, AppError> {
+        let offset = (page.saturating_sub(1)) as i64 * page_size as i64;
+        let limit = page_size as i64;
+        let before = self.snapshot_stats(snapshot_a)?;
+        let after = self.snapshot_stats(snapshot_b)?;
+
+        let mut result = ComparePageResult {
+            section: section.to_string(),
+            total: 0,
+            page,
+            new_urls: Vec::new(),
+            removed_urls: Vec::new(),
+            changed_urls: Vec::new(),
+            unchanged_count: 0,
+            before,
+            after,
+        };
+
+        match section {
+            "new" => {
+                let where_ = "NOT EXISTS (
+                    SELECT 1 FROM crawl_snapshot_data a
+                    WHERE a.snapshot_id = ?1 AND a.url = b.url
+                )";
+                let count: i64 = self.conn.query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM crawl_snapshot_data b
+                         WHERE b.snapshot_id = ?2 AND {where_}"
+                    ),
+                    params![snapshot_a, snapshot_b],
+                    |row| row.get(0),
+                )?;
+                result.total = count as u32;
+                let mut stmt = self.conn.prepare(&format!(
+                    "SELECT b.url FROM crawl_snapshot_data b
+                     WHERE b.snapshot_id = ?2 AND {where_}
+                     ORDER BY b.url LIMIT ?3 OFFSET ?4"
+                ))?;
+                let urls = stmt
+                    .query_map(params![snapshot_a, snapshot_b, limit, offset], |row| {
+                        row.get::<_, String>(0)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                result.new_urls = urls;
+            }
+            "removed" => {
+                let where_ = "NOT EXISTS (
+                    SELECT 1 FROM crawl_snapshot_data b
+                    WHERE b.snapshot_id = ?2 AND b.url = a.url
+                )";
+                let count: i64 = self.conn.query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM crawl_snapshot_data a
+                         WHERE a.snapshot_id = ?1 AND {where_}"
+                    ),
+                    params![snapshot_a, snapshot_b],
+                    |row| row.get(0),
+                )?;
+                result.total = count as u32;
+                let mut stmt = self.conn.prepare(&format!(
+                    "SELECT a.url FROM crawl_snapshot_data a
+                     WHERE a.snapshot_id = ?1 AND {where_}
+                     ORDER BY a.url LIMIT ?3 OFFSET ?4"
+                ))?;
+                let urls = stmt
+                    .query_map(params![snapshot_a, snapshot_b, limit, offset], |row| {
+                        row.get::<_, String>(0)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                result.removed_urls = urls;
+            }
+            _ => {
+                // changed: pages present in both snapshots whose field pair
+                // differs under the same normalization used by SnapshotRow::diff
+                // (readability/seo rounded to 1 decimal).
+                let where_ = "a.snapshot_id = ?1 AND b.snapshot_id = ?2
+                    AND a.url = b.url AND (
+                        a.status_code IS NOT b.status_code
+                        OR a.title IS NOT b.title
+                        OR a.meta_description IS NOT b.meta_description
+                        OR a.size_bytes IS NOT b.size_bytes
+                        OR a.load_time_ms IS NOT b.load_time_ms
+                        OR a.is_indexable IS NOT b.is_indexable
+                        OR ROUND(a.readability_score, 1) IS NOT ROUND(b.readability_score, 1)
+                        OR ROUND(a.seo_score, 1) IS NOT ROUND(b.seo_score, 1)
+                    )";
+                let count: i64 = self.conn.query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM crawl_snapshot_data a
+                         JOIN crawl_snapshot_data b ON a.url = b.url
+                         WHERE {where_}"
+                    ),
+                    params![snapshot_a, snapshot_b],
+                    |row| row.get(0),
+                )?;
+                result.total = count as u32;
+
+                let unchanged: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM crawl_snapshot_data a
+                     JOIN crawl_snapshot_data b ON a.url = b.url
+                     WHERE a.snapshot_id = ?1 AND b.snapshot_id = ?2 AND a.url = b.url
+                       AND NOT (
+                           a.status_code IS NOT b.status_code
+                           OR a.title IS NOT b.title
+                           OR a.meta_description IS NOT b.meta_description
+                           OR a.size_bytes IS NOT b.size_bytes
+                           OR a.load_time_ms IS NOT b.load_time_ms
+                           OR a.is_indexable IS NOT b.is_indexable
+                           OR ROUND(a.readability_score, 1) IS NOT ROUND(b.readability_score, 1)
+                           OR ROUND(a.seo_score, 1) IS NOT ROUND(b.seo_score, 1)
+                       )",
+                    params![snapshot_a, snapshot_b],
+                    |row| row.get(0),
+                )?;
+                result.unchanged_count = unchanged as u32;
+
+                let mut stmt = self.conn.prepare(&format!(
+                    "SELECT a.url,
+                            a.status_code, b.status_code,
+                            a.title, b.title,
+                            a.meta_description, b.meta_description,
+                            a.size_bytes, b.size_bytes,
+                            a.load_time_ms, b.load_time_ms,
+                            a.is_indexable, b.is_indexable,
+                            a.readability_score, b.readability_score,
+                            a.seo_score, b.seo_score
+                     FROM crawl_snapshot_data a
+                     JOIN crawl_snapshot_data b ON a.url = b.url
+                     WHERE {where_}
+                     ORDER BY a.url LIMIT ?3 OFFSET ?4"
+                ))?;
+                let rows = stmt
+                    .query_map(params![snapshot_a, snapshot_b, limit, offset], |row| {
+                        let before = SnapshotRow {
+                            url: row.get(0)?,
+                            status_code: row.get(1)?,
+                            title: row.get(3)?,
+                            meta_description: row.get(5)?,
+                            size_bytes: row.get(7)?,
+                            load_time_ms: row.get(9)?,
+                            is_indexable: row.get(11)?,
+                            readability_score: row.get(13)?,
+                            seo_score: row.get(15)?,
+                        };
+                        let after = SnapshotRow {
+                            url: row.get(0)?,
+                            status_code: row.get(2)?,
+                            title: row.get(4)?,
+                            meta_description: row.get(6)?,
+                            size_bytes: row.get(8)?,
+                            load_time_ms: row.get(10)?,
+                            is_indexable: row.get(12)?,
+                            readability_score: row.get(14)?,
+                            seo_score: row.get(16)?,
+                        };
+                        Ok((before, after))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                result.changed_urls = rows
+                    .into_iter()
+                    .map(|(b, a)| ChangedUrl {
+                        url: b.url.clone(),
+                        diffs: b.diff(&a),
+                    })
+                    .collect();
+            }
+        }
+
+        Ok(result)
     }
 }

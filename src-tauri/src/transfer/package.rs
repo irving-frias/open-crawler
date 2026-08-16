@@ -290,6 +290,10 @@ fn delete_project_rows(conn: &Connection, id: &str) -> Result<(), AppError> {
     )?;
     conn.execute("DELETE FROM page_issues WHERE project_id = ?1", params![id])?;
     conn.execute(
+        "DELETE FROM page_keywords WHERE project_id = ?1",
+        params![id],
+    )?;
+    conn.execute(
         "DELETE FROM crawl_snapshot_data WHERE snapshot_id IN (SELECT id FROM crawl_snapshots WHERE project_id = ?1)",
         params![id],
     )?;
@@ -534,6 +538,7 @@ fn copy_projects(
     copy_page_links(src, &tx, &project_map, &imported, &config_map)?;
     copy_errors(src, &tx, &project_map, &imported, &config_map)?;
     copy_page_issues(src, &tx, &project_map, &imported, &page_map)?;
+    copy_page_keywords(src, &tx, &project_map, &imported, &page_map)?;
     copy_snapshots(src, &tx, &project_map, &imported, &page_map, &config_map)?;
     copy_queue(src, &tx, &imported, &session_map)?;
 
@@ -916,6 +921,42 @@ fn copy_page_issues(
     Ok(())
 }
 
+fn copy_page_keywords(
+    src: &Connection,
+    tx: &rusqlite::Transaction<'_>,
+    project_map: &HashMap<String, String>,
+    imported: &HashSet<String>,
+    page_map: &HashMap<String, String>,
+) -> Result<(), AppError> {
+    let mut stmt = src.prepare(&format!(
+        "SELECT page_id, keyword, count, project_id
+         FROM page_keywords WHERE project_id IN ({})",
+        in_placeholders(imported.len())
+    ))?;
+    let project_ids: Vec<&String> = imported.iter().collect();
+    let mut rows = stmt.query(rusqlite::params_from_iter(project_ids))?;
+    let mut insert = tx.prepare(
+        "INSERT OR REPLACE INTO page_keywords (project_id, page_id, keyword, count)
+         VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    while let Some(row) = rows.next()? {
+        let old_page_id: String = row.get(0)?;
+        let new_page_id = page_map.get(&old_page_id).cloned().unwrap_or_default();
+        if new_page_id.is_empty() {
+            continue; // page belongs to a skipped project
+        }
+        let old_project: String = row.get(3)?;
+        let new_project = project_map.get(&old_project).cloned().unwrap_or_default();
+        insert.execute(params![
+            new_project,
+            new_page_id,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ])?;
+    }
+    Ok(())
+}
+
 fn copy_snapshots(
     src: &Connection,
     tx: &rusqlite::Transaction<'_>,
@@ -1106,6 +1147,8 @@ mod tests {
                  VALUES ('https://x.com/b', 'cfg-{pid}', 'status', '404', datetime('now'));
              INSERT INTO page_issues (project_id, page_id, issue_type, severity, message)
                  VALUES ('{pid}', 'page-{pid}-1', 'missing_meta', 'warning', 'No meta');
+             INSERT INTO page_keywords (project_id, page_id, keyword, count)
+                 VALUES ('{pid}', 'page-{pid}-1', 'seo', 3);
              INSERT INTO crawl_snapshots
                  (id, project_id, config_id, snapshot_time, total_pages, indexed_pages)
                  VALUES ('snap-{pid}', '{pid}', 'cfg-{pid}', datetime('now'), 2, 1);
@@ -1118,7 +1161,7 @@ mod tests {
         pid
     }
 
-    fn counts(conn: &Connection, _pid: &str) -> (i64, i64, i64, i64, i64, i64, i64, i64) {
+    fn counts(conn: &Connection, _pid: &str) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64) {
         let q = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
         (
             q("SELECT COUNT(*) FROM crawled_pages"),
@@ -1129,6 +1172,7 @@ mod tests {
             q("SELECT COUNT(*) FROM crawl_snapshot_data"),
             q("SELECT COUNT(*) FROM crawl_sessions"),
             q("SELECT COUNT(*) FROM crawl_queue"),
+            q("SELECT COUNT(*) FROM page_keywords"),
         )
     }
 
@@ -1222,7 +1266,7 @@ mod tests {
         let src_conn = temp_conn(&src_path);
         rm_default(&src_conn);
         let pid = seed_project(&src_conn, "Site A");
-        let (_, src_links, src_errors, src_issues, src_snaps, src_snapdata, src_sess, src_queue) =
+        let (_, src_links, src_errors, src_issues, src_snaps, src_snapdata, src_sess, src_queue, src_kw) =
             counts(&src_conn, &pid);
 
         let repo = CrawlRepo::new(&src_conn, None);
@@ -1270,6 +1314,7 @@ mod tests {
         assert_eq!(new_counts.5, src_snapdata);
         assert_eq!(new_counts.6, src_sess);
         assert_eq!(new_counts.7, src_queue);
+        assert_eq!(new_counts.8, src_kw, "materialized keywords must be copied");
 
         // Pages keep their rows but point at the re-keyed config/project.
         let (url, cfg_id, project_id): (String, String, String) = dest_conn
@@ -1304,7 +1349,7 @@ mod tests {
         assert!(summary.imported.is_empty());
         assert_eq!(summary.skipped.len(), 1);
         assert_eq!(summary.skipped[0].name, "Dup");
-        let (pages, _, _, _, _, _, _, _) = counts(&dest_conn, "proj-Dup");
+        let (pages, _, _, _, _, _, _, _, _) = counts(&dest_conn, "proj-Dup");
         assert_eq!(pages, 2, "existing project must stay untouched");
     }
 

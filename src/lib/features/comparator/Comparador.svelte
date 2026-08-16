@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { listCrawlSnapshots, compareCrawls } from '$lib/api/snapshots';
-  import type { CompareResult, CrawlSnapshot } from '$lib/api/types';
+  import { listCrawlSnapshots, compareCrawlsPage } from '$lib/api/snapshots';
+  import type { ChangedUrl, CrawlSnapshot, SnapshotStats } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
@@ -22,21 +22,38 @@
   let snapshotA = $state('');
   let snapshotB = $state('');
 
-  let comparison = $state<CompareResult | null>(null);
+  const PAGE_SIZE = 100;
+  type SectionState = { total: number; items: string[]; page: number; loading: boolean };
+  let newState = $state<SectionState>({ total: 0, items: [], page: 0, loading: false });
+  let removedState = $state<SectionState>({ total: 0, items: [], page: 0, loading: false });
+  let changedState = $state<{ total: number; items: ChangedUrl[]; page: number; loading: boolean }>({
+    total: 0,
+    items: [],
+    page: 0,
+    loading: false,
+  });
+  let unchangedCount = $state(0);
+  let before = $state<SnapshotStats | null>(null);
+  let after = $state<SnapshotStats | null>(null);
   let snapshotsSeq = 0;
-  const LIST_PAGE_SIZE = 100;
-  let newUrlsLimit = $state(LIST_PAGE_SIZE);
-  let removedUrlsLimit = $state(LIST_PAGE_SIZE);
-  let changedUrlsLimit = $state(LIST_PAGE_SIZE);
 
   $effect(() => {
     if (projectId) {
       loadSnapshots();
     } else {
       snapshots = [];
-      comparison = null;
+      resetComparison();
     }
   });
+
+  function resetComparison() {
+    newState = { total: 0, items: [], page: 0, loading: false };
+    removedState = { total: 0, items: [], page: 0, loading: false };
+    changedState = { total: 0, items: [], page: 0, loading: false };
+    unchangedCount = 0;
+    before = null;
+    after = null;
+  }
 
   async function loadSnapshots() {
     const seq = ++snapshotsSeq;
@@ -56,7 +73,7 @@
         snapshotA = '';
         snapshotB = '';
       }
-      comparison = null;
+      resetComparison();
     } catch (e) {
       if (seq === snapshotsSeq) error = String(e);
     } finally {
@@ -68,12 +85,44 @@
     if (!snapshotA || !snapshotB || snapshotA === snapshotB) return;
     comparing = true;
     error = '';
+    resetComparison();
     try {
-      comparison = await compareCrawls(snapshotA, snapshotB);
+      const [n, r, c] = await Promise.all([
+        compareCrawlsPage(snapshotA, snapshotB, 'new', 1, PAGE_SIZE),
+        compareCrawlsPage(snapshotA, snapshotB, 'removed', 1, PAGE_SIZE),
+        compareCrawlsPage(snapshotA, snapshotB, 'changed', 1, PAGE_SIZE),
+      ]);
+      newState = { total: n.total, items: n.new_urls, page: 1, loading: false };
+      removedState = { total: r.total, items: r.removed_urls, page: 1, loading: false };
+      changedState = { total: c.total, items: c.changed_urls, page: 1, loading: false };
+      unchangedCount = n.unchanged_count;
+      before = n.before;
+      after = n.after;
     } catch (e) {
       error = String(e);
     } finally {
       comparing = false;
+    }
+  }
+
+  async function showMore(section: 'new' | 'removed' | 'changed') {
+    if (!snapshotA || !snapshotB) return;
+    const s = section === 'new' ? newState : section === 'removed' ? removedState : changedState;
+    if (s.loading || s.page * PAGE_SIZE >= s.total) return;
+    s.loading = true;
+    try {
+      const r = await compareCrawlsPage(snapshotA, snapshotB, section, s.page + 1, PAGE_SIZE);
+      if (section === 'new') {
+        newState = { ...newState, items: [...newState.items, ...r.new_urls], page: s.page + 1, loading: false };
+      } else if (section === 'removed') {
+        removedState = { ...removedState, items: [...removedState.items, ...r.removed_urls], page: s.page + 1, loading: false };
+      } else {
+        changedState = { ...changedState, items: [...changedState.items, ...r.changed_urls], page: s.page + 1, loading: false };
+      }
+      unchangedCount = r.unchanged_count;
+    } catch (e) {
+      error = String(e);
+      s.loading = false;
     }
   }
 
@@ -123,17 +172,9 @@
     return v == null ? '—' : v;
   }
 
-  $effect(() => {
-    if (comparison) {
-      newUrlsLimit = LIST_PAGE_SIZE;
-      removedUrlsLimit = LIST_PAGE_SIZE;
-      changedUrlsLimit = LIST_PAGE_SIZE;
-    }
-  });
-
-  const visibleNewUrls = $derived(comparison?.new_urls.slice(0, newUrlsLimit) ?? []);
-  const visibleRemovedUrls = $derived(comparison?.removed_urls.slice(0, removedUrlsLimit) ?? []);
-  const visibleChangedUrls = $derived(comparison?.changed_urls.slice(0, changedUrlsLimit) ?? []);
+  function hasMore(s: { total: number; page: number; loading: boolean }): boolean {
+    return !s.loading && s.page > 0 && s.page * PAGE_SIZE < s.total;
+  }
 </script>
 
 <div class="comparator">
@@ -191,30 +232,30 @@
       </Button>
     </div>
 
-    {#if comparison}
+    {#if before && after}
       <div class="comp-summary">
         <Card>
           <CardContent>
             <div class="comp-summary-grid">
               <div class="comp-summary-item comp-new">
-                <span class="comp-summary-value">{comparison.new_urls.length.toLocaleString()}</span
+                <span class="comp-summary-value">{newState.total.toLocaleString()}</span
                 >
                 <span class="comp-summary-label">{m['comparator.new']()}</span>
               </div>
               <div class="comp-summary-item comp-removed">
                 <span class="comp-summary-value"
-                  >{comparison.removed_urls.length.toLocaleString()}</span
+                  >{removedState.total.toLocaleString()}</span
                 >
                 <span class="comp-summary-label">{m['comparator.removed']()}</span>
               </div>
               <div class="comp-summary-item comp-changed">
                 <span class="comp-summary-value"
-                  >{comparison.changed_urls.length.toLocaleString()}</span
+                  >{changedState.total.toLocaleString()}</span
                 >
                 <span class="comp-summary-label">{m['comparator.changed']()}</span>
               </div>
               <div class="comp-summary-item">
-                <span class="comp-summary-value">{comparison.unchanged_count.toLocaleString()}</span
+                <span class="comp-summary-value">{unchangedCount.toLocaleString()}</span
                 >
                 <span class="comp-summary-label">{m['comparator.unchanged']()}</span>
               </div>
@@ -229,7 +270,7 @@
             <CardTitle>{m['comparator.stats_before']()}</CardTitle>
           </CardHeader>
           <CardContent>
-            {@const s = formatStat(comparison.before)}
+            {@const s = formatStat(before)}
             <ul class="comp-stat-list">
               <li>{m['dashboard.total_pages']()}: <strong>{s.pages}</strong></li>
               <li>{m['dashboard.indexed_pages']()}: <strong>{s.indexable}</strong></li>
@@ -245,7 +286,7 @@
             <CardTitle>{m['comparator.stats_after']()}</CardTitle>
           </CardHeader>
           <CardContent>
-            {@const s = formatStat(comparison.after)}
+            {@const s = formatStat(after)}
             <ul class="comp-stat-list">
               <li>{m['dashboard.total_pages']()}: <strong>{s.pages}</strong></li>
               <li>{m['dashboard.indexed_pages']()}: <strong>{s.indexable}</strong></li>
@@ -259,64 +300,66 @@
       </div>
 
       <div class="comp-lists">
-        {#if comparison.new_urls.length > 0}
+        {#if newState.total > 0}
           <Card>
             <CardHeader>
-              <CardTitle>{m['comparator.new']()} ({comparison.new_urls.length})</CardTitle>
+              <CardTitle>{m['comparator.new']()} ({newState.total})</CardTitle>
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each visibleNewUrls as url (url)}
+                {#each newState.items as url (url)}
                   <li class="comp-url-new">{url}</li>
                 {/each}
               </ul>
-              {#if comparison.new_urls.length > newUrlsLimit}
+              {#if hasMore(newState)}
                 <Button
                   variant="ghost"
                   size="sm"
                   class="mt-2"
-                  onclick={() => (newUrlsLimit += LIST_PAGE_SIZE)}
+                  onclick={() => showMore('new')}
+                  disabled={newState.loading}
                 >
-                  {m['comparator.show_more']()}
+                  {newState.loading ? '…' : m['comparator.show_more']()}
                 </Button>
               {/if}
             </CardContent>
           </Card>
         {/if}
 
-        {#if comparison.removed_urls.length > 0}
+        {#if removedState.total > 0}
           <Card>
             <CardHeader>
-              <CardTitle>{m['comparator.removed']()} ({comparison.removed_urls.length})</CardTitle>
+              <CardTitle>{m['comparator.removed']()} ({removedState.total})</CardTitle>
             </CardHeader>
             <CardContent>
               <ul class="comp-url-list">
-                {#each visibleRemovedUrls as url (url)}
+                {#each removedState.items as url (url)}
                   <li class="comp-url-removed">{url}</li>
                 {/each}
               </ul>
-              {#if comparison.removed_urls.length > removedUrlsLimit}
+              {#if hasMore(removedState)}
                 <Button
                   variant="ghost"
                   size="sm"
                   class="mt-2"
-                  onclick={() => (removedUrlsLimit += LIST_PAGE_SIZE)}
+                  onclick={() => showMore('removed')}
+                  disabled={removedState.loading}
                 >
-                  {m['comparator.show_more']()}
+                  {removedState.loading ? '…' : m['comparator.show_more']()}
                 </Button>
               {/if}
             </CardContent>
           </Card>
         {/if}
 
-        {#if comparison.changed_urls.length > 0}
+        {#if changedState.total > 0}
           <Card>
             <CardHeader>
-              <CardTitle>{m['comparator.changed']()} ({comparison.changed_urls.length})</CardTitle>
+              <CardTitle>{m['comparator.changed']()} ({changedState.total})</CardTitle>
             </CardHeader>
             <CardContent>
               <ul class="comp-change-list">
-                {#each visibleChangedUrls as change (change.url)}
+                {#each changedState.items as change (change.url)}
                   <li>
                     <div class="comp-change-url">{change.url}</div>
                     <ul class="comp-diff-list">
@@ -332,14 +375,15 @@
                   </li>
                 {/each}
               </ul>
-              {#if comparison.changed_urls.length > changedUrlsLimit}
+              {#if hasMore(changedState)}
                 <Button
                   variant="ghost"
                   size="sm"
                   class="mt-2"
-                  onclick={() => (changedUrlsLimit += LIST_PAGE_SIZE)}
+                  onclick={() => showMore('changed')}
+                  disabled={changedState.loading}
                 >
-                  {m['comparator.show_more']()}
+                  {changedState.loading ? '…' : m['comparator.show_more']()}
                 </Button>
               {/if}
             </CardContent>

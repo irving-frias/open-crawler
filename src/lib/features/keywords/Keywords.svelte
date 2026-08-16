@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { getProjectKeywords } from '$lib/api/analytics';
+  import { getProjectKeywordsPage } from '$lib/api/analytics';
   import type { KeywordAggregate } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
-  import { RefreshCw, TriangleAlert, Search } from '@lucide/svelte';
+  import { RefreshCw, TriangleAlert, Search, ChevronDown } from '@lucide/svelte';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Skeleton } from '$lib/components/ui/skeleton/index.js';
   import { cn } from '$lib/utils.js';
+
+  const PAGE_SIZE = 100;
 
   let {
     projectId,
@@ -15,7 +17,9 @@
   } = $props();
 
   let keywords = $state<KeywordAggregate[]>([]);
+  let total = $state(0);
   let loading = $state(false);
+  let loadingMore = $state(false);
   let error = $state('');
   let keywordsSeq = 0;
 
@@ -25,9 +29,10 @@
     loading = true;
     error = '';
     try {
-      const data = await getProjectKeywords(projectId, 200);
+      const [data, t] = await getProjectKeywordsPage(projectId, 1, PAGE_SIZE);
       if (seq !== keywordsSeq) return;
       keywords = data;
+      total = t;
     } catch (e) {
       if (seq === keywordsSeq) error = String(e);
     } finally {
@@ -35,9 +40,33 @@
     }
   }
 
+  async function showMore() {
+    if (!projectId || loadingMore) return;
+    const seq = keywordsSeq;
+    loadingMore = true;
+    error = '';
+    try {
+      const page = Math.floor(keywords.length / PAGE_SIZE) + 1;
+      const [data, t] = await getProjectKeywordsPage(projectId, page, PAGE_SIZE);
+      if (seq !== keywordsSeq) return;
+      const seen = new Set(keywords.map((k) => k.keyword));
+      keywords = [...keywords, ...data.filter((k) => !seen.has(k.keyword))];
+      total = t;
+    } catch (e) {
+      if (seq === keywordsSeq) error = String(e);
+    } finally {
+      if (seq === keywordsSeq) loadingMore = false;
+    }
+  }
+
+  const hasMore = $derived(keywords.length > 0 && keywords.length < total);
+
   $effect(() => {
     if (projectId) loadKeywords();
-    else keywords = [];
+    else {
+      keywords = [];
+      total = 0;
+    }
   });
 
   const maxCount = $derived(keywords.length > 0 ? keywords[0].count : 1);
@@ -48,8 +77,8 @@
     <div class="flex items-center gap-2 text-sm font-semibold">
       <Search class="size-4" />
       {m['keywords.title']()}
-      {#if keywords.length > 0}
-        <Badge variant="secondary" class="ml-1">{keywords.length}</Badge>
+      {#if total > 0}
+        <Badge variant="secondary" class="ml-1">{total.toLocaleString()}</Badge>
       {/if}
     </div>
     <Button
@@ -71,7 +100,7 @@
       <Skeleton class="h-6 w-4/5" />
       <Skeleton class="h-6 w-3/5" />
     </div>
-  {:else if error}
+  {:else if error && keywords.length === 0}
     <div class="flex items-center gap-2 p-3 text-sm text-destructive">
       <TriangleAlert class="size-4" />
       {error}
@@ -90,6 +119,20 @@
           <span class="kw-pages" title={m['keywords.pages']()}>{kw.pages}</span>
         </div>
       {/each}
+
+      {#if loadingMore}
+        <div class="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton class="h-6 w-full" />
+          <Skeleton class="h-6 w-4/5" />
+        </div>
+      {/if}
+
+      {#if hasMore}
+        <Button variant="outline" class="gap-1.5" onclick={showMore} disabled={loadingMore}>
+          <ChevronDown class={cn('size-4', loadingMore && 'animate-pulse')} />
+          {m['comparator.show_more']()}
+        </Button>
+      {/if}
     </div>
   {/if}
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { getSiteTreeFull } from '$lib/api/results';
-  import type { SiteTreeFullNode as TreeNode } from '$lib/api/types';
+  import { listen } from '@tauri-apps/api/event';
+  import { getSiteTreeStream } from '$lib/api/results';
+  import type { SiteTreeBatch, SiteTreeStreamNode as TreeNode } from '$lib/api/types';
   import { m } from '$lib/paraglide/messages.js';
   import {
     ChevronRight,
@@ -74,21 +75,30 @@
   let flashUrl = $state<string | null>(null);
   let treeSeq = 0;
 
-  // Flattens the link-based tree returned by the API, then re-assembles it as a
-  // hierarchy grouped by URL path. Path prefixes without a crawled page become
-  // virtual folders, e.g. `/page-1/page` nests under `/page-1`. A leading
-  // language code (`/en`, `/es`, ...) becomes its own top-level group so that
-  // translated pages are separated from the default-language content.
-  function buildTree(nodes: TreeNode[]): { roots: DirState[]; pages: TreeNode[] } {
-    const flat: TreeNode[] = [];
-    const collect = (list: TreeNode[]) => {
-      for (const n of list) {
-        flat.push(n);
-        if (n.children?.length) collect(n.children);
-      }
-    };
-    collect(nodes);
+  // Accumulated flat pages from the stream; the hierarchy is rebuilt from
+  // these on each batch (debounced) so large sites render progressively.
+  let nodes = $state<TreeNode[]>([]);
+  let streamTotal = $state(0);
+  let streamUnlisten: (() => void) | null = null;
+  let rebuildTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function scheduleRebuild() {
+    if (rebuildTimer) return;
+    rebuildTimer = setTimeout(() => {
+      rebuildTimer = null;
+      const built = buildTree(nodes);
+      roots = built.roots;
+      rootPages = built.pages;
+      rootExpanded = true;
+    }, 40);
+  }
+
+  // Groups the flat, streamed page nodes into a hierarchy ordered by URL path.
+  // Path prefixes without a crawled page become virtual folders, e.g.
+  // `/page-1/page` nests under `/page-1`. A leading language code (`/en`,
+  // `/es`, ...) becomes its own top-level group so that translated pages are
+  // separated from the default-language content.
+  function buildTree(nodes: TreeNode[]): { roots: DirState[]; pages: TreeNode[] } {
     const root: DirState = {
       key: '',
       name: '',
@@ -99,7 +109,7 @@
     };
     const byKey = new Map<string, DirState>([['', root]]);
 
-    const items = flat.map((page) => ({ page, segs: segmentsOf(page.url) }));
+    const items = nodes.map((page) => ({ page, segs: segmentsOf(page.url) }));
     items.sort((a, b) => a.segs.length - b.segs.length || a.page.url.localeCompare(b.page.url));
 
     for (const { page, segs } of items) {
@@ -145,10 +155,36 @@
     const seq = ++treeSeq;
     loading = true;
     error = '';
+    nodes = [];
+    streamTotal = 0;
+    if (streamUnlisten) {
+      streamUnlisten();
+      streamUnlisten = null;
+    }
+    if (rebuildTimer) {
+      clearTimeout(rebuildTimer);
+      rebuildTimer = null;
+    }
     try {
-      const data = await getSiteTreeFull(projectId);
+      const unlisten = await listen<SiteTreeBatch>('site-tree-batch', (event) => {
+        if (seq !== treeSeq) return;
+        if (event.payload.project_id !== projectId) return;
+        nodes = [...nodes, ...event.payload.nodes];
+        streamTotal = event.payload.total;
+        scheduleRebuild();
+      });
+      if (seq !== treeSeq) {
+        unlisten();
+        return;
+      }
+      streamUnlisten = unlisten;
+      await getSiteTreeStream(projectId);
       if (seq !== treeSeq) return;
-      const built = buildTree(data);
+      if (rebuildTimer) {
+        clearTimeout(rebuildTimer);
+        rebuildTimer = null;
+      }
+      const built = buildTree(nodes);
       roots = built.roots;
       rootPages = built.pages;
       rootExpanded = true;
@@ -319,6 +355,17 @@
 
   $effect(() => {
     loadTree();
+    return () => {
+      treeSeq++;
+      if (streamUnlisten) {
+        streamUnlisten();
+        streamUnlisten = null;
+      }
+      if (rebuildTimer) {
+        clearTimeout(rebuildTimer);
+        rebuildTimer = null;
+      }
+    };
   });
 </script>
 
@@ -552,6 +599,12 @@
             </div>
           {/each}
         </div>
+        {#if loading && nodes.length > 0}
+          <div class="tree-streaming">
+            <RefreshCw class="size-3 animate-spin" />
+            {m['tree.streaming']({ count: nodes.length.toString(), total: streamTotal.toString() })}
+          </div>
+        {/if}
       </div>
 
       {#if selectedPage}
@@ -763,6 +816,22 @@
     background: color-mix(in srgb, var(--text-muted) 12%, transparent);
     border-radius: 999px;
     padding: 1px 7px;
+  }
+
+  .tree-streaming {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(4px);
   }
 
   .tree-panel {

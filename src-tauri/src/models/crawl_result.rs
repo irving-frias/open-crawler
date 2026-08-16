@@ -129,6 +129,18 @@ pub struct SiteTreeNode {
     pub issue_count: u32,
 }
 
+/// A single page in the site tree, flat (no children). Streamed in batches so
+/// very large sites render progressively instead of a single IPC round-trip
+/// carrying the whole nested tree (`get_site_tree_full`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteTreeStreamNode {
+    pub url: String,
+    pub title: Option<String>,
+    pub status_code: Option<u16>,
+    pub depth: u32,
+    pub issue_count: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SiteTreeFullNode {
     pub url: String,
@@ -204,6 +216,22 @@ pub struct ChangedUrl {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompareResult {
+    pub new_urls: Vec<String>,
+    pub removed_urls: Vec<String>,
+    pub changed_urls: Vec<ChangedUrl>,
+    pub unchanged_count: u32,
+    pub before: SnapshotStats,
+    pub after: SnapshotStats,
+}
+
+/// One page of a single diff section (`new`, `removed` or `changed`). Only the
+/// list matching `section` is populated; the rest stay empty. Keeps the
+/// comparator from materializing two full snapshots over IPC.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparePageResult {
+    pub section: String,
+    pub total: u32,
+    pub page: u32,
     pub new_urls: Vec<String>,
     pub removed_urls: Vec<String>,
     pub changed_urls: Vec<ChangedUrl>,

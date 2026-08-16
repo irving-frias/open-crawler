@@ -193,6 +193,7 @@
   "tree.collapse_all": "Collapse all",
   "tree.filter_status": "Status",
   "tree.grouped_by_path": "Grouped by URL path and language",
+  "tree.streaming": "Loading {count} of {total} pages…",
   "detail.back": "Results",
   "detail.close": "Close",
   "detail.loading": "Loading page details...",
