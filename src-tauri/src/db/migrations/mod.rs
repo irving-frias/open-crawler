@@ -52,6 +52,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "018_pagespeed_fetched_at",
         include_str!("018_pagespeed_fetched_at.sql"),
     ),
+    ("019_alerts", include_str!("019_alerts.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {

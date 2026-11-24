@@ -6,7 +6,12 @@ const KEYRING_SERVICE: &str = "open-crawler";
 
 /// Keys that hold sensitive API credentials. Kept in the OS keychain on
 /// desktop; on mobile (no keyring backend) they live in the settings table.
-pub const SECRET_KEYS: [&str; 2] = ["pagespeed_api_key", "ai_api_key"];
+pub const SECRET_KEYS: [&str; 4] = [
+    "pagespeed_api_key",
+    "ai_api_key",
+    "telegram_bot_token",
+    "telegram_chat_id",
+];
 
 pub fn is_secret_key(key: &str) -> bool {
     SECRET_KEYS.contains(&key)

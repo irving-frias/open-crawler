@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod crawl_config;
 pub mod crawl_result;
 pub mod link_analysis;
@@ -5,6 +6,9 @@ pub mod project;
 pub mod schedule;
 pub mod seo;
 
+pub use alerts::{
+    AlertSettings, NewErrors, NewFailedCheck, ALERT_CHANNEL_DESKTOP, ALERT_CHANNEL_TELEGRAM,
+};
 pub use crawl_config::{CrawlConfig, ProxyConfig, SiteAuth};
 pub use crawl_result::{
     ChangedUrl, ComparePageResult, CompareResult, CrawlProgress, CrawlResult, CrawlSnapshot,
