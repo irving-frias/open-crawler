@@ -188,7 +188,7 @@ export interface AppShell extends AppFields {
   handleFilterIssueType(issueType: string | null): void;
   openDetail(pageId: string): void;
   onSearchInput(query: string): void;
-  exportFull(format: 'xlsx' | 'csv'): Promise<void>;
+  exportFull(format: 'xlsx' | 'csv' | 'sitemap'): Promise<void>;
   exportPackage(
     includeCredentials: boolean,
     lightweight: boolean,
@@ -1112,8 +1112,12 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
   // ==================== EXPORT ====================
 
-  async function exportFull(format: 'xlsx' | 'csv') {
+  async function exportFull(format: 'xlsx' | 'csv' | 'sitemap') {
     if (!state.selectedProjectId || state.exportProgress.running) return;
+    if (format === 'sitemap') {
+      await exportSitemap();
+      return;
+    }
     try {
       const mobile = await api.crawl.isMobile();
       const ext = format === 'xlsx' ? 'xlsx' : 'csv';
@@ -1159,6 +1163,36 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         }, 1500);
       } finally {
         unlisten();
+      }
+    } catch (e) {
+      state.exportProgress = { running: false, percent: 0, stage: '' };
+      state.error = String(e);
+      toast.error(String(e));
+    }
+  }
+
+  async function exportSitemap() {
+    if (!state.selectedProjectId || state.exportProgress.running) return;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const picked = await save({
+        defaultPath: 'sitemap.xml',
+        filters: [{ name: 'XML', extensions: ['xml'] }],
+      });
+      if (!picked) return;
+      const path = picked.toLowerCase().endsWith('.xml') ? picked : `${picked}.xml`;
+      state.exportProgress = { running: true, percent: 0, stage: '' };
+      try {
+        const result = await api.exportApi.exportSitemap(state.selectedProjectId, path);
+        state.exportProgress = { running: false, percent: 100, stage: '' };
+        toast.success(
+          m['export.sitemap_done']({
+            count: String(result.total_urls),
+            files: String(result.files.length),
+          })
+        );
+      } finally {
+        state.exportProgress = { running: false, percent: 0, stage: '' };
       }
     } catch (e) {
       state.exportProgress = { running: false, percent: 0, stage: '' };

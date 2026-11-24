@@ -12,6 +12,7 @@ use crate::features::{with_repo, with_repo_arc};
 use crate::models::CrawlResult;
 use crate::seo::audit::SeoAuditResult;
 use crate::seo::score::CATEGORY_ORDER;
+use crate::seo::sitemap::partition_sitemap;
 use crate::AppState;
 
 const PAGE_BATCH_SIZE: u32 = 1000;
@@ -149,6 +150,100 @@ pub async fn export_full(
     Ok(())
 }
 
+/// Result of `export_sitemap`: the files written and how many URLs they hold.
+#[derive(serde::Serialize)]
+pub struct SitemapExport {
+    pub files: Vec<String>,
+    pub total_urls: u64,
+}
+
+/// Generate `sitemap.xml` from the project's indexable 200 pages and write
+/// it to the chosen path. Large or multi-host projects are split (see
+/// `seo::sitemap::partition_sitemap`): the parts land next to the chosen
+/// path and the chosen path itself becomes the sitemap index.
+#[tauri::command]
+pub async fn export_sitemap(
+    app: AppHandle,
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    file_path: String,
+) -> Result<SitemapExport, AppError> {
+    let pid = project_id.clone();
+    let pages = with_repo(&state, move |repo| repo.get_sitemap_pages(&pid)).await?;
+    let total_urls = pages.len() as u64;
+    if pages.is_empty() {
+        return Err(AppError::Crawl(
+            "No indexable pages to include in the sitemap".into(),
+        ));
+    }
+    let (parts, index) = partition_sitemap(&pages);
+
+    let (write_path, share_after) = export_target(&app, &file_path, "xml")?;
+    // Multi-file exports need sibling paths, which a SAF `content://` URI
+    // cannot provide; on mobile that case needs a desktop export instead.
+    if parts.len() > 1 && write_path.starts_with("content://") {
+        return Err(AppError::Crawl(
+            "This project needs several sitemap files (over 50,000 URLs or several hosts); export it from the desktop app instead".into(),
+        ));
+    }
+    // SAF content URIs (chosen via the save dialog on Android) are not
+    // writable with std::fs, so the main file is staged to a temp file
+    // first and copied into the user-chosen document (same as export_full).
+    let content_uri = if cfg!(mobile) && write_path.starts_with("content://") {
+        Some(write_path.clone())
+    } else {
+        None
+    };
+    let dest = Path::new(&write_path);
+    let dir = dest
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    // The main file is the single part, or the index when there are parts.
+    let main_xml = match &index {
+        Some(index_xml) => index_xml.clone(),
+        None => parts.first().map(|p| p.xml.clone()).unwrap_or_default(),
+    };
+    let main_path = match &content_uri {
+        Some(_) => {
+            let tmp_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| AppError::Crawl(e.to_string()))?
+                .join("exports");
+            std::fs::create_dir_all(&tmp_dir)?;
+            tmp_dir.join(format!("sitemap-tmp-{}.xml", std::process::id()))
+        }
+        None => dest.to_path_buf(),
+    };
+    std::fs::write(&main_path, &main_xml)?;
+    if let Some(uri) = &content_uri {
+        copy_to_content_uri(&app, uri, &main_path)?;
+        let _ = std::fs::remove_file(&main_path);
+    }
+
+    let mut files: Vec<String> = vec![write_path.clone()];
+    for part in &parts {
+        if let Some(name) = &part.name {
+            let part_path = dir.join(name);
+            std::fs::write(&part_path, &part.xml)?;
+            files.push(part_path.to_string_lossy().into_owned());
+        }
+    }
+    if share_after {
+        share_export(&app, &write_path, "xml");
+    }
+
+    Ok(SitemapExport { files, total_urls })
+}
+
 /// Copies a file into an Android `content://` URI (SAF) by resolving the URI to
 /// a writable file descriptor through the fs plugin's mobile bridge.
 #[cfg(target_os = "android")]
@@ -263,6 +358,8 @@ fn share_export(app: &AppHandle, path: &str, format: &str) {
 
     let mime = if format == "xlsx" {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    } else if format == "xml" {
+        "application/xml"
     } else {
         "text/csv"
     };

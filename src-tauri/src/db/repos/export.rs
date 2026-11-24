@@ -2,6 +2,7 @@ use rusqlite::params;
 
 use crate::error::AppError;
 use crate::models::{CrawlResult, PageLink};
+use crate::seo::sitemap::SitemapPage;
 
 use super::crawl::deserialize_rel_tokens;
 use super::CrawlRepo;
@@ -14,6 +15,43 @@ impl<'a> CrawlRepo<'a> {
             |row| row.get(0),
         )?;
         Ok(n as u32)
+    }
+
+    /// Pages for the sitemap: indexable 200s, one row per URL (the most
+    /// recent crawl wins). Rows come ordered by `url, crawl_timestamp DESC`
+    /// so the dedupe below keeps the first row per URL.
+    pub fn get_sitemap_pages(&self, project_id: &str) -> Result<Vec<SitemapPage>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT url, crawl_timestamp, depth, seo_score FROM crawled_pages
+             WHERE project_id = ?1 AND status_code = 200 AND is_indexable = 1
+             ORDER BY url ASC, crawl_timestamp DESC",
+        )?;
+        let rows = stmt.query_map(params![project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<f64>>(3)?,
+            ))
+        })?;
+        let mut pages: Vec<SitemapPage> = Vec::new();
+        for row in rows {
+            let (url, crawl_timestamp, depth, seo_score) = row?;
+            if pages.last().is_some_and(|p: &SitemapPage| p.url == url) {
+                continue; // older crawl of the same URL
+            }
+            pages.push(SitemapPage {
+                url,
+                lastmod: crawl_timestamp.and_then(|ts| {
+                    ts.get(..10)
+                        .filter(|d| d.len() == 10)
+                        .map(|d| d.to_string())
+                }),
+                depth: depth.max(0) as u32,
+                seo_score,
+            });
+        }
+        Ok(pages)
     }
 
     pub fn count_links(&self, project_id: &str) -> Result<u32, AppError> {

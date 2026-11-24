@@ -271,6 +271,7 @@ pub fn run() {
             crate::commands::recompute_custom_extractions,
             // export
             crate::commands::export_full,
+            crate::commands::export_sitemap,
             // transfer
             crate::transfer::commands::export_package,
             crate::transfer::commands::import_package,

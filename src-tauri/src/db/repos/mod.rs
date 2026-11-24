@@ -1884,4 +1884,31 @@ mod tests {
             vec!["img_no_alt".to_string(), "missing_title".to_string()]
         );
     }
+
+    #[test]
+    fn test_get_sitemap_pages_filters_and_dedupes() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.seo_score = Some(90.0);
+        // Same URL crawled again later: only the newest row counts.
+        let mut a2 = page("pg2", "https://x.com/a", Some("A2"), 200, true);
+        a2.crawl_timestamp = "2026-02-01T00:00:00Z".to_string();
+        a2.seo_score = Some(85.0);
+        let b = page("pg3", "https://x.com/b", Some("B"), 404, true);
+        let c = page("pg4", "https://x.com/c", Some("C"), 200, false);
+        let mut d = page("pg5", "https://x.com/d", Some("D"), 200, true);
+        d.depth = 2;
+        d.seo_score = Some(30.0);
+        repo.save_results_batch(&[a, a2, b, c, d]).unwrap();
+
+        let pages = repo.get_sitemap_pages("p1").unwrap();
+        assert_eq!(pages.len(), 2, "404 and noindex pages must be excluded");
+        assert_eq!(pages[0].url, "https://x.com/a");
+        assert_eq!(pages[0].lastmod.as_deref(), Some("2026-02-01"));
+        assert_eq!(pages[0].depth, 0);
+        assert_eq!(pages[0].seo_score, Some(85.0));
+        assert_eq!(pages[1].url, "https://x.com/d");
+        assert_eq!(pages[1].depth, 2);
+        assert_eq!(pages[1].seo_score, Some(30.0));
+    }
 }

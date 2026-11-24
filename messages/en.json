@@ -329,6 +329,8 @@
   "updater.download": "Download",
   "export.xlsx": "Export XLSX",
   "export.csv": "Export CSV",
+  "export.sitemap": "Export sitemap XML",
+  "export.sitemap_done": "Sitemap exported: {count} URLs in {files} file(s)",
   "export.progress": "Exporting…",
   "export.stage.pages": "Writing pages…",
   "export.stage.issues": "Writing issues…",

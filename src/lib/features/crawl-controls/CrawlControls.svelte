@@ -6,6 +6,7 @@
     ChevronDown,
     FileSpreadsheet,
     FileText,
+    FileCode,
     Send,
     Upload,
   } from '@lucide/svelte';
@@ -69,7 +70,7 @@
     onStart: () => void;
     onStop: () => void;
     onRefresh: () => void;
-    onExport: (format: 'xlsx' | 'csv') => void;
+    onExport: (format: 'xlsx' | 'csv' | 'sitemap') => void;
     onTransfer: () => void;
   } = $props();
 
@@ -411,6 +412,15 @@
           >
             <FileText class="size-4" />
             {m['export.csv']()}
+          </Button>
+          <Button
+            variant="ghost"
+            class="w-full justify-start gap-2"
+            disabled={exporting}
+            onclick={() => onExport('sitemap')}
+          >
+            <FileCode class="size-4" />
+            {m['export.sitemap']()}
           </Button>
         </Popover.Content>
       </Popover.Root>

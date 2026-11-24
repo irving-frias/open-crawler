@@ -3,5 +3,6 @@ pub mod checks;
 pub mod priority;
 pub mod score;
 pub mod site;
+pub mod sitemap;
 
 pub use audit::{AuditContext, CategoryResult, CheckResult, PriorityFix, SeoAuditResult};
