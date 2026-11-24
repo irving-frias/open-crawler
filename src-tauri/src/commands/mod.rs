@@ -5,6 +5,7 @@
 //! re-exports them all so `lib.rs` can register the handler list from a single
 //! place.
 
+pub use crate::features::alerts::commands::*;
 pub use crate::features::analytics::commands::*;
 pub use crate::features::app::commands::*;
 pub use crate::features::crawl::commands::*;

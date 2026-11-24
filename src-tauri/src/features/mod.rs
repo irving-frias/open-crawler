@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod analytics;
 pub mod app;
 pub mod crawl;

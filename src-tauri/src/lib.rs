@@ -259,6 +259,10 @@ pub fn run() {
             crate::commands::create_scheduled_job,
             crate::commands::update_scheduled_job,
             crate::commands::delete_scheduled_job,
+            // alerts
+            crate::commands::get_alert_settings,
+            crate::commands::save_alert_settings,
+            crate::commands::test_alert_notification,
             // export
             crate::commands::export_full,
             // transfer
