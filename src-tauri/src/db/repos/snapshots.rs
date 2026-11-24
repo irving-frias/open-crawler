@@ -212,11 +212,44 @@ impl<'a> CrawlRepo<'a> {
             rows
         };
 
+        // Failed SEO checks per page, from the normalized table, as
+        // `{ check_id: severity }` JSON. The alert diff reads this instead
+        // of re-parsing (or re-downloading) any page.
+        let failed_checks: std::collections::HashMap<String, String> = {
+            let mut stmt = tx.prepare(
+                "SELECT p.id, c.check_id, c.severity FROM crawled_pages p
+                 JOIN seo_check_issues c ON c.page_id = p.id
+                 WHERE p.project_id = ?1 AND p.config_id = ?2",
+            )?;
+            let mut per_page: std::collections::HashMap<
+                String,
+                serde_json::Map<String, serde_json::Value>,
+            > = std::collections::HashMap::new();
+            let iter = stmt.query_map(params![project_id, config_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            for item in iter {
+                let (page_id, check_id, severity) = item?;
+                per_page
+                    .entry(page_id)
+                    .or_default()
+                    .insert(check_id, serde_json::Value::String(severity));
+            }
+            per_page
+                .into_iter()
+                .map(|(k, v)| (k, serde_json::Value::Object(v).to_string()))
+                .collect()
+        };
+
         {
             let mut ins = tx.prepare(
                 "INSERT OR REPLACE INTO crawl_snapshot_data
-                 (snapshot_id, page_id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 (snapshot_id, page_id, url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score, failed_checks_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             for (page_id, url, status, title, desc, size, load, indexable, readability, seo) in rows
             {
@@ -232,6 +265,7 @@ impl<'a> CrawlRepo<'a> {
                     indexable,
                     readability,
                     seo,
+                    failed_checks.get(&page_id),
                 ])?;
             }
         }
