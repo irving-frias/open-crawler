@@ -242,6 +242,7 @@ pub fn run() {
             crate::commands::compare_crawls_page,
             // pagespeed
             crate::commands::get_pagespeed_score,
+            crate::commands::get_pagespeed_scores_bulk,
             // seo
             crate::commands::get_seo_audit,
             crate::commands::run_seo_audit,

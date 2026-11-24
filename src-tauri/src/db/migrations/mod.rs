@@ -48,6 +48,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "017_seo_skipped_categories",
         include_str!("017_seo_skipped_categories.sql"),
     ),
+    (
+        "018_pagespeed_fetched_at",
+        include_str!("018_pagespeed_fetched_at.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -110,6 +114,7 @@ mod tests {
             "og_json",
             "pagespeed_score",
             "pagespeed_json",
+            "pagespeed_fetched_at",
             "seo_score",
             "seo_audit_json",
         ] {
