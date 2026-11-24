@@ -2,12 +2,14 @@ pub mod assets;
 pub mod db_writer;
 pub mod dedup;
 pub mod engine;
+pub mod extraction;
 pub mod fetcher;
 pub mod frontier;
 pub mod parser;
 pub mod robots;
 pub mod screenshot;
 pub mod sitemap;
+pub mod xpath;
 
 pub use engine::CrawlEngine;
 pub use parser::SemanticIssue;

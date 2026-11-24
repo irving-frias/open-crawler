@@ -324,6 +324,22 @@
     }
   }
 
+  function parseExtractions(
+    json: string | null | undefined
+  ): { name: string; value: string | number | null }[] {
+    if (!json) return [];
+    try {
+      const parsed = JSON.parse(json);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+      return Object.entries(parsed).map(([name, value]) => ({
+        name,
+        value: typeof value === 'string' || typeof value === 'number' ? value : null,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   function ogFields(og: any): { key: string; value: string }[] {
     const out: { key: string; value: string }[] = [];
     const mapping: [string, string][] = [
@@ -577,6 +593,17 @@
                     </AccordionHeader>
                     <AccordionContent>
                       {@render socialContent()}
+                    </AccordionContent>
+                  </AccordionItem>
+                {/if}
+
+                {#if parseExtractions(detail.custom_extractions_json).length > 0}
+                  <AccordionItem value="extractions">
+                    <AccordionHeader>
+                      <AccordionTrigger>{m['detail.custom_extractions']()}</AccordionTrigger>
+                    </AccordionHeader>
+                    <AccordionContent>
+                      {@render extractionsContent()}
                     </AccordionContent>
                   </AccordionItem>
                 {/if}
@@ -978,6 +1005,19 @@
   </Card>
 {/snippet}
 
+{#snippet extractionsContent()}
+  <Card size="sm">
+    <CardContent class="flex flex-col gap-2 pt-4">
+      {#each parseExtractions(detail.custom_extractions_json) as entry (entry.name)}
+        <div class="extraction-row">
+          <span class="extraction-name">{entry.name}</span>
+          <span class="extraction-value">{entry.value ?? m['detail.no_value']()}</span>
+        </div>
+      {/each}
+    </CardContent>
+  </Card>
+{/snippet}
+
 {#snippet socialContent()}
   {@const og = parseOg(detail.og_json)}
   <Card size="sm">
@@ -1359,6 +1399,23 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+  }
+
+  .extraction-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.875rem;
+  }
+  .extraction-name {
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .extraction-value {
+    text-align: right;
+    word-break: break-all;
+    color: var(--muted-foreground);
   }
   .hreflang-tag {
     font-size: 0.8rem;

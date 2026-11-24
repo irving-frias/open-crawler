@@ -440,6 +440,18 @@ pub async fn run_seo_audit_all(
     // transaction, when the loop finishes (or is cancelled). This replaces
     // the old one-transaction-per-page write pattern.
     let mut pending_writes: Vec<(String, f64, Option<String>, Option<String>)> = Vec::new();
+    // Same accumulation for the custom extraction values, recomputed from
+    // the same HTML the audit uses, so edited rules apply without re-crawling.
+    let mut pending_extractions: Vec<(String, Option<String>)> = Vec::new();
+
+    // Custom extraction rules, loaded once for the whole re-audit.
+    let extraction_rules = {
+        let pid = project_id.clone();
+        with_repo(&state, move |repo| repo.get_custom_extractions(&pid))
+            .await
+            .unwrap_or_default()
+    };
+    let extraction_rules = Arc::new(extraction_rules);
 
     // Audit pages concurrently (CPU-bound parsing + checks) with a bounded
     // buffer. Only pages without stored HTML hit the network, via the
@@ -451,6 +463,7 @@ pub async fn run_seo_audit_all(
         let fetcher = fetcher.clone();
         let parser = parser.clone();
         let site_client = site_client.clone();
+        let extraction_rules = extraction_rules.clone();
         async move {
             let parsed = match url::Url::parse(&stored.url) {
                 Ok(u) => u,
@@ -470,11 +483,21 @@ pub async fn run_seo_audit_all(
                 let audit =
                     audit_page_html(&parser, &html, &parsed, &audit_ctx, Some(&site_client)).await;
                 let json = serde_json::to_string(&audit).ok();
+                let extractions_json = if extraction_rules.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&crate::crawler::extraction::extract(
+                        &html,
+                        &extraction_rules,
+                    ))
+                    .ok()
+                };
                 return Ok((
                     stored.page_id,
                     audit.score,
                     json,
                     stored.response_headers_json,
+                    extractions_json,
                 ));
             }
             // Fallback: no stored HTML — re-fetch this page over HTTP.
@@ -500,7 +523,22 @@ pub async fn run_seo_audit_all(
             } else {
                 serde_json::to_string(&response.headers).ok()
             };
-            Ok((stored.page_id, audit.score, json, headers_json))
+            let extractions_json = if extraction_rules.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&crate::crawler::extraction::extract(
+                    &response.html,
+                    &extraction_rules,
+                ))
+                .ok()
+            };
+            Ok((
+                stored.page_id,
+                audit.score,
+                json,
+                headers_json,
+                extractions_json,
+            ))
         }
     });
 
@@ -512,8 +550,9 @@ pub async fn run_seo_audit_all(
         }
 
         match outcome {
-            Ok((page_id, score, json, headers_json)) => {
-                pending_writes.push((page_id, score, json, headers_json));
+            Ok((page_id, score, json, headers_json, extractions_json)) => {
+                pending_writes.push((page_id.clone(), score, json, headers_json));
+                pending_extractions.push((page_id, extractions_json));
             }
             Err(_) => errors += 1,
         }
@@ -529,6 +568,20 @@ pub async fn run_seo_audit_all(
         let write_count = writes.len() as u32;
         let failed = with_repo(&state, move |repo| {
             repo.update_seo_audits_batch(&pid_project, &writes)
+        })
+        .await
+        .is_err();
+        if failed {
+            errors += write_count;
+        }
+    }
+
+    // Same single-transaction write for the recomputed extraction values.
+    if !pending_extractions.is_empty() {
+        let writes = std::mem::take(&mut pending_extractions);
+        let write_count = writes.len() as u32;
+        let failed = with_repo(&state, move |repo| {
+            repo.update_custom_extractions_batch(&writes)
         })
         .await
         .is_err();

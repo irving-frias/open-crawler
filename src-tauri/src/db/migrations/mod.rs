@@ -53,6 +53,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("018_pagespeed_fetched_at.sql"),
     ),
     ("019_alerts", include_str!("019_alerts.sql")),
+    (
+        "020_custom_extractions",
+        include_str!("020_custom_extractions.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
@@ -118,6 +122,7 @@ mod tests {
             "pagespeed_fetched_at",
             "seo_score",
             "seo_audit_json",
+            "custom_extractions_json",
         ] {
             assert!(
                 cols.contains(&expected.to_string()),
@@ -125,6 +130,15 @@ mod tests {
                 expected
             );
         }
+
+        let custom_extractions: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='custom_extractions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(custom_extractions, "custom_extractions");
 
         let snapshots: String = conn
             .query_row(

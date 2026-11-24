@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod analytics;
 pub mod crawl;
 pub mod export;
+pub mod extraction;
 pub mod links;
 pub mod pagespeed;
 pub mod projects;
@@ -249,6 +250,7 @@ mod tests {
             seo_audit_json: None,
             redirect_from_url: None,
             response_headers_json: None,
+            custom_extractions_json: None,
         }
     }
 

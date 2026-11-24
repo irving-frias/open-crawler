@@ -168,7 +168,7 @@ impl<'a> CrawlRepo<'a> {
         // over IPC (and storing them in the results cache) is pure overhead.
         // get_page_detail/get_seo_audit serve them on demand.
         let query_sql = format!(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, readability_score, content_hash, duplicate_group_id, pagespeed_score, seo_score, blocked, redirect_from_url
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, readability_score, content_hash, duplicate_group_id, pagespeed_score, seo_score, blocked, redirect_from_url, custom_extractions_json
              FROM crawled_pages WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
@@ -299,6 +299,7 @@ impl<'a> CrawlRepo<'a> {
             blocked: row.get::<_, i32>(22)? != 0,
             redirect_from_url: row.get(23)?,
             response_headers_json: None,
+            custom_extractions_json: row.get(24)?,
         })
     }
 
@@ -336,6 +337,7 @@ impl<'a> CrawlRepo<'a> {
             blocked: row.get::<_, i32>(28)? != 0,
             redirect_from_url: row.get(29)?,
             response_headers_json: row.get(30)?,
+            custom_extractions_json: row.get(31)?,
         })
     }
 
@@ -386,7 +388,7 @@ impl<'a> CrawlRepo<'a> {
 
     pub fn get_page_detail(&self, page_id: &str) -> Result<PageDetail, AppError> {
         let result = self.conn.query_row(
-            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json
+            "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json, custom_extractions_json
              FROM crawled_pages WHERE id = ?1",
             params![page_id],
                             Self::row_to_result,

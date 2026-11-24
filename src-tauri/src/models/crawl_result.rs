@@ -44,6 +44,10 @@ pub struct CrawlResult {
     /// faithful to what was actually served.
     #[serde(default)]
     pub response_headers_json: Option<String>,
+    /// Custom extraction values for this page (`{rule name: string|number|null}`),
+    /// computed from the project's rules at crawl time and on re-audit.
+    #[serde(default)]
+    pub custom_extractions_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

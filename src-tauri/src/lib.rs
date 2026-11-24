@@ -264,6 +264,11 @@ pub fn run() {
             crate::commands::get_alert_settings,
             crate::commands::save_alert_settings,
             crate::commands::test_alert_notification,
+            // custom extraction
+            crate::commands::get_custom_extractions,
+            crate::commands::save_custom_extractions,
+            crate::commands::test_custom_extraction,
+            crate::commands::recompute_custom_extractions,
             // export
             crate::commands::export_full,
             // transfer

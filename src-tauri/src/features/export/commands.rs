@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tracing::warn;
 
+use crate::crawler::extraction::CustomExtraction;
 use crate::crawler::parser::SemanticIssue;
 use crate::error::AppError;
 use crate::features::{with_repo, with_repo_arc};
@@ -99,6 +100,13 @@ pub async fn export_full(
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| write_path.clone());
 
+    // Custom extraction rules, loaded once: the Pages sheet and the CSV gain
+    // one column per rule, in rule order.
+    let pid_rules = project_id.clone();
+    let extractions = with_repo(&state, move |repo| repo.get_custom_extractions(&pid_rules))
+        .await
+        .unwrap_or_default();
+
     let app_emit = app.clone();
     let emit = move |stage: &'static str, processed: u64, total: u64| {
         emit_export_progress(&app_emit, stage, processed, total);
@@ -114,10 +122,19 @@ pub async fn export_full(
             total_links,
             total_issues,
             total_seo,
+            &extractions,
         )
         .await?;
     } else {
-        export_csv_single(state.inner(), &emit, &project_id, &dest_path, total_pages).await?;
+        export_csv_single(
+            state.inner(),
+            &emit,
+            &project_id,
+            &dest_path,
+            total_pages,
+            &extractions,
+        )
+        .await?;
     }
 
     if let (Some(uri), Some(tmp)) = (content_uri, tmp_path) {
@@ -310,9 +327,10 @@ fn category_label(category: &str) -> &'static str {
 
 /// Headers for the flat pages table. Category columns are generated from
 /// `CATEGORY_ORDER` so the header order always matches the values written by
-/// [`page_values`].
-fn page_headers() -> Vec<&'static str> {
-    let mut headers = vec![
+/// [`page_values`]; one extra column per custom extraction rule follows, in
+/// rule order.
+fn page_headers(extractions: &[CustomExtraction]) -> Vec<String> {
+    let mut headers: Vec<String> = vec![
         "URL",
         "Status Code",
         "Title",
@@ -335,24 +353,38 @@ fn page_headers() -> Vec<&'static str> {
         "Blocked",
         "Duplicate Group",
         "Redirect From",
-    ];
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect();
     for cat in CATEGORY_ORDER {
-        headers.push(category_label(cat));
+        headers.push(category_label(cat).to_string());
     }
-    headers.extend(["Keywords JSON", "OG JSON", "Hreflang JSON"]);
+    headers.extend(
+        ["Keywords JSON", "OG JSON", "Hreflang JSON"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    headers.extend(extractions.iter().map(|r| r.name.clone()));
     headers
 }
 
-/// Flattens a page into the 33 export columns. SEO values (score, grade,
-/// per-category scores, priority fixes, failed checks) are derived from the
-/// stored `seo_audit_json` when it parses; pages without an audit fall back to
-/// empty cells / zero. The audit is passed in pre-parsed so the XLSX export
-/// can parse each page's JSON once and share it across all five sheets.
-fn page_values(p: &CrawlResult) -> Vec<ExportValue> {
-    page_values_with_audit(p, parse_audit(&p.seo_audit_json).as_ref())
+/// Flattens a page into the export columns (33 base + one per custom
+/// extraction rule). SEO values (score, grade, per-category scores, priority
+/// fixes, failed checks) are derived from the stored `seo_audit_json` when it
+/// parses; pages without an audit fall back to empty cells / zero. The audit
+/// is passed in pre-parsed so the XLSX export can parse each page's JSON once
+/// and share it across all five sheets. Extraction values come from the
+/// stored `custom_extractions_json`; a missing value is an empty cell.
+fn page_values(p: &CrawlResult, extractions: &[CustomExtraction]) -> Vec<ExportValue> {
+    page_values_with_audit(p, parse_audit(&p.seo_audit_json).as_ref(), extractions)
 }
 
-fn page_values_with_audit(p: &CrawlResult, audit: Option<&SeoAuditResult>) -> Vec<ExportValue> {
+fn page_values_with_audit(
+    p: &CrawlResult,
+    audit: Option<&SeoAuditResult>,
+    extractions: &[CustomExtraction],
+) -> Vec<ExportValue> {
     let indexable = match p.is_indexable {
         Some(true) => "Yes",
         Some(false) => "No",
@@ -410,11 +442,31 @@ fn page_values_with_audit(p: &CrawlResult, audit: Option<&SeoAuditResult>) -> Ve
     values.push(ExportValue::Str(
         p.hreflang_json.clone().unwrap_or_default(),
     ));
+    // One column per custom extraction rule, in rule order. Numbers stay
+    // numeric; strings stay strings; no match is an empty cell.
+    if !extractions.is_empty() {
+        let stored: serde_json::Map<String, serde_json::Value> = p
+            .custom_extractions_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        for rule in extractions {
+            values.push(match stored.get(&rule.name) {
+                Some(serde_json::Value::Number(n)) => n
+                    .as_f64()
+                    .map(ExportValue::Num)
+                    .unwrap_or_else(|| ExportValue::Str(String::new())),
+                Some(serde_json::Value::String(s)) => ExportValue::Str(s.clone()),
+                Some(serde_json::Value::Bool(b)) => ExportValue::Str(b.to_string()),
+                _ => ExportValue::Str(String::new()),
+            });
+        }
+    }
     values
 }
 
-fn csv_record(p: &CrawlResult) -> Vec<String> {
-    page_values(p)
+fn csv_record(p: &CrawlResult, extractions: &[CustomExtraction]) -> Vec<String> {
+    page_values(p, extractions)
         .into_iter()
         .map(|v| match v {
             ExportValue::Num(n) => {
@@ -534,7 +586,7 @@ impl Formats {
 fn write_headers(
     ws: &mut rust_xlsxwriter::Worksheet,
     header_fmt: &rust_xlsxwriter::Format,
-    headers: &[&str],
+    headers: &[String],
 ) -> Result<(), AppError> {
     for (col, h) in headers.iter().enumerate() {
         xlsx_str(ws, 0, col as u16, h, Some(header_fmt))?;
@@ -564,9 +616,9 @@ struct ParsedPage<'a> {
     values: Vec<ExportValue>,
 }
 
-fn parse_page(p: &CrawlResult) -> ParsedPage<'_> {
+fn parse_page<'a>(p: &'a CrawlResult, extractions: &[CustomExtraction]) -> ParsedPage<'a> {
     let audit = parse_audit(&p.seo_audit_json);
-    let values = page_values_with_audit(p, audit.as_ref());
+    let values = page_values_with_audit(p, audit.as_ref(), extractions);
     let issues = p
         .semantic_issues_json
         .as_deref()
@@ -830,14 +882,16 @@ fn finalize_sheet(
 /// One XLSX sheet pass over the crawled pages. All passes share a single
 /// read of the pages (see [`export_page_passes`]): each page is parsed once
 /// into a [`ParsedPage`] and handed to every pass's writer.
-struct PagePass<'a> {
+struct PagePass {
     /// Progress stage emitted while this pass streams.
     stage: &'static str,
-    base_name: &'a str,
-    headers: &'a [&'a str],
+    base_name: &'static str,
+    /// Owned so the Pages pass can append one column per custom extraction
+    /// rule; the other passes build theirs from the static header consts.
+    headers: Vec<String>,
     total_rows: u32,
     /// Extra per-sheet column widths applied after the defaults.
-    widths: &'a [(u16, f64)],
+    widths: &'static [(u16, f64)],
     /// Writes one page's contribution, returning the number of rows written.
     write: fn(
         &mut rust_xlsxwriter::Worksheet,
@@ -845,6 +899,11 @@ struct PagePass<'a> {
         &ParsedPage<'_>,
         &Formats,
     ) -> Result<u32, AppError>,
+}
+
+/// Builds owned headers from a static header const.
+fn owned_headers(headers: &[&str]) -> Vec<String> {
+    headers.iter().map(|h| h.to_string()).collect()
 }
 
 const ISSUE_HEADERS: [&str; 7] = [
@@ -878,7 +937,7 @@ const LINK_HEADERS: [&str; 5] = ["From URL", "To URL", "Link Type", "Anchor Text
 /// after their siblings, so the workbook keeps the same sheet order as the
 /// old one-pass-per-sheet export.
 struct OpenPass<'a> {
-    pass: &'a PagePass<'a>,
+    pass: &'a PagePass,
     /// Physical sheets in order; index [`OpenPass::cur`] is being written.
     sheets: Vec<rust_xlsxwriter::Worksheet>,
     cur: usize,
@@ -891,14 +950,14 @@ impl<'a> OpenPass<'a> {
     fn new(
         workbook: &mut rust_xlsxwriter::Workbook,
         fmt: &Formats,
-        pass: &'a PagePass<'a>,
+        pass: &'a PagePass,
     ) -> Result<Self, AppError> {
         let mut ws = workbook
             .new_worksheet_with_constant_memory()
             .map_err(|e| AppError::Crawl(e.to_string()))?;
         ws.set_name(sheet_name(pass.base_name, 0, sheet_count(pass.total_rows)))
             .map_err(|e| AppError::Crawl(e.to_string()))?;
-        write_headers(&mut ws, &fmt.header, pass.headers)?;
+        write_headers(&mut ws, &fmt.header, &pass.headers)?;
         Ok(Self {
             pass,
             sheets: vec![ws],
@@ -929,7 +988,7 @@ impl<'a> OpenPass<'a> {
             sheet_count(self.pass.total_rows),
         ))
         .map_err(|e| AppError::Crawl(e.to_string()))?;
-        write_headers(&mut ws, &fmt.header, self.pass.headers)?;
+        write_headers(&mut ws, &fmt.header, &self.pass.headers)?;
         self.sheets.push(ws);
         self.cur = idx;
         self.row = 1;
@@ -954,9 +1013,10 @@ async fn export_page_passes(
     project_id: &str,
     workbook: &mut rust_xlsxwriter::Workbook,
     fmt: &Formats,
-    passes: &[PagePass<'_>],
+    passes: &[PagePass],
     processed: &mut u64,
     total: u64,
+    extractions: &[CustomExtraction],
 ) -> Result<(), AppError> {
     // One read feeds every sheet: pages are streamed in batches a single
     // time (previously each pass re-read all pages with `get_result_batch`
@@ -998,7 +1058,8 @@ async fn export_page_passes(
             break;
         }
         // Parse each page once; the writers below only read the parsed form.
-        let parsed: Vec<ParsedPage<'_>> = batch.iter().map(parse_page).collect();
+        let parsed: Vec<ParsedPage<'_>> =
+            batch.iter().map(|p| parse_page(p, extractions)).collect();
         for op in open.iter_mut() {
             let mut pass_rows: u64 = 0;
             for p in &parsed {
@@ -1033,11 +1094,12 @@ async fn export_csv_single(
     project_id: &str,
     file_path: &str,
     total_pages: u32,
+    extractions: &[CustomExtraction],
 ) -> Result<(), AppError> {
     let mut wtr = csv::Writer::from_path(file_path)?;
 
-    let headers = page_headers();
-    wtr.write_record(headers.iter().map(|h| h.to_string()))?;
+    let headers = page_headers(extractions);
+    wtr.write_record(headers.iter())?;
 
     let mut last_timestamp: Option<String> = None;
     let mut last_id: Option<String> = None;
@@ -1060,7 +1122,7 @@ async fn export_csv_single(
             break;
         }
         for item in &batch {
-            let record = csv_record(item);
+            let record = csv_record(item, extractions);
             wtr.write_record(record.iter())?;
         }
         processed += batch.len() as u64;
@@ -1085,6 +1147,7 @@ async fn export_xlsx(
     total_links: u32,
     total_issues: u32,
     total_seo: u32,
+    extractions: &[CustomExtraction],
 ) -> Result<(), AppError> {
     use rust_xlsxwriter::Workbook;
 
@@ -1094,12 +1157,12 @@ async fn export_xlsx(
     let total = total_pages as u64 + total_issues as u64 + total_links as u64 + total_seo as u64;
     let mut processed: u64 = 0;
 
-    let headers = page_headers();
+    let headers = page_headers(extractions);
     let passes = [
         PagePass {
             stage: "pages",
             base_name: "Pages",
-            headers: &headers,
+            headers,
             total_rows: total_pages,
             widths: &[],
             write: page_row,
@@ -1107,7 +1170,7 @@ async fn export_xlsx(
         PagePass {
             stage: "issues",
             base_name: "Issues",
-            headers: &ISSUE_HEADERS,
+            headers: owned_headers(&ISSUE_HEADERS),
             total_rows: total_issues,
             widths: &[(3, 50.0), (5, 50.0), (6, 50.0)],
             write: issues_row,
@@ -1115,7 +1178,7 @@ async fn export_xlsx(
         PagePass {
             stage: "seo",
             base_name: "SEO Audit",
-            headers: &AUDIT_HEADERS,
+            headers: owned_headers(&AUDIT_HEADERS),
             total_rows: total_seo,
             widths: &[],
             write: audit_row,
@@ -1123,7 +1186,7 @@ async fn export_xlsx(
         PagePass {
             stage: "seo",
             base_name: "SEO Checks",
-            headers: &CHECK_HEADERS,
+            headers: owned_headers(&CHECK_HEADERS),
             total_rows: total_seo,
             widths: &[(4, 50.0), (5, 50.0), (7, 50.0)],
             write: checks_row,
@@ -1131,7 +1194,7 @@ async fn export_xlsx(
         PagePass {
             stage: "seo",
             base_name: "SEO Fixes",
-            headers: &FIX_HEADERS,
+            headers: owned_headers(&FIX_HEADERS),
             total_rows: total_seo,
             widths: &[(4, 50.0), (5, 50.0)],
             write: fixes_row,
@@ -1146,6 +1209,7 @@ async fn export_xlsx(
         &passes,
         &mut processed,
         total,
+        extractions,
     )
     .await?;
 
@@ -1302,6 +1366,7 @@ mod tests {
                 r#"{"content-type":"text/html; charset=utf-8","strict-transport-security":"max-age=31536000"}"#
                     .to_string(),
             ),
+            custom_extractions_json: Some(r#"{"price":"$19.99"}"#.to_string()),
         }
     }
 
@@ -1332,10 +1397,10 @@ mod tests {
     #[test]
     fn page_values_flatten_seo_data() {
         let p = sample_page("a", "https://x.com/a");
-        let values = page_values(&p);
+        let values = page_values(&p, &[]);
         // Columns follow page_headers() and grow with CATEGORY_ORDER, so derive
         // the expected count instead of hardcoding it (10 cats → 35, 11 → 36).
-        let expected = page_headers().len();
+        let expected = page_headers(&[]).len();
         assert_eq!(values.len(), expected, "columns must match page_headers()");
 
         let seo_score = &values[15];
@@ -1355,6 +1420,43 @@ mod tests {
         assert!(
             matches!(&values[cat_start + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0)
         );
+    }
+
+    #[test]
+    fn page_values_adds_one_column_per_extraction_rule() {
+        use crate::crawler::extraction::{CustomExtraction, ExtractionMode, SelectorType};
+
+        let p = sample_page("a", "https://x.com/a");
+        let rules = vec![
+            CustomExtraction {
+                id: "r1".into(),
+                name: "price".into(),
+                selector_type: SelectorType::Css,
+                selector: ".price".into(),
+                mode: ExtractionMode::Text,
+                attribute: None,
+                position: 0,
+            },
+            CustomExtraction {
+                id: "r2".into(),
+                name: "links".into(),
+                selector_type: SelectorType::Css,
+                selector: "a".into(),
+                mode: ExtractionMode::Count,
+                attribute: None,
+                position: 1,
+            },
+        ];
+        let headers = page_headers(&rules);
+        // The two rule names are the last two headers, in rule order.
+        assert_eq!(headers[headers.len() - 2], "price");
+        assert_eq!(headers[headers.len() - 1], "links");
+
+        let values = page_values(&p, &rules);
+        assert_eq!(values.len(), headers.len());
+        // sample_page stores {"price":"$19.99"}; "links" has no stored value.
+        assert!(matches!(&values[values.len() - 2], ExportValue::Str(s) if s == "$19.99"));
+        assert!(matches!(&values[values.len() - 1], ExportValue::Str(s) if s.is_empty()));
     }
 
     #[tokio::test]
@@ -1378,7 +1480,7 @@ mod tests {
         let emit = move |s: &'static str, p: u64, t: u64| {
             calls.lock().unwrap().push((s.to_string(), p, t));
         };
-        export_csv_single(&state, &emit, "p1", path.to_str().unwrap(), 1)
+        export_csv_single(&state, &emit, "p1", path.to_str().unwrap(), 1, &[])
             .await
             .unwrap();
 
@@ -1410,12 +1512,12 @@ mod tests {
 
         let mut workbook = Workbook::new();
         let fmt = Formats::new();
-        let headers = page_headers();
+        let headers = page_headers(&[]);
         let passes = [
             PagePass {
                 stage: "pages",
                 base_name: "Pages",
-                headers: &headers,
+                headers,
                 total_rows: 1,
                 widths: &[],
                 write: page_row,
@@ -1423,7 +1525,7 @@ mod tests {
             PagePass {
                 stage: "issues",
                 base_name: "Issues",
-                headers: &ISSUE_HEADERS,
+                headers: owned_headers(&ISSUE_HEADERS),
                 total_rows: 2,
                 widths: &[],
                 write: issues_row,
@@ -1431,7 +1533,7 @@ mod tests {
             PagePass {
                 stage: "seo",
                 base_name: "SEO Audit",
-                headers: &AUDIT_HEADERS,
+                headers: owned_headers(&AUDIT_HEADERS),
                 total_rows: 2,
                 widths: &[],
                 write: audit_row,
@@ -1439,7 +1541,7 @@ mod tests {
             PagePass {
                 stage: "seo",
                 base_name: "SEO Checks",
-                headers: &CHECK_HEADERS,
+                headers: owned_headers(&CHECK_HEADERS),
                 total_rows: 1,
                 widths: &[],
                 write: checks_row,
@@ -1447,7 +1549,7 @@ mod tests {
             PagePass {
                 stage: "seo",
                 base_name: "SEO Fixes",
-                headers: &FIX_HEADERS,
+                headers: owned_headers(&FIX_HEADERS),
                 total_rows: 1,
                 widths: &[],
                 write: fixes_row,
@@ -1463,6 +1565,7 @@ mod tests {
             &passes,
             &mut processed,
             5,
+            &[],
         )
         .await
         .unwrap();
@@ -1488,9 +1591,19 @@ mod tests {
         let path = std::env::temp_dir().join("open-crawler-test-export.xlsx");
         let _ = std::fs::remove_file(&path);
 
-        export_xlsx(&state, &noop_emit, "p1", path.to_str().unwrap(), 1, 0, 2, 4)
-            .await
-            .unwrap();
+        export_xlsx(
+            &state,
+            &noop_emit,
+            "p1",
+            path.to_str().unwrap(),
+            1,
+            0,
+            2,
+            4,
+            &[],
+        )
+        .await
+        .unwrap();
 
         let meta = std::fs::metadata(&path).unwrap();
         assert!(meta.len() > 0, "workbook file should not be empty");
@@ -1653,6 +1766,7 @@ mod tests {
             total_links,
             total_issues,
             total_seo,
+            &[],
         )
         .await
         .unwrap();

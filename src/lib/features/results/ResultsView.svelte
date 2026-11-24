@@ -81,6 +81,8 @@
         return m['tabs.seo']();
       case 'links':
         return m['tabs.links']();
+      case 'extraction':
+        return m['tabs.extraction']();
     }
   }
 
@@ -224,6 +226,12 @@
     {#if components.links}
       {@const LinkPanel = components.links}
       <LinkPanel projectId={selectedProjectId} />
+    {/if}
+  </div>
+  <div class="tab-panel" hidden={activeTab !== 'extraction'}>
+    {#if components.extraction}
+      {@const ExtractionPanel = components.extraction}
+      <ExtractionPanel projectId={selectedProjectId} />
     {/if}
   </div>
 </section>

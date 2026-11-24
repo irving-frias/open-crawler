@@ -272,6 +272,19 @@ pub async fn recrawl_page(
         serde_json::to_string(&seo_data.og_meta).ok()
     };
 
+    // Custom extraction values for the fresh HTML, same rules as the crawl.
+    let custom_extractions_json = {
+        let pid = project_id.clone();
+        let rules = with_repo(&state, move |repo| repo.get_custom_extractions(&pid))
+            .await
+            .unwrap_or_default();
+        if rules.is_empty() {
+            None
+        } else {
+            serde_json::to_string(&crate::crawler::extraction::extract(&response.html, &rules)).ok()
+        }
+    };
+
     let result = crate::models::CrawlResult {
         id: page_id.clone(),
         config_id,
@@ -315,6 +328,7 @@ pub async fn recrawl_page(
         } else {
             serde_json::to_string(&response.headers).ok()
         },
+        custom_extractions_json,
     };
 
     // Save to DB

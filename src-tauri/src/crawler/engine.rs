@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::crawler::db_writer::{create_db_writer_channel, CrawlResultMsg, DbWriter};
 use crate::crawler::dedup::Deduplicator;
+use crate::crawler::extraction::CustomExtraction;
 use crate::crawler::fetcher::{ChromiumFetcher, HtmlFetcher, HttpFetcher};
 use crate::crawler::frontier::Frontier;
 use crate::crawler::parser::SeoParser;
@@ -332,6 +333,29 @@ impl CrawlEngine {
             config.id.clone().unwrap_or_else(|| "default".to_string())
         };
 
+        // Custom extraction rules for this project, loaded once: every
+        // fetched page is evaluated against the same rules (see
+        // fetch_and_parse). A load failure only warns — the crawl continues
+        // without custom values instead of failing outright.
+        let extractions: Arc<Vec<CustomExtraction>> = {
+            let state_read = state.read().await;
+            let db = state_read
+                .db
+                .lock()
+                .map_err(|e| AppError::Crawl(e.to_string()))?;
+            let repo = CrawlRepo::new(&db, None);
+            match repo.get_custom_extractions(&project_id) {
+                Ok(rules) => {
+                    info!("Custom extraction rules loaded: {}", rules.len());
+                    Arc::new(rules)
+                }
+                Err(e) => {
+                    warn!("Failed to load custom extraction rules: {}", e);
+                    Arc::new(Vec::new())
+                }
+            }
+        };
+
         // Create DbWriter channel
         let (db_tx, db_rx) = create_db_writer_channel(1000);
         let mut db_writer = DbWriter::new(db_rx, app.clone(), state.clone(), project_id.clone());
@@ -502,6 +526,7 @@ impl CrawlEngine {
                     let db_tx_clone = db_tx.clone();
                     let db_tx_error = db_tx.clone();
                     let site_client = self.client.clone();
+                    let extractions_clone = extractions.clone();
 
                     tokio::spawn(async move {
                         let result = Self::fetch_and_parse(
@@ -519,6 +544,7 @@ impl CrawlEngine {
                             depth,
                             db_tx_clone,
                             site_client.as_ref(),
+                            &extractions_clone,
                         )
                         .await;
 
@@ -802,6 +828,7 @@ impl CrawlEngine {
         depth: u32,
         db_tx: mpsc::Sender<CrawlResultMsg>,
         site_client: Option<&reqwest::Client>,
+        extractions: &[CustomExtraction],
     ) -> Result<(u32, u32), AppError> {
         let response = fetcher.fetch(url).await?;
 
@@ -917,6 +944,15 @@ impl CrawlEngine {
         } else {
             serde_json::to_string(&response.headers).ok()
         };
+        // Custom extraction values, evaluated on the full HTML (before the
+        // 100KB truncation for storage) with the project's rules loaded once
+        // at crawl start. No rules → no values.
+        let custom_extractions_json = if extractions.is_empty() {
+            None
+        } else {
+            let values = crate::crawler::extraction::extract(&response.html, extractions);
+            serde_json::to_string(&values).ok()
+        };
         let result = CrawlResult {
             id: result_id.clone(),
             config_id: config_id.to_string(),
@@ -956,6 +992,7 @@ impl CrawlEngine {
             seo_audit_json,
             redirect_from_url: response.redirect_from_url.clone(),
             response_headers_json,
+            custom_extractions_json,
         };
 
         // Send result to DbWriter (async, non-blocking)
@@ -1183,6 +1220,7 @@ mod tests {
             0,
             db_tx,
             None,
+            &[],
         )
         .await
         .unwrap();
@@ -1205,6 +1243,77 @@ mod tests {
         assert!(
             !discovered.iter().any(|(u, _)| u.contains("external")),
             "external link should be filtered by same_origin_only"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_and_parse_applies_custom_extractions() {
+        use crate::crawler::extraction::{CustomExtraction, ExtractionMode, SelectorType};
+
+        let origin = spawn_no_sitemap_site().await;
+        let seed = format!("{}/", origin);
+
+        let fetcher =
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let parser = SeoParser::new();
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, mut db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+        let rules = vec![
+            CustomExtraction {
+                id: "r1".into(),
+                name: "heading".into(),
+                selector_type: SelectorType::Xpath,
+                selector: "//h1".into(),
+                mode: ExtractionMode::Text,
+                attribute: None,
+                position: 0,
+            },
+            CustomExtraction {
+                id: "r2".into(),
+                name: "links".into(),
+                selector_type: SelectorType::Css,
+                selector: "a".into(),
+                mode: ExtractionMode::Count,
+                attribute: None,
+                position: 1,
+            },
+        ];
+
+        let (pages, _) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &rules,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pages, 1);
+
+        // The Page message carries the computed values.
+        let mut found = None;
+        while let Some(msg) = db_rx.recv().await {
+            if let CrawlResultMsg::Page(page) = msg {
+                found = page.custom_extractions_json.clone();
+                break;
+            }
+        }
+        assert_eq!(
+            found.as_deref(),
+            Some(r#"{"heading":"Home","links":3}"#),
+            "extraction values must be computed from the fetched HTML"
         );
     }
 
@@ -1246,6 +1355,7 @@ mod tests {
             0,
             db_tx,
             None,
+            &[],
         )
         .await
         .unwrap();
@@ -1345,6 +1455,7 @@ mod tests {
             0,
             db_tx,
             None,
+            &[],
         )
         .await
         .unwrap();

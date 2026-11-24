@@ -60,6 +60,22 @@ export interface CrawlResult {
   pagespeed_json?: string | null;
   seo_score?: number | null;
   seo_audit_json?: string | null;
+  /** Custom extraction values: `{rule name: string|number|null}`. */
+  custom_extractions_json?: string | null;
+}
+
+export type SelectorType = 'css' | 'xpath' | 'regex';
+export type ExtractionMode = 'text' | 'attribute' | 'count';
+
+/** One user-defined custom extraction rule, scoped to a project. */
+export interface CustomExtraction {
+  id: string;
+  name: string;
+  selector_type: SelectorType;
+  selector: string;
+  mode: ExtractionMode;
+  attribute?: string | null;
+  position: number;
 }
 
 export interface CrawlProgress {

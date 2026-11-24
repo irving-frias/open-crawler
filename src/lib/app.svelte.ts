@@ -31,7 +31,8 @@ export type TabValue =
   | 'keywords'
   | 'schedule'
   | 'seo'
-  | 'links';
+  | 'links'
+  | 'extraction';
 
 export interface CrawlProgressState {
   crawled: number;

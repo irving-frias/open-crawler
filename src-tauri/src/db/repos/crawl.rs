@@ -254,8 +254,8 @@ impl<'a> CrawlRepo<'a> {
         )?;
         tx.execute(
             "INSERT INTO crawled_pages
-             (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
+             (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json, custom_extractions_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)",
             params![
                 result.id,
                 result.config_id,
@@ -287,6 +287,7 @@ impl<'a> CrawlRepo<'a> {
                 result.seo_audit_json,
                 result.blocked as i32,
                 result.response_headers_json,
+                result.custom_extractions_json,
             ],
         )?;
 
@@ -406,7 +407,7 @@ impl<'a> CrawlRepo<'a> {
         delete_by_project_url_pairs(&tx, "crawled_pages", "url", &pairs)?;
         delete_by_project_url_pairs(&tx, "page_links", "from_url", &pairs)?;
 
-        // Multi-row INSERT of the pages themselves (30 columns, chunked so
+        // Multi-row INSERT of the pages themselves (31 columns, chunked so
         // each statement stays under the SQLite bind-parameter limit).
         let rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = unique
             .iter()
@@ -442,13 +443,14 @@ impl<'a> CrawlRepo<'a> {
                     sql_box(result.seo_audit_json.clone()),
                     sql_box(result.blocked as i32),
                     sql_box(result.response_headers_json.clone()),
+                    sql_box(result.custom_extractions_json.clone()),
                 ]
             })
             .collect();
         execute_multi_row_insert(
             &tx,
             "INSERT INTO crawled_pages
-             (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json)
+             (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json, custom_extractions_json)
              VALUES",
             &rows,
         )?;

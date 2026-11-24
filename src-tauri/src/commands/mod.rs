@@ -10,6 +10,7 @@ pub use crate::features::analytics::commands::*;
 pub use crate::features::app::commands::*;
 pub use crate::features::crawl::commands::*;
 pub use crate::features::export::commands::*;
+pub use crate::features::extraction::commands::*;
 pub use crate::features::links::commands::*;
 pub use crate::features::pagespeed::commands::*;
 pub use crate::features::projects::commands::*;

@@ -3,6 +3,7 @@ pub mod analytics;
 pub mod app;
 pub mod crawl;
 pub mod export;
+pub mod extraction;
 pub mod links;
 pub mod pagespeed;
 pub mod projects;
