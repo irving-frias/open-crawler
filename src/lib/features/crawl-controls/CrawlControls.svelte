@@ -7,7 +7,9 @@
     FileSpreadsheet,
     FileText,
     Send,
+    Upload,
   } from '@lucide/svelte';
+  import { toast } from 'svelte-sonner';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
   import { Label } from '$lib/components/ui/label/index.js';
@@ -15,6 +17,7 @@
   import * as Popover from '$lib/components/ui/popover/index.js';
   import type { CrawlStatus, ResumableInfo } from '$lib/app.svelte';
   import { checkJsRenderingAvailable } from '$lib/api/crawl';
+  import { parseUrlList } from '$lib/app.svelte';
 
   let {
     status,
@@ -22,6 +25,8 @@
     hasResults,
     exporting,
     seedUrl = $bindable(),
+    listMode = $bindable(),
+    urlList = $bindable(),
     maxDepth = $bindable(),
     maxCrawlTime = $bindable(),
     proxyUrl = $bindable(),
@@ -46,6 +51,8 @@
     hasResults: boolean;
     exporting: boolean;
     seedUrl: string;
+    listMode: boolean;
+    urlList: string;
     maxDepth: number;
     maxCrawlTime: number;
     proxyUrl: string;
@@ -67,6 +74,9 @@
   } = $props();
 
   let seedError = $state(false);
+
+  const validListUrls = $derived(parseUrlList(urlList));
+  const canStart = $derived(listMode ? validListUrls.length > 0 : seedUrl.trim().length > 0);
 
   // JS rendering needs a system Chrome/Chromium. Probe once on mount so
   // the toggle is disabled with the reason when no browser is installed.
@@ -114,32 +124,93 @@
   }
 
   function handleStart() {
+    if (listMode) {
+      if (validListUrls.length === 0) return;
+      onStart();
+      return;
+    }
     seedError = !isValidUrl(seedUrl);
     if (seedError) return;
     onStart();
+  }
+
+  async function handleImportList() {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        multiple: false,
+        filters: [{ name: m['config.list_file_filter'](), extensions: ['txt', 'csv'] }],
+      });
+      if (!picked || typeof picked !== 'string') return;
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+      const content = await readTextFile(picked);
+      const imported = parseUrlList(content);
+      if (imported.length === 0) {
+        toast.error(m['config.list_import_empty']());
+        return;
+      }
+      urlList = urlList.trim() ? `${urlList.trim()}\n${imported.join('\n')}` : imported.join('\n');
+      toast.success(m['config.list_imported']({ count: String(imported.length) }));
+    } catch (e) {
+      toast.error(String(e));
+    }
   }
 </script>
 
 <section class="config-section">
   <h2>{m['config.title']()}</h2>
 
-  <div class="form-group">
-    <Label for="seed">{m['config.seed_url']()}</Label>
-    <Input
-      id="seed"
-      type="url"
-      bind:value={seedUrl}
-      placeholder={m['config.seed_url_placeholder']()}
-      disabled={status === 'running'}
-      aria-invalid={seedError ? 'true' : undefined}
-      onblur={handleSeedBlur}
-      oninput={() => {
-        if (seedError) seedError = !isValidUrl(seedUrl);
-      }}
-    />
-    {#if seedError}
-      <p class="field-error">{m['config.seed_url_invalid']()}</p>
-    {/if}
+  {#if listMode}
+    <div class="form-group">
+      <Label for="urlList">{m['config.list_urls']()}</Label>
+      <textarea
+        id="urlList"
+        class="cookies-input"
+        rows="6"
+        bind:value={urlList}
+        placeholder={m['config.list_urls_placeholder']()}
+        autocomplete="off"
+        spellcheck="false"
+        disabled={status === 'running'}></textarea>
+      <p class="field-hint">
+        {m['config.list_urls_count']({ count: String(validListUrls.length) })}
+      </p>
+      <Button
+        variant="outline"
+        class="gap-1.5"
+        onclick={handleImportList}
+        disabled={status === 'running'}
+      >
+        <Upload class="size-4" />
+        {m['config.list_import']()}
+      </Button>
+    </div>
+  {:else}
+    <div class="form-group">
+      <Label for="seed">{m['config.seed_url']()}</Label>
+      <Input
+        id="seed"
+        type="url"
+        bind:value={seedUrl}
+        placeholder={m['config.seed_url_placeholder']()}
+        disabled={status === 'running'}
+        aria-invalid={seedError ? 'true' : undefined}
+        onblur={handleSeedBlur}
+        oninput={() => {
+          if (seedError) seedError = !isValidUrl(seedUrl);
+        }}
+      />
+      {#if seedError}
+        <p class="field-error">{m['config.seed_url_invalid']()}</p>
+      {/if}
+    </div>
+  {/if}
+
+  <div class="form-group checkboxes">
+    <label class="checkbox-label">
+      <Checkbox bind:checked={listMode} disabled={status === 'running'} />
+      <span>{m['config.list_mode']()}</span>
+    </label>
   </div>
 
   <div class="form-row">
@@ -151,7 +222,7 @@
         bind:value={maxDepth}
         min="1"
         max="100"
-        disabled={status === 'running'}
+        disabled={status === 'running' || listMode}
       />
     </div>
     <div class="form-group">
@@ -291,7 +362,7 @@
 
   <div class="actions">
     {#if status === 'idle' || status === 'completed' || status === 'error'}
-      <Button onclick={handleStart} disabled={!seedUrl}>
+      <Button onclick={handleStart} disabled={!canStart}>
         {resumableInfo
           ? m['config.resume']()
           : hasResults

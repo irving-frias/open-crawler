@@ -227,6 +227,8 @@
           hasResults={app.results.items.length > 0}
           exporting={app.exportProgress.running}
           bind:seedUrl={app.seedUrl}
+          bind:listMode={app.listMode}
+          bind:urlList={app.urlList}
           bind:maxDepth={app.maxDepth}
           bind:maxCrawlTime={app.maxCrawlTime}
           bind:proxyUrl={app.proxyUrl}

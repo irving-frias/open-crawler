@@ -260,6 +260,8 @@ export interface CrawlConfig {
   id?: string | null;
   project_id?: string | null;
   seed_urls: string[];
+  /** Explicit URL list (list mode): audit exactly these URLs. */
+  url_list?: string[];
   max_depth?: number;
   respect_robots?: boolean;
   concurrency?: number;

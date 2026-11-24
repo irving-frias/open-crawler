@@ -20,6 +20,28 @@ import type { FilterState } from '$lib/features/results/FilterBar.svelte';
 
 const APP_SHELL_KEY = Symbol('open-crawler-app-shell');
 
+/** Parse a pasted/imported URL list: one URL per line, scheme defaulted to
+ * https://, blanks dropped, duplicates removed preserving order. */
+export function parseUrlList(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const url = line.includes('://') ? line : `https://${line}`;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') continue;
+    } catch {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
 export type CrawlStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
 export type TabValue =
   | 'results'
@@ -62,6 +84,8 @@ export interface ExportProgress {
 
 export interface CrawlFormConfig {
   seedUrl: string;
+  listMode: boolean;
+  urlList: string;
   maxDepth: number;
   maxCrawlTime: number;
   respectRobots: boolean;
@@ -83,6 +107,8 @@ export interface AppFields {
   renamingProjectId: string;
   renamingName: string;
   seedUrl: string;
+  listMode: boolean;
+  urlList: string;
   maxDepth: number;
   respectRobots: boolean;
   checkSitemap: boolean;
@@ -97,6 +123,7 @@ export interface AppFields {
   siteUser: string;
   sitePass: string;
   seedUrlsByProject: Record<string, string>;
+  urlListByProject: Record<string, string>;
   configByProject: Record<string, CrawlFormConfig>;
   status: CrawlStatus;
   progress: CrawlProgressState;
@@ -216,7 +243,10 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     cookies: '',
     siteUser: '',
     sitePass: '',
+    listMode: false,
+    urlList: '',
     seedUrlsByProject: {} as Record<string, string>,
+    urlListByProject: {} as Record<string, string>,
     configByProject: {} as Record<string, CrawlFormConfig>,
     status: 'idle' as CrawlStatus,
     progress: { crawled: 0, queued: 0, current: '', errors: 0 } as CrawlProgressState,
@@ -298,6 +328,9 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   if (persisted.seedUrlsByProject && typeof persisted.seedUrlsByProject === 'object') {
     state.seedUrlsByProject = { ...(persisted.seedUrlsByProject as Record<string, string>) };
   }
+  if (persisted.urlListByProject && typeof persisted.urlListByProject === 'object') {
+    state.urlListByProject = { ...(persisted.urlListByProject as Record<string, string>) };
+  }
   if (persisted.configByProject && typeof persisted.configByProject === 'object') {
     state.configByProject = { ...(persisted.configByProject as Record<string, CrawlFormConfig>) };
   }
@@ -308,6 +341,9 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   if (initialConfig) {
     applyFormConfig(initialConfig);
     state.seedUrl = initialConfig.seedUrl;
+    state.urlList = initialConfig.urlList ?? state.urlListByProject[state.selectedProjectId] ?? '';
+  } else {
+    state.urlList = state.urlListByProject[state.selectedProjectId] ?? '';
   }
   if (typeof persisted.pageSize === 'number' && persisted.pageSize > 0)
     state.pageSize = persisted.pageSize;
@@ -337,6 +373,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     const snapshot = {
       selectedProjectId: state.selectedProjectId,
       seedUrlsByProject: state.seedUrlsByProject,
+      urlListByProject: state.urlListByProject,
       seedUrl: state.seedUrl,
       configByProject: state.configByProject,
       pageSize: state.pageSize,
@@ -605,6 +642,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   function captureFormConfig(): CrawlFormConfig {
     return {
       seedUrl: state.seedUrl,
+      listMode: state.listMode,
+      urlList: state.urlList,
       maxDepth: state.maxDepth,
       maxCrawlTime: state.maxCrawlTime,
       respectRobots: state.respectRobots,
@@ -622,6 +661,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   }
 
   function applyFormConfig(cfg: CrawlFormConfig) {
+    state.listMode = cfg.listMode ?? false;
+    state.urlList = cfg.urlList ?? '';
     state.maxDepth = cfg.maxDepth ?? 10;
     state.maxCrawlTime = cfg.maxCrawlTime ?? 3600;
     state.respectRobots = cfg.respectRobots ?? true;
@@ -647,6 +688,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         if (!cfg || disposed) return;
         const restored: CrawlFormConfig = {
           seedUrl: cfg.seed_urls?.[0] ?? '',
+          listMode: (cfg.url_list?.length ?? 0) > 0,
+          urlList: cfg.url_list?.join('\n') ?? '',
           maxDepth: cfg.max_depth ?? 10,
           maxCrawlTime: cfg.max_crawl_time_secs ?? 3600,
           respectRobots: cfg.respect_robots ?? true,
@@ -673,6 +716,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   function selectProject(id: string) {
     if (state.selectedProjectId && state.selectedProjectId !== id) {
       state.seedUrlsByProject[state.selectedProjectId] = state.seedUrl;
+      state.urlListByProject[state.selectedProjectId] = state.urlList;
       state.configByProject[state.selectedProjectId] = captureFormConfig();
     }
     state.selectedProjectId = id;
@@ -680,8 +724,10 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     if (local) {
       applyFormConfig(local);
       state.seedUrl = local.seedUrl;
+      state.urlList = local.urlList;
     } else {
       state.seedUrl = state.seedUrlsByProject[id] ?? '';
+      state.urlList = state.urlListByProject[id] ?? '';
     }
     state.status = 'idle';
     state.progress = { crawled: 0, queued: 0, current: '', errors: 0 };
@@ -842,6 +888,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     if (!state.selectedProjectId) return;
     state.configByProject[state.selectedProjectId] = captureFormConfig();
     state.seedUrlsByProject[state.selectedProjectId] = state.seedUrl;
+    state.urlListByProject[state.selectedProjectId] = state.urlList;
+    const listedUrls = state.listMode ? parseUrlList(state.urlList) : [];
     try {
       state.status = 'running';
       state.error = '';
@@ -852,7 +900,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       state.currentPage = 1;
       state.results = { items: [], total: 0, page: 1, page_size: state.pageSize };
       api.crawl
-        .getFavicon(state.seedUrl.trim())
+        .getFavicon((listedUrls[0] ?? state.seedUrl).trim())
         .then((icon) => {
           if (icon) state.siteFavicon = icon;
         })
@@ -862,7 +910,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       await api.crawl.startCrawl(
         state.selectedProjectId,
         {
-          seed_urls: [state.seedUrl],
+          seed_urls: state.listMode ? [] : [state.seedUrl],
+          url_list: listedUrls,
           max_depth: state.maxDepth,
           respect_robots: state.respectRobots,
           check_sitemap: state.checkSitemap,

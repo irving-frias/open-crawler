@@ -27,6 +27,11 @@ pub struct CrawlConfig {
     pub id: Option<String>,
     pub project_id: Option<String>,
     pub seed_urls: Vec<String>,
+    /// Explicit URL list for list mode: when non-empty, the crawl audits
+    /// exactly these URLs and follows no discovered links (no sitemap
+    /// discovery either). Empty means classic spider mode from `seed_urls`.
+    #[serde(default)]
+    pub url_list: Vec<String>,
     #[serde(default = "default_max_depth")]
     pub max_depth: u32,
     #[serde(default = "default_true")]
@@ -116,6 +121,7 @@ impl Default for CrawlConfig {
             id: None,
             project_id: None,
             seed_urls: Vec::new(),
+            url_list: Vec::new(),
             max_depth: default_max_depth(),
             respect_robots: default_true(),
             concurrency: default_concurrency(),

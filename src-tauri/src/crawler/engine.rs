@@ -140,6 +140,14 @@ impl CrawlEngine {
         };
         let project_id = project_id.to_string();
         info!("=== CRAWL STARTING for project: {} ===", project_id);
+        // List mode: an explicit URL list replaces spidering from seeds.
+        let list_mode = !config.url_list.is_empty();
+        if list_mode {
+            info!(
+                "List mode: auditing {} listed URLs, no link following",
+                config.url_list.len()
+            );
+        }
         info!(
             "Seed URLs: {:?}, Concurrency: {}, Delay: {}ms, Time limit: {}s",
             config.seed_urls, concurrency, config.delay_ms, config.max_crawl_time_secs
@@ -148,8 +156,8 @@ impl CrawlEngine {
         self.visited.clear();
         self.allowed_origins.clear();
 
-        // Extract allowed origins from seed URLs
-        for seed in &config.seed_urls {
+        // Extract allowed origins from seed URLs and the list-mode URLs.
+        for seed in config.seed_urls.iter().chain(config.url_list.iter()) {
             let normalized = if !seed.starts_with("http://") && !seed.starts_with("https://") {
                 format!("https://{}", seed)
             } else {
@@ -251,9 +259,15 @@ impl CrawlEngine {
             }
         }
 
-        // Initialize queue with seed URLs (only if not resuming)
+        // Initialize queue with seed URLs (only if not resuming). In list
+        // mode the explicit URL list replaces the seeds.
         if !is_resume {
-            for seed in &config.seed_urls {
+            let initial_urls: &[String] = if list_mode {
+                &config.url_list
+            } else {
+                &config.seed_urls
+            };
+            for seed in initial_urls {
                 let normalized = if !seed.starts_with("http://") && !seed.starts_with("https://") {
                     format!("https://{}", seed)
                 } else {
@@ -267,8 +281,8 @@ impl CrawlEngine {
             }
         }
 
-        // Sitemap discovery
-        if config.check_sitemap {
+        // Sitemap discovery (skipped in list mode: the list is the crawl).
+        if config.check_sitemap && !list_mode {
             let sitemap_parser = SitemapParser::new(
                 self.client.clone(),
                 config.user_agent(),
@@ -545,6 +559,7 @@ impl CrawlEngine {
                             db_tx_clone,
                             site_client.as_ref(),
                             &extractions_clone,
+                            list_mode,
                         )
                         .await;
 
@@ -829,6 +844,7 @@ impl CrawlEngine {
         db_tx: mpsc::Sender<CrawlResultMsg>,
         site_client: Option<&reqwest::Client>,
         extractions: &[CustomExtraction],
+        list_mode: bool,
     ) -> Result<(u32, u32), AppError> {
         let response = fetcher.fetch(url).await?;
 
@@ -1014,8 +1030,9 @@ impl CrawlEngine {
         // Dedup + enqueue discovered URLs inline (single write-lock pair).
         // This replaces the old shared mpsc channel + dedicated receiver task,
         // which serialized every discovered URL through one task.
+        // In list mode nothing is enqueued: the listed URLs are the crawl.
         let mut new_urls = 0u32;
-        {
+        if !list_mode {
             let mut visited_write = visited.write().await;
             let mut to_enqueue: Vec<(String, u32)> = Vec::new();
             for outgoing_url in &outgoing_urls {
@@ -1221,6 +1238,7 @@ mod tests {
             db_tx,
             None,
             &[],
+            false,
         )
         .await
         .unwrap();
@@ -1297,6 +1315,7 @@ mod tests {
             db_tx,
             None,
             &rules,
+            false,
         )
         .await
         .unwrap();
@@ -1315,6 +1334,76 @@ mod tests {
             Some(r#"{"heading":"Home","links":3}"#),
             "extraction values must be computed from the fetched HTML"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn list_mode_does_not_enqueue_discovered_links() {
+        let origin = spawn_no_sitemap_site().await;
+        let seed = format!("{}/", origin);
+
+        let fetcher =
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let parser = SeoParser::new();
+        let allowed = vec!["http://127.0.0.1".to_string()];
+
+        // List mode: the page is audited but none of its links is enqueued.
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &[],
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pages, 1);
+        assert_eq!(new_urls, 0, "list mode must not enqueue discovered links");
+        assert!(
+            frontier.read().await.drain_all().is_empty(),
+            "frontier must stay empty in list mode"
+        );
+
+        // Spider mode: the same page enqueues /a and /b (external is filtered
+        // by same_origin_only).
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &[],
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pages, 1);
+        assert_eq!(new_urls, 2, "spider mode must enqueue /a and /b");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1356,6 +1445,7 @@ mod tests {
             db_tx,
             None,
             &[],
+            false,
         )
         .await
         .unwrap();
@@ -1456,6 +1546,7 @@ mod tests {
             db_tx,
             None,
             &[],
+            false,
         )
         .await
         .unwrap();

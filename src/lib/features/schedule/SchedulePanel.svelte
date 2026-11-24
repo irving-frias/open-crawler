@@ -5,6 +5,7 @@
   import { cn } from '$lib/utils.js';
   import * as api from '$lib/api';
   import { getAppShell } from '$lib/app.svelte';
+  import { parseUrlList } from '$lib/app.svelte';
   import type { AlertSettings, CrawlConfig, ScheduledJob } from '$lib/api/types';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
@@ -24,6 +25,7 @@
 
   const config = $derived<CrawlConfig>({
     seed_urls: app.seedUrl.trim() ? [app.seedUrl.trim()] : [],
+    url_list: app.listMode ? parseUrlList(app.urlList) : [],
     max_depth: app.maxDepth,
     respect_robots: app.respectRobots,
     check_sitemap: app.checkSitemap,
@@ -70,6 +72,7 @@
     const c = config ?? {};
     return JSON.stringify({
       seed_urls: c.seed_urls ?? [],
+      url_list: c.url_list ?? [],
       max_depth: c.max_depth,
       respect_robots: c.respect_robots,
       check_sitemap: c.check_sitemap,
