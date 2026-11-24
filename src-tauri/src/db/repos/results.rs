@@ -386,6 +386,25 @@ impl<'a> CrawlRepo<'a> {
         })
     }
 
+    /// Id of the most recent crawl of a URL in a project, if any.
+    pub fn get_page_id_by_url(
+        &self,
+        project_id: &str,
+        url: &str,
+    ) -> Result<Option<String>, AppError> {
+        let id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM crawled_pages
+                 WHERE project_id = ?1 AND url = ?2
+                 ORDER BY crawl_timestamp DESC LIMIT 1",
+                params![project_id, url],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(id)
+    }
+
     pub fn get_page_detail(&self, page_id: &str) -> Result<PageDetail, AppError> {
         let result = self.conn.query_row(
             "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, redirect_from_url, response_headers_json, custom_extractions_json

@@ -7,7 +7,7 @@ use lru::LruCache;
 use tauri::Emitter;
 use tokio::sync::{mpsc, RwLock, Semaphore};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
 
@@ -26,6 +26,41 @@ use crate::AppState;
 
 const LRU_CAPACITY: usize = 500_000;
 const QUEUE_FLUSH_URLS: u32 = 100;
+
+/// Where crawl progress events go. The desktop app forwards them to the
+/// frontend as Tauri events; headless runs (MCP server, CLI) only log them.
+/// The Tauri variant also carries the `AppHandle` the scheduled-crawl alert
+/// check needs (desktop notifications), which headless runs skip.
+#[derive(Clone)]
+pub enum CrawlSink {
+    Tauri(Arc<tauri::AppHandle>),
+    Headless,
+}
+
+impl CrawlSink {
+    pub fn emit<T: serde::Serialize>(&self, event: &str, payload: &T) {
+        match self {
+            CrawlSink::Tauri(app) => {
+                if let Err(e) = app.emit(event, payload) {
+                    warn!("Failed to emit {event}: {e}");
+                }
+            }
+            CrawlSink::Headless => {
+                debug!(
+                    "crawl event {event}: {}",
+                    serde_json::to_string(payload).unwrap_or_default()
+                );
+            }
+        }
+    }
+
+    pub fn app_handle(&self) -> Option<Arc<tauri::AppHandle>> {
+        match self {
+            CrawlSink::Tauri(app) => Some(app.clone()),
+            CrawlSink::Headless => None,
+        }
+    }
+}
 
 pub struct CrawlEngine {
     config: Option<CrawlConfig>,
@@ -120,7 +155,7 @@ impl CrawlEngine {
 
     pub async fn start(
         &mut self,
-        app: Arc<tauri::AppHandle>,
+        sink: Arc<CrawlSink>,
         state: Arc<RwLock<AppState>>,
         cancellation: CancellationToken,
         project_id: &str,
@@ -316,9 +351,9 @@ impl CrawlEngine {
                 if fallback {
                     info!("No sitemap for {}, falling back to link discovery", origin);
                 }
-                let _ = app.emit(
+                sink.emit(
                     "sitemap-discovered",
-                    serde_json::json!({
+                    &serde_json::json!({
                         "project_id": project_id,
                         "origin": origin,
                         "urls_found": result.urls.len(),
@@ -372,7 +407,7 @@ impl CrawlEngine {
 
         // Create DbWriter channel
         let (db_tx, db_rx) = create_db_writer_channel(1000);
-        let mut db_writer = DbWriter::new(db_rx, app.clone(), state.clone(), project_id.clone());
+        let mut db_writer = DbWriter::new(db_rx, sink.clone(), state.clone(), project_id.clone());
 
         // Spawn DbWriter task
         let db_writer_handle = tokio::spawn(async move {
@@ -511,9 +546,7 @@ impl CrawlEngine {
                             errors,
                             elapsed_secs: start_time.elapsed().as_secs(),
                         };
-                        if let Err(e) = app.emit("crawl-progress", &progress) {
-                            warn!("Failed to emit progress: {}", e);
-                        }
+                        sink.emit("crawl-progress", &progress);
                     }
 
                     // Acquire semaphore permit
@@ -687,13 +720,13 @@ impl CrawlEngine {
             errors,
             elapsed_secs: start_time.elapsed().as_secs(),
         };
-        let _ = app.emit("crawl-progress", &progress);
+        sink.emit("crawl-progress", &progress);
 
         // Emit completion
         info!("Emitting crawl-complete event for project: {}", project_id);
-        let _ = app.emit(
+        sink.emit(
             "crawl-complete",
-            serde_json::json!({
+            &serde_json::json!({
                 "project_id": &project_id,
                 "pages_crawled": pages_crawled,
                 "errors": errors,
@@ -704,7 +737,7 @@ impl CrawlEngine {
         // Create a crawl snapshot for later comparison (non-blocking)
         {
             let state = state.clone();
-            let app = app.clone();
+            let sink = sink.clone();
             let project_id = project_id.clone();
             let config_id = config_id.clone();
             // Set only for crawls launched by the cron scheduler.
@@ -740,9 +773,14 @@ impl CrawlEngine {
                 };
                 // Scheduled crawl: diff against the previous snapshot and
                 // alert only on new errors. Never fails the crawl itself.
-                if let (Some(snapshot), Some(_)) = (snapshot, scheduled_job_id.as_ref()) {
+                // Headless runs have no AppHandle, so they skip the desktop
+                // notification (the snapshot itself is still created).
+                let app_handle = sink.app_handle();
+                if let (Some(snapshot), Some(_), Some(app_handle)) =
+                    (snapshot, scheduled_job_id.as_ref(), app_handle)
+                {
                     match crate::features::alerts::service::check_and_notify(
-                        &app,
+                        &app_handle,
                         &state,
                         &project_id,
                         &snapshot,

@@ -60,6 +60,40 @@ pub struct AppState {
     pub transfer_server: std::sync::Mutex<Option<crate::transfer::server::TransferServerState>>,
 }
 
+/// Open (creating it if needed) the app database and build the shared
+/// `AppState`: connection + performance pragmas + migrations. Shared by the
+/// desktop app (`setup`) and headless runs (MCP server, CLI).
+pub fn open_app_state(db_path: &std::path::Path) -> Result<AppState, crate::error::AppError> {
+    info!("Opening database at: {:?}", db_path);
+    let conn = rusqlite::Connection::open(db_path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "busy_timeout", 5000)?;
+    // WAL + synchronous=NORMAL is the recommended fast/durable combo: the
+    // checkpoint guarantees crash-consistency and NORMAL only risks losing
+    // the latest transactions on OS power loss (never DB corruption).
+    // This is the single biggest write-throughput lever for the DbWriter.
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    // 64MB page cache (negative value = kilobytes) and mmap for fast reads.
+    conn.pragma_update(None, "cache_size", -65536)?;
+    conn.pragma_update(None, "mmap_size", 268435456)?;
+    // Keep sort/intermediate results out of the disk for the json_each
+    // grouping and ORDER BY queries.
+    conn.pragma_update(None, "temp_store", "MEMORY")?;
+
+    // Run migrations
+    crate::db::schema::run_migrations(&conn)?;
+
+    Ok(AppState {
+        db: Mutex::new(conn),
+        crawls: Arc::new(RwLock::new(HashMap::new())),
+        seo_audits: Arc::new(RwLock::new(HashMap::new())),
+        results_cache: Arc::new(Mutex::new(lru::LruCache::new(
+            NonZeroUsize::new(512).unwrap(),
+        ))),
+        transfer_server: std::sync::Mutex::new(None),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -105,62 +139,12 @@ pub fn run() {
             }
 
             let db_path = app_data_dir.join("open-crawler.db");
-            info!("Opening database at: {:?}", db_path);
-
-            let conn = match rusqlite::Connection::open(&db_path) {
-                Ok(conn) => conn,
+            let state = match open_app_state(&db_path) {
+                Ok(state) => state,
                 Err(e) => {
                     tracing::error!("Failed to open database: {}", e);
                     return Err(Box::new(e) as Box<dyn std::error::Error>);
                 }
-            };
-
-            if let Err(e) = conn.pragma_update(None, "journal_mode", "WAL") {
-                tracing::error!("Failed to enable WAL mode: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-            if let Err(e) = conn.pragma_update(None, "busy_timeout", 5000) {
-                tracing::error!("Failed to set busy_timeout: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-            // WAL + synchronous=NORMAL is the recommended fast/durable combo: the
-            // checkpoint guarantees crash-consistency and NORMAL only risks losing
-            // the latest transactions on OS power loss (never DB corruption).
-            // This is the single biggest write-throughput lever for the DbWriter.
-            if let Err(e) = conn.pragma_update(None, "synchronous", "NORMAL") {
-                tracing::error!("Failed to set synchronous=NORMAL: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-            // 64MB page cache (negative value = kilobytes) and mmap for fast reads.
-            if let Err(e) = conn.pragma_update(None, "cache_size", -65536) {
-                tracing::error!("Failed to set cache_size: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-            if let Err(e) = conn.pragma_update(None, "mmap_size", 268435456) {
-                tracing::error!("Failed to set mmap_size: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-            // Keep sort/intermediate results out of the disk for the json_each
-            // grouping and ORDER BY queries.
-            if let Err(e) = conn.pragma_update(None, "temp_store", "MEMORY") {
-                tracing::error!("Failed to set temp_store: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-
-            // Run migrations
-            if let Err(e) = crate::db::schema::run_migrations(&conn) {
-                tracing::error!("Failed to run migrations: {}", e);
-                return Err(Box::new(e) as Box<dyn std::error::Error>);
-            }
-
-            let state = AppState {
-                db: Mutex::new(conn),
-                crawls: Arc::new(RwLock::new(HashMap::new())),
-                seo_audits: Arc::new(RwLock::new(HashMap::new())),
-                results_cache: Arc::new(Mutex::new(lru::LruCache::new(
-                    NonZeroUsize::new(512).unwrap(),
-                ))),
-                transfer_server: std::sync::Mutex::new(None),
             };
 
             app.manage(Arc::new(RwLock::new(state)));

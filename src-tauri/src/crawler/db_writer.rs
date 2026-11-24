@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tauri::Emitter;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
+use crate::crawler::engine::CrawlSink;
 use crate::db::CrawlRepo;
 use crate::models::{CrawlResult, PageLink, RedirectRecord};
 use crate::AppState;
@@ -36,7 +36,7 @@ pub struct DbWriter {
     batch_size: usize,
     flush_interval: Duration,
     last_flush: Instant,
-    app_handle: Arc<tauri::AppHandle>,
+    sink: Arc<CrawlSink>,
     state: Arc<RwLock<AppState>>,
     project_id: String,
     total_crawled: u32,
@@ -46,7 +46,7 @@ pub struct DbWriter {
 impl DbWriter {
     pub fn new(
         rx: mpsc::Receiver<CrawlResultMsg>,
-        app_handle: Arc<tauri::AppHandle>,
+        sink: Arc<CrawlSink>,
         state: Arc<RwLock<AppState>>,
         project_id: String,
     ) -> Self {
@@ -58,7 +58,7 @@ impl DbWriter {
             batch_size: DEFAULT_BATCH_SIZE,
             flush_interval: Duration::from_millis(DEFAULT_FLUSH_INTERVAL_MS),
             last_flush: Instant::now(),
-            app_handle,
+            sink,
             state,
             project_id,
             total_crawled: 0,
@@ -246,17 +246,15 @@ impl DbWriter {
 
         // Emit crawl-batch event on every flush so results appear on-demand
         if count > 0 {
-            if let Err(e) = self.app_handle.emit(
+            self.sink.emit(
                 "crawl-batch",
-                serde_json::json!({
+                &serde_json::json!({
                     "project_id": &self.project_id,
                     "count": count,
                     "total": self.total_crawled,
                     "errors": self.total_errors,
                 }),
-            ) {
-                warn!("Failed to emit crawl-batch: {}", e);
-            }
+            );
         }
 
         info!(
