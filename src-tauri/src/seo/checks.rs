@@ -4,6 +4,7 @@ use url::Url;
 use crate::crawler::parser::{SemanticIssue, SeoData};
 
 use super::audit::{AuditContext, CheckResult};
+use super::spelling::{check_visible_text, SpellingTypo};
 
 /// Extra page signals extracted from the raw HTML (a second, light DOM pass).
 #[derive(Debug, Clone, Default)]
@@ -49,6 +50,8 @@ pub struct PageExtras {
     pub manifest: bool,
     pub section_total: usize,
     pub section_with_heading: usize,
+    /// Erratas conocidas en el texto visible (title, h1–h6, p), máx 25.
+    pub spelling_typos: Vec<SpellingTypo>,
 }
 
 impl PageExtras {
@@ -244,6 +247,13 @@ impl PageExtras {
                 .next()
                 .and_then(|el| el.value().attr("content").map(|s| s.to_string()));
         }
+
+        // Spelling: known typos in visible text (title, headings, paragraphs)
+        let html_lang = Selector::parse("html")
+            .ok()
+            .and_then(|sel| document.select(&sel).next())
+            .and_then(|el| el.value().attr("lang").map(|s| s.to_string()));
+        extras.spelling_typos = check_visible_text(&document, html_lang.as_deref());
 
         extras
     }
@@ -2024,6 +2034,56 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
         "Add substantive text content to the page.",
         None,
     ));
+    let typo_count = extras.spelling_typos.len();
+    let mut spelling_check = check(
+        "spelling_errors",
+        "ai_readability",
+        "warning",
+        typo_count == 0,
+        1.0,
+        format!("Spelling errors: {typo_count}"),
+        "Fix the misspelled words shown in the examples.",
+        if typo_count == 0 {
+            None
+        } else {
+            Some(
+                extras
+                    .spelling_typos
+                    .iter()
+                    .take(3)
+                    .map(|t| {
+                        format!(
+                            "\"{}\" → \"{}\" ({})",
+                            t.word,
+                            t.suggestion,
+                            t.source.label()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        },
+    );
+    if typo_count > 0 {
+        spelling_check.examples = extras
+            .spelling_typos
+            .iter()
+            .take(5)
+            .map(|t| SemanticIssue {
+                issue_type: "spelling_error".to_string(),
+                severity: "warning".to_string(),
+                element: t.source.label().to_string(),
+                message: format!("\"{}\" should be \"{}\"", t.word, t.suggestion),
+                selector: None,
+                xpath: None,
+                css_selector: None,
+                snippet: Some(t.word.clone()),
+                line: None,
+                column: None,
+            })
+            .collect();
+    }
+    out.push(spelling_check);
 
     // ==================== SXO / AEO / AIO ====================
     out.push(check(
@@ -3342,6 +3402,55 @@ mod tests {
         assert!(
             check(&out, "external_sources_cited").passed,
             "thin content skips"
+        );
+    }
+
+    #[test]
+    fn test_spelling_check_fails_with_typos() {
+        let html = "<!DOCTYPE html><html lang=\"es\"><head><title>Pagina principal</title></head>\
+            <body><h1>Bienvenidos a nuestra pagina</h1>\
+            <p>Esta pagina tiene informacion tambien.</p></body></html>";
+        let out = run(html, "https://example.com/page");
+        let c = check(&out, "spelling_errors");
+        assert!(!c.passed, "typos ES deben fallar el check");
+        assert_eq!(c.category, "ai_readability");
+        assert_eq!(c.examples.len(), 3, "ejemplos: {:?}", c.examples);
+        assert!(
+            c.message.contains("Spelling errors: 3"),
+            "mensaje: {}",
+            c.message
+        );
+    }
+
+    #[test]
+    fn test_spelling_check_passes_without_typos() {
+        let html = "<!DOCTYPE html><html lang=\"en\"><head><title>Welcome guide</title></head>\
+            <body><h1>Getting started</h1>\
+            <p>The quick brown fox jumps over the lazy dog.</p></body></html>";
+        let out = run(html, "https://example.com/page");
+        let c = check(&out, "spelling_errors");
+        assert!(c.passed, "sin erratas debe pasar: {}", c.message);
+        assert!(c.examples.is_empty());
+    }
+
+    #[test]
+    fn test_spelling_respects_lang() {
+        // `tambien` es errata en ES pero palabra desconocida (no errata) en EN.
+        let es = "<!DOCTYPE html><html lang=\"es\"><body><p>Pagina tambien.</p></body></html>";
+        let extras = PageExtras::extract(es, "https://example.com/page");
+        assert_eq!(
+            extras.spelling_typos.len(),
+            2,
+            "{:?}",
+            extras.spelling_typos
+        );
+
+        let en = "<!DOCTYPE html><html lang=\"en\"><body><p>Pagina tambien.</p></body></html>";
+        let extras = PageExtras::extract(en, "https://example.com/page");
+        assert!(
+            extras.spelling_typos.is_empty(),
+            "EN no debe marcar palabras ES: {:?}",
+            extras.spelling_typos
         );
     }
 }

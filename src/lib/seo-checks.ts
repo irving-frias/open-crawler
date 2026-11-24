@@ -601,6 +601,16 @@ const DICT: Record<string, CheckDictEntry> = {
       guidance: 'Añade contenido de texto sustancial a la página.',
     },
   },
+  spelling_errors: {
+    en: {
+      message: 'Spelling errors: {0}',
+      guidance: 'Fix the misspelled words shown in the examples.',
+    },
+    es: {
+      message: 'Errores de ortografía: {0}',
+      guidance: 'Corrige las palabras mal escritas que se muestran en los ejemplos.',
+    },
+  },
 
   // ==================== SXO / AEO / AIO ====================
   structured_data: {
@@ -1391,6 +1401,10 @@ const WHY: Record<string, { en: string; es: string }> = {
     en: 'With too little text there is nothing for engines or AI to understand.',
     es: 'Con muy poco texto, no hay nada que los buscadores o la IA puedan entender.',
   },
+  spelling_errors: {
+    en: 'Misspelled words undermine trust and make content harder for AI to quote.',
+    es: 'Las palabras mal escritas restan confianza y dificultan que la IA cite el contenido.',
+  },
   structured_data: {
     en: 'JSON-LD structured data helps engines and AI understand and cite the page entities.',
     es: 'Los datos estructurados JSON-LD ayudan a los buscadores y a la IA a entender y citar las entidades de la página.',
@@ -2151,6 +2165,16 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Añade contenido de texto sustancial a la página.',
       expected: 'Escribe párrafos originales, no solo palabras clave o imágenes.',
+    },
+  },
+  spelling_errors: {
+    en: {
+      fix: 'Correct each misspelled word shown in the examples.',
+      expected: 'Title, headings and paragraphs without spelling errors.',
+    },
+    es: {
+      fix: 'Corrige cada palabra mal escrita que se muestra en los ejemplos.',
+      expected: 'Título, encabezados y párrafos sin errores de ortografía.',
     },
   },
   structured_data: {
