@@ -288,9 +288,11 @@ fn read_two_byte_len(data: &[u8], i: usize) -> Result<usize, crate::error::AppEr
 
 fn decode_unicode(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter_map(|c| {
-            let unit = u16::from_be_bytes([c[0], c[1]]);
+            let unit = u16::from_be_bytes(*c);
             (unit != 0).then_some(unit)
         })
         .collect();

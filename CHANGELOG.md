@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-24
+
+Patch release after three months paused. No new features.
+
+### Fixed
+
+- Clippy warning in OBEX Unicode decoding (`src-tauri/src/transfer/obex/codec.rs`): `chunks_exact(2)` replaced with `as_chunks::<2>()`.
+- `svelte-check` in a fresh clone failed with missing Paraglide modules until a build had run; documented order is build first, then check.
+
+### Changed
+
+- Dependency patches (no major upgrades, no GTK4 migration): Tauri 2.11.5 -> 2.12.7 with matching `tauri-plugin-*` crates, `lru` 0.18.2 -> 0.18.5, Tokio 1.53.1 -> 1.54.1; frontend patches within the same majors (Svelte 5.59.1, Vite 6.4.6, TypeScript 5.9.3, Paraglide 2.29.3).
+- `glib` stays at 0.18.5 (allowed warning, RUSTSEC-2024-0429, GTK3 pinned by Tauri).
+
 ## [1.0.0] - 2026-08-16
 
 First stable release. SEO audit tool for web crawlers with semantic analysis,
@@ -74,5 +88,6 @@ Third milestone release. 10 desktop platforms + Android APK/AAB.
 
 - Clippy `-D warnings` issues in link analysis ordering.
 
+[1.0.1]: https://github.com/irving-frias/open-crawler/releases/tag/v1.0.1
 [1.0.0]: https://github.com/irving-frias/open-crawler/releases/tag/v1.0.0
 [0.3.0]: https://github.com/irving-frias/open-crawler/releases/tag/0.3.0
