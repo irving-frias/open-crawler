@@ -366,8 +366,8 @@ mod tests {
             anchor_text: anchor.map(|a| a.to_string()),
             is_follow: !rel_tokens.iter().any(|t| t == "nofollow"),
             rel_tokens,
-            is_sponsored: rel.iter().any(|t| *t == "sponsored"),
-            is_ugc: rel.iter().any(|t| *t == "ugc"),
+            is_sponsored: rel.contains(&"sponsored"),
+            is_ugc: rel.contains(&"ugc"),
             is_internal: false,
         }
     }

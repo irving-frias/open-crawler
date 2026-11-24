@@ -893,7 +893,9 @@ impl<'a> OpenPass<'a> {
         fmt: &Formats,
         pass: &'a PagePass<'a>,
     ) -> Result<Self, AppError> {
-        let mut ws = workbook.new_worksheet_with_constant_memory();
+        let mut ws = workbook
+            .new_worksheet_with_constant_memory()
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         ws.set_name(sheet_name(pass.base_name, 0, sheet_count(pass.total_rows)))
             .map_err(|e| AppError::Crawl(e.to_string()))?;
         write_headers(&mut ws, &fmt.header, pass.headers)?;
@@ -918,7 +920,9 @@ impl<'a> OpenPass<'a> {
         finalize_sheet(&mut self.sheets[self.cur], MAX_ROWS_PER_SHEET, num_cols)?;
         apply_widths(&mut self.sheets[self.cur], self.pass.widths)?;
         let idx = self.sheets.len();
-        let mut ws = workbook.new_worksheet_with_constant_memory();
+        let mut ws = workbook
+            .new_worksheet_with_constant_memory()
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         ws.set_name(sheet_name(
             self.pass.base_name,
             idx,
@@ -1150,7 +1154,9 @@ async fn export_xlsx(
         let num_sheets = sheet_count(total_links);
         let mut sheet_idx: usize = 0;
         let mut sheet_rows: u32 = 1;
-        let mut ws = workbook.add_worksheet_with_constant_memory();
+        let mut ws = workbook
+            .add_worksheet_with_constant_memory()
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
         ws.set_name(sheet_name("Links", 0, num_sheets))
             .map_err(|e| AppError::Crawl(e.to_string()))?;
         for (col, h) in LINK_HEADERS.iter().enumerate() {
@@ -1173,7 +1179,9 @@ async fn export_xlsx(
                     finalize_sheet(ws, MAX_ROWS_PER_SHEET, 5)?;
                     apply_widths(ws, &[(1, 60.0)])?;
                     sheet_idx += 1;
-                    ws = workbook.add_worksheet_with_constant_memory();
+                    ws = workbook
+                        .add_worksheet_with_constant_memory()
+                        .map_err(|e| AppError::Crawl(e.to_string()))?;
                     ws.set_name(sheet_name("Links", sheet_idx, num_sheets))
                         .map_err(|e| AppError::Crawl(e.to_string()))?;
                     for (col, h) in LINK_HEADERS.iter().enumerate() {

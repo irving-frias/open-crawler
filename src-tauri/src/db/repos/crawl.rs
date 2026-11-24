@@ -267,7 +267,7 @@ impl<'a> CrawlRepo<'a> {
                 result.h1,
                 result.canonical,
                 result.size_bytes.map(|s| s as i64),
-                result.load_time_ms,
+                result.load_time_ms.map(|t| t as i64),
                 result.is_indexable.map(|i| i as i32),
                 result.depth as i32,
                 result.parent_url,
@@ -422,7 +422,7 @@ impl<'a> CrawlRepo<'a> {
                     sql_box(result.h1.clone()),
                     sql_box(result.canonical.clone()),
                     sql_box(result.size_bytes.map(|s| s as i64)),
-                    sql_box(result.load_time_ms),
+                    sql_box(result.load_time_ms.map(|t| t as i64)),
                     sql_box(result.is_indexable.map(|i| i as i32)),
                     sql_box(result.depth as i32),
                     sql_box(result.parent_url.clone()),
@@ -623,7 +623,7 @@ impl<'a> CrawlRepo<'a> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(
             "UPDATE crawl_sessions SET pages_crawled = ?1, errors = ?2, elapsed_secs = ?3, updated_at = ?4 WHERE id = ?5",
-            params![pages_crawled, errors, elapsed_secs, now, session_id],
+            params![pages_crawled, errors, elapsed_secs as i64, now, session_id],
         )?;
         Ok(())
     }
@@ -653,7 +653,7 @@ impl<'a> CrawlRepo<'a> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(
             "UPDATE crawl_sessions SET status = 'interrupted', pages_crawled = ?1, errors = ?2, elapsed_secs = ?3, updated_at = ?4 WHERE id = ?5",
-            params![pages_crawled, errors, elapsed_secs, now, session_id],
+            params![pages_crawled, errors, elapsed_secs as i64, now, session_id],
         )?;
         info!("Interrupted crawl session: {}", session_id);
         Ok(())
@@ -690,7 +690,7 @@ impl<'a> CrawlRepo<'a> {
                     status: row.get(3)?,
                     pages_crawled: row.get(4)?,
                     errors: row.get(5)?,
-                    elapsed_secs: row.get(6)?,
+                    elapsed_secs: row.get::<_, i64>(6)? as u64,
                     seed_urls: row.get(7)?,
                     created_at: row.get(8)?,
                     updated_at: row.get(9)?,

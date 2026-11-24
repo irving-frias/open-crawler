@@ -1834,8 +1834,10 @@ mod tests {
     #[test]
     fn test_discard_session_drops_queue_and_resumable() {
         let repo = test_repo();
-        let mut config = crate::models::CrawlConfig::default();
-        config.seed_urls = vec!["https://example.com/".to_string()];
+        let config = crate::models::CrawlConfig {
+            seed_urls: vec!["https://example.com/".to_string()],
+            ..Default::default()
+        };
         let session_id = repo.create_session("p1", &config).unwrap();
         repo.save_queue_batch(
             &session_id,

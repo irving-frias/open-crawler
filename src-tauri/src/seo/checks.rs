@@ -2670,6 +2670,7 @@ mod tests {
         run_all(&seo, &extras, &ctx(url))
     }
 
+    #[allow(dead_code)]
     fn run_default(html: &str, url: &str) -> Vec<CheckResult> {
         let extras = PageExtras::extract(html, url);
         run_all(&SeoData::default(), &extras, &ctx(url))

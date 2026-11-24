@@ -181,8 +181,8 @@ fn export_package_inner(
             Ok(ManifestProject {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                page_count: r.get(2)?,
-                size_bytes: r.get(3)?,
+                page_count: r.get::<_, i64>(2)? as u64,
+                size_bytes: r.get::<_, i64>(3)? as u64,
                 has_html: r.get::<_, i64>(4)? != 0,
                 has_screenshots: r.get::<_, i64>(5)? != 0,
             })
@@ -408,7 +408,8 @@ fn read_package(file_path: &Path, dir: &Path) -> Result<PackageManifest, AppErro
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        match entry.name() {
+        let name = entry.name()?.into_owned();
+        match name.as_str() {
             MANIFEST_ENTRY => {
                 let mut buf = String::new();
                 entry.read_to_string(&mut buf)?;
@@ -472,7 +473,7 @@ fn copy_projects(
                 name: r.get(1)?,
                 created_at: r.get(2)?,
                 updated_at: r.get(3)?,
-                page_count: r.get(4)?,
+                page_count: r.get::<_, i64>(4)? as u64,
             })
         })?
         .filter_map(|r| r.ok())
@@ -1284,7 +1285,7 @@ mod tests {
         // Zip contains exactly the two entries and a correct checksum.
         let archive = File::open(&pkg_path).unwrap();
         let mut zip = zip::ZipArchive::new(archive).unwrap();
-        let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+        let names: Vec<String> = zip.file_names().map(|n| n.unwrap().into_owned()).collect();
         assert_eq!(names, vec!["manifest.json", DB_ENTRY]);
         let mut mf = zip.by_name(MANIFEST_ENTRY).unwrap();
         let mut raw = String::new();
