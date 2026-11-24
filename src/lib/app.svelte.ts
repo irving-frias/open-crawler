@@ -825,7 +825,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
 
   // ==================== CRAWL ====================
 
-  async function startCrawl(_resume: boolean = false) {
+  async function startCrawl(resume: boolean = false) {
     if (!state.selectedProjectId) return;
     state.configByProject[state.selectedProjectId] = captureFormConfig();
     state.seedUrlsByProject[state.selectedProjectId] = state.seedUrl;
@@ -834,6 +834,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       state.error = '';
       state.sitemapInfo = '';
       state.showResumeDialog = false;
+      state.resumableInfo = null;
       state.streamedCount = 0;
       state.currentPage = 1;
       state.results = { items: [], total: 0, page: 1, page_size: state.pageSize };
@@ -845,30 +846,34 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         .catch(() => {
           state.siteFavicon = '';
         });
-      await api.crawl.startCrawl(state.selectedProjectId, {
-        seed_urls: [state.seedUrl],
-        max_depth: state.maxDepth,
-        respect_robots: state.respectRobots,
-        check_sitemap: state.checkSitemap,
-        check_semantics: state.checkSemantics,
-        render_js: state.renderJs,
-        max_crawl_time_secs: state.maxCrawlTime,
-        cookies: state.cookies
-          .split('\n')
-          .map((c) => c.trim())
-          .filter((c) => c.length > 0),
-        site_auth:
-          state.siteUser.trim() || state.sitePass
-            ? { username: state.siteUser, password: state.sitePass }
+      await api.crawl.startCrawl(
+        state.selectedProjectId,
+        {
+          seed_urls: [state.seedUrl],
+          max_depth: state.maxDepth,
+          respect_robots: state.respectRobots,
+          check_sitemap: state.checkSitemap,
+          check_semantics: state.checkSemantics,
+          render_js: state.renderJs,
+          max_crawl_time_secs: state.maxCrawlTime,
+          cookies: state.cookies
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c.length > 0),
+          site_auth:
+            state.siteUser.trim() || state.sitePass
+              ? { username: state.siteUser, password: state.sitePass }
+              : null,
+          proxy: state.proxyUrl.trim()
+            ? {
+                url: state.proxyUrl.trim(),
+                username: state.proxyUser.trim() || null,
+                password: state.proxyPass || null,
+              }
             : null,
-        proxy: state.proxyUrl.trim()
-          ? {
-              url: state.proxyUrl.trim(),
-              username: state.proxyUser.trim() || null,
-              password: state.proxyPass || null,
-            }
-          : null,
-      });
+        },
+        resume
+      );
     } catch (e) {
       state.status = 'error';
       state.error = String(e);
@@ -888,7 +893,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     if (!state.selectedProjectId) return;
     try {
       await api.crawl.stopCrawl(state.selectedProjectId);
-      toast.info(m['progress.title']() + ': stopped');
+      toast.info(m['notifications.crawl_stopped']());
     } catch (e) {
       state.error = String(e);
       toast.error(String(e));

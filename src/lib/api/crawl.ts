@@ -1,8 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { CrawlConfig, CrawlProgress, JsAvailability, ResumableCrawlInfo } from './types';
 
-export function startCrawl(projectId: string, config: CrawlConfig): Promise<void> {
-  return invoke<void>('start_crawl', { projectId, config });
+export function startCrawl(
+  projectId: string,
+  config: CrawlConfig,
+  resume: boolean = false
+): Promise<void> {
+  return invoke<void>('start_crawl', { projectId, config, resume });
 }
 
 export function stopCrawl(projectId: string): Promise<void> {

@@ -123,6 +123,7 @@ impl CrawlEngine {
         state: Arc<RwLock<AppState>>,
         cancellation: CancellationToken,
         project_id: &str,
+        resume: bool,
     ) -> Result<(), AppError> {
         let config = self
             .config
@@ -190,7 +191,9 @@ impl CrawlEngine {
         // Initialize frontier
         self.frontier = Some(Frontier::new(config.max_depth, 100_000));
 
-        // Check for interrupted session (resume)
+        // Check for interrupted session (resume). A fresh start discards
+        // it first: without this, starting "fresh" silently resumed the
+        // interrupted queue, because the engine always auto-resumed.
         let session_id;
         let is_resume;
         {
@@ -201,37 +204,49 @@ impl CrawlEngine {
                 .map_err(|e| AppError::Crawl(e.to_string()))?;
             let repo = CrawlRepo::new(&db, None);
 
-            if let Some(interrupted) = repo.get_interrupted_session(&project_id)? {
-                info!(
-                    "Found interrupted session: {} (pages: {}, errors: {}, elapsed: {}s)",
-                    interrupted.id,
-                    interrupted.pages_crawled,
-                    interrupted.errors,
-                    interrupted.elapsed_secs
-                );
-                session_id = interrupted.id.clone();
+            match repo.get_interrupted_session(&project_id)? {
+                Some(interrupted) if resume => {
+                    info!(
+                        "Found interrupted session: {} (pages: {}, errors: {}, elapsed: {}s)",
+                        interrupted.id,
+                        interrupted.pages_crawled,
+                        interrupted.errors,
+                        interrupted.elapsed_secs
+                    );
+                    session_id = interrupted.id.clone();
 
-                // Load visited URLs from DB
-                let visited_urls = repo.get_visited_urls_for_project(&project_id)?;
-                for url in &visited_urls {
-                    self.mark_visited(url.clone());
+                    // Load visited URLs from DB
+                    let visited_urls = repo.get_visited_urls_for_project(&project_id)?;
+                    for url in &visited_urls {
+                        self.mark_visited(url.clone());
+                    }
+
+                    // Load queue from DB
+                    let queue_entries = repo.load_queue(&session_id)?;
+                    let frontier = self.frontier.as_mut().unwrap();
+                    frontier.restore(queue_entries);
+
+                    is_resume = true;
+                    info!(
+                        "Resuming: {} queued URLs, {} visited URLs loaded",
+                        frontier.len(),
+                        self.visited.len()
+                    );
                 }
-
-                // Load queue from DB
-                let queue_entries = repo.load_queue(&session_id)?;
-                let frontier = self.frontier.as_mut().unwrap();
-                frontier.restore(queue_entries);
-
-                is_resume = true;
-                info!(
-                    "Resuming: {} queued URLs, {} visited URLs loaded",
-                    frontier.len(),
-                    self.visited.len()
-                );
-            } else {
-                // Create new session
-                session_id = repo.create_session(&project_id, &config)?;
-                is_resume = false;
+                Some(interrupted) => {
+                    info!(
+                        "Discarding interrupted session {} for a fresh start",
+                        interrupted.id
+                    );
+                    repo.discard_session(&interrupted.id)?;
+                    session_id = repo.create_session(&project_id, &config)?;
+                    is_resume = false;
+                }
+                None => {
+                    // Create new session
+                    session_id = repo.create_session(&project_id, &config)?;
+                    is_resume = false;
+                }
             }
         }
 

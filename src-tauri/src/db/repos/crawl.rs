@@ -659,6 +659,20 @@ impl<'a> CrawlRepo<'a> {
         Ok(())
     }
 
+    /// Discards an interrupted session for a fresh start: it no longer
+    /// counts as resumable and its saved queue is dropped, so the next
+    /// crawl starts from the seed URLs instead of silently resuming.
+    pub fn discard_session(&self, session_id: &str) -> Result<(), AppError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE crawl_sessions SET status = 'discarded', updated_at = ?1 WHERE id = ?2",
+            params![now, session_id],
+        )?;
+        self.clear_queue(session_id)?;
+        info!("Discarded crawl session: {}", session_id);
+        Ok(())
+    }
+
     pub fn get_interrupted_session(
         &self,
         project_id: &str,

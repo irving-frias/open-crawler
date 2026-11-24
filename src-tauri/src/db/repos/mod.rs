@@ -1830,4 +1830,27 @@ mod tests {
         // Empty batch is a no-op, not an error.
         repo.update_seo_audits_batch("p1", &[]).unwrap();
     }
+
+    #[test]
+    fn test_discard_session_drops_queue_and_resumable() {
+        let repo = test_repo();
+        let mut config = crate::models::CrawlConfig::default();
+        config.seed_urls = vec!["https://example.com/".to_string()];
+        let session_id = repo.create_session("p1", &config).unwrap();
+        repo.save_queue_batch(
+            &session_id,
+            &[
+                ("https://example.com/a".to_string(), 1),
+                ("https://example.com/b".to_string(), 1),
+            ],
+        )
+        .unwrap();
+        repo.interrupt_session(&session_id, 3, 0, 42).unwrap();
+        assert!(repo.get_interrupted_session("p1").unwrap().is_some());
+
+        repo.discard_session(&session_id).unwrap();
+
+        assert!(repo.get_interrupted_session("p1").unwrap().is_none());
+        assert!(repo.load_queue(&session_id).unwrap().is_empty());
+    }
 }

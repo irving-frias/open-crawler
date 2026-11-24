@@ -50,7 +50,7 @@
   "resume.title": "¿Reanudar Rastreo Anterior?",
   "resume.found": "Se encontró un rastreo interrumpido con {pages} páginas rastreadas, {urls} URLs restantes, tiempo transcurrido {time}",
   "resume.resume_btn": "Reanudar Rastreo",
-  "resume.fresh_btn": "Iniciar Fresh",
+  "resume.fresh_btn": "Iniciar desde cero",
   "resume.cancel": "Cancelar",
   "resume.hint": "Rastreo interrumpido: {pages} páginas hechas, {urls} URLs restantes",
   "tabs.results": "Resultados ({count})",

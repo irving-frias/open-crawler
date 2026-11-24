@@ -50,18 +50,23 @@ pub async fn start_crawl(
     state: State<'_, Arc<RwLock<AppState>>>,
     config: CrawlConfig,
     project_id: String,
+    resume: bool,
 ) -> Result<(), AppError> {
-    start_crawl_internal(app, state.inner().clone(), config, &project_id).await
+    start_crawl_internal(app, state.inner().clone(), config, &project_id, resume).await
 }
 
 /// Shared crawl-launch path used by the `start_crawl` command and the cron
 /// scheduler. Registers the crawl in `AppState.crawls`, emits `crawl-started`
-/// and spawns the engine on the background runtime.
+/// and spawns the engine on the background runtime. `resume` decides whether
+/// an interrupted session is restored (`true`) or discarded for a fresh
+/// start (`false`); the engine used to auto-resume unconditionally, so a
+/// "fresh" start silently resumed the old queue.
 pub(crate) async fn start_crawl_internal(
     app: AppHandle,
     state: Arc<RwLock<AppState>>,
     mut config: CrawlConfig,
     project_id: &str,
+    resume: bool,
 ) -> Result<(), AppError> {
     info!(
         "start_crawl called for project: {} with config: {:?}",
@@ -135,6 +140,7 @@ pub(crate) async fn start_crawl_internal(
                 state_clone.clone(),
                 token,
                 &project_id_clone,
+                resume,
             )
             .await;
 
