@@ -308,6 +308,22 @@ export interface UpdateScheduledJobRequest {
   enabled?: boolean | null;
 }
 
+export interface AlertSettings {
+  project_id: string;
+  enabled: boolean;
+  channels: string[];
+  min_severity: string;
+  quiet_start?: string | null;
+  quiet_end?: string | null;
+  last_alerted_snapshot_id?: string | null;
+}
+
+export interface TestAlertResult {
+  desktop_sent: boolean;
+  telegram_sent: boolean;
+  telegram_configured: boolean;
+}
+
 export interface SeoCheckResult {
   id: string;
   category: string;

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { getSettings, saveSettings } from '$lib/api/settings';
+  import { testAlertNotification } from '$lib/api/alerts';
+  import { toast } from 'svelte-sonner';
   import type { SettingsMap } from '$lib/api/types';
   import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
   import { m } from '$lib/paraglide/messages.js';
@@ -40,6 +42,14 @@
   let aiRemoveKey = $state(false);
   let aiBaseUrl = $state('https://api.openai.com/v1');
   let aiModel = $state('gpt-4o-mini');
+  let telegramBotToken = $state('');
+  let telegramTokenSet = $state(false);
+  let telegramRemoveToken = $state(false);
+  let telegramChatId = $state('');
+  let telegramChatIdSet = $state(false);
+  let telegramRemoveChatId = $state(false);
+  let testingAlert = $state(false);
+  let testAlertMessage = $state<string | null>(null);
   let saving = $state(false);
   let updaterStatus: UpdaterStatus = $state('idle');
   let updaterVersion: string | null = $state(null);
@@ -70,6 +80,11 @@
       aiRemoveKey = false;
       if (settings.ai_base_url) aiBaseUrl = settings.ai_base_url;
       if (settings.ai_model) aiModel = settings.ai_model;
+      telegramTokenSet = settings.telegram_bot_token_set === 'true';
+      telegramRemoveToken = false;
+      telegramChatIdSet = settings.telegram_chat_id_set === 'true';
+      telegramRemoveChatId = false;
+      testAlertMessage = null;
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -96,6 +111,10 @@
       else if (pagespeedRemoveKey) settings.pagespeed_api_key = '';
       if (aiApiKey) settings.ai_api_key = aiApiKey;
       else if (aiRemoveKey) settings.ai_api_key = '';
+      if (telegramBotToken) settings.telegram_bot_token = telegramBotToken;
+      else if (telegramRemoveToken) settings.telegram_bot_token = '';
+      if (telegramChatId) settings.telegram_chat_id = telegramChatId;
+      else if (telegramRemoveChatId) settings.telegram_chat_id = '';
       await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
@@ -109,6 +128,31 @@
   }
 
   const languageLabel = $derived(language === 'en' ? m['language.en']() : m['language.es']());
+
+  async function sendTestAlert() {
+    testingAlert = true;
+    testAlertMessage = null;
+    try {
+      const result = await testAlertNotification(null);
+      if (result.desktop_sent && result.telegram_sent) {
+        testAlertMessage = m['settings.alerts_test_telegram_sent']();
+        toast.success(testAlertMessage);
+      } else if (result.desktop_sent) {
+        testAlertMessage = result.telegram_configured
+          ? m['settings.alerts_test_sent']()
+          : m['settings.alerts_test_telegram_missing']();
+        toast.success(testAlertMessage);
+      } else {
+        testAlertMessage = m['settings.alerts_test_failed']();
+        toast.error(testAlertMessage);
+      }
+    } catch (e) {
+      testAlertMessage = m['settings.alerts_test_failed']();
+      toast.error(String(e));
+    } finally {
+      testingAlert = false;
+    }
+  }
 
   async function checkUpdates() {
     updaterStatus = 'checking';
@@ -296,6 +340,72 @@
           bind:value={aiModel}
           placeholder={m['settings.ai_model_placeholder']()}
         />
+      </div>
+
+      <Separator />
+
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        {m['settings.telegram']()}
+      </h3>
+      <div class="grid gap-1.5">
+        <Label for="telegram-bot-token">{m['settings.telegram_bot_token']()}</Label>
+        <Input
+          id="telegram-bot-token"
+          type="password"
+          bind:value={telegramBotToken}
+          autocomplete="off"
+          placeholder={telegramTokenSet
+            ? m['settings.telegram_bot_token_saved']()
+            : m['settings.telegram_bot_token_placeholder']()}
+        />
+        <p class="text-xs text-muted-foreground">{m['settings.telegram_bot_token_hint']()}</p>
+        {#if telegramTokenSet && !telegramRemoveToken}
+          <Button
+            variant="ghost"
+            class="h-6 w-fit px-2 text-xs text-destructive"
+            onclick={() => {
+              telegramRemoveToken = true;
+              telegramBotToken = '';
+            }}
+          >
+            {m['settings.telegram_bot_token_clear']()}
+          </Button>
+        {/if}
+      </div>
+      <div class="grid gap-1.5">
+        <Label for="telegram-chat-id">{m['settings.telegram_chat_id']()}</Label>
+        <Input
+          id="telegram-chat-id"
+          type="password"
+          bind:value={telegramChatId}
+          autocomplete="off"
+          placeholder={telegramChatIdSet
+            ? m['settings.telegram_chat_id_saved']()
+            : m['settings.telegram_chat_id_placeholder']()}
+        />
+        <p class="text-xs text-muted-foreground">{m['settings.telegram_chat_id_hint']()}</p>
+        {#if telegramChatIdSet && !telegramRemoveChatId}
+          <Button
+            variant="ghost"
+            class="h-6 w-fit px-2 text-xs text-destructive"
+            onclick={() => {
+              telegramRemoveChatId = true;
+              telegramChatId = '';
+            }}
+          >
+            {m['settings.telegram_chat_id_clear']()}
+          </Button>
+        {/if}
+      </div>
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <Button variant="outline" onclick={sendTestAlert} disabled={testingAlert}>
+            {testingAlert ? m['settings.alerts_test_sending']() : m['settings.alerts_test']()}
+          </Button>
+          {#if testAlertMessage}
+            <span class="text-sm text-muted-foreground">{testAlertMessage}</span>
+          {/if}
+        </div>
       </div>
 
       <Separator />

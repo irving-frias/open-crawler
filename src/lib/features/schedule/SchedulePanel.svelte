@@ -5,7 +5,7 @@
   import { cn } from '$lib/utils.js';
   import * as api from '$lib/api';
   import { getAppShell } from '$lib/app.svelte';
-  import type { CrawlConfig, ScheduledJob } from '$lib/api/types';
+  import type { AlertSettings, CrawlConfig, ScheduledJob } from '$lib/api/types';
   import { Badge } from '$lib/components/ui/badge/index.js';
   import { Button } from '$lib/components/ui/button/index.js';
   import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -52,6 +52,10 @@
   let creating = $state(false);
   let jobsSeq = 0;
 
+  let alertSettings = $state<AlertSettings | null>(null);
+  let quietStart = $state('');
+  let quietEnd = $state('');
+
   let newCron = $state('0 * * * *');
   let editingId = $state<string | null>(null);
   let editCron = $state('');
@@ -97,6 +101,44 @@
     } finally {
       if (seq === jobsSeq) loading = false;
     }
+  }
+
+  async function loadAlertSettings() {
+    try {
+      alertSettings = await api.alerts.getAlertSettings(projectId);
+      quietStart = alertSettings.quiet_start ?? '';
+      quietEnd = alertSettings.quiet_end ?? '';
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function saveAlertSettings(patch: Partial<AlertSettings>) {
+    if (!alertSettings) return;
+    const next = { ...alertSettings, ...patch };
+    const previous = alertSettings;
+    alertSettings = next;
+    try {
+      alertSettings = await api.alerts.saveAlertSettings(next);
+    } catch (e) {
+      alertSettings = previous;
+      toast.error(String(e));
+    }
+  }
+
+  function toggleAlertChannel(channel: string) {
+    if (!alertSettings) return;
+    const channels = alertSettings.channels.includes(channel)
+      ? alertSettings.channels.filter((c) => c !== channel)
+      : [...alertSettings.channels, channel];
+    saveAlertSettings({ channels });
+  }
+
+  function saveQuietHours() {
+    saveAlertSettings({
+      quiet_start: quietStart.trim() || null,
+      quiet_end: quietEnd.trim() || null,
+    });
   }
 
   async function createJob() {
@@ -185,8 +227,13 @@
   }
 
   $effect(() => {
-    if (projectId) loadJobs();
-    else jobs = [];
+    if (projectId) {
+      loadJobs();
+      loadAlertSettings();
+    } else {
+      jobs = [];
+      alertSettings = null;
+    }
   });
 </script>
 
@@ -243,6 +290,88 @@
       </div>
     </CardContent>
   </Card>
+
+  {#if alertSettings}
+    <Card>
+      <CardContent>
+        <div class="alerts-form">
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            {m['schedule.alerts_title']()}
+          </div>
+          <p class="create-hint">{m['schedule.alerts_hint']()}</p>
+          <div class="flex items-center gap-2">
+            <Checkbox
+              checked={alertSettings.enabled}
+              onclick={() => saveAlertSettings({ enabled: !alertSettings?.enabled })}
+              id="alerts-enabled"
+              aria-label={m['schedule.alerts_enabled']()}
+            />
+            <Label for="alerts-enabled" class="cursor-pointer font-normal">
+              {m['schedule.alerts_enabled']()}
+            </Label>
+          </div>
+          {#if alertSettings.enabled}
+            <div class="alerts-field">
+              <Label>{m['schedule.alerts_channels']()}</Label>
+              <div class="flex flex-wrap items-center gap-4">
+                <label class="enabled-toggle">
+                  <Checkbox
+                    checked={alertSettings.channels.includes('desktop')}
+                    onclick={() => toggleAlertChannel('desktop')}
+                    aria-label={m['schedule.alerts_channel_desktop']()}
+                  />
+                  <span class="enabled-label">{m['schedule.alerts_channel_desktop']()}</span>
+                </label>
+                <label class="enabled-toggle">
+                  <Checkbox
+                    checked={alertSettings.channels.includes('telegram')}
+                    onclick={() => toggleAlertChannel('telegram')}
+                    aria-label={m['schedule.alerts_channel_telegram']()}
+                  />
+                  <span class="enabled-label">{m['schedule.alerts_channel_telegram']()}</span>
+                </label>
+              </div>
+              <p class="create-hint">{m['schedule.alerts_telegram_hint']()}</p>
+            </div>
+            <div class="alerts-field">
+              <Label>{m['schedule.alerts_min_severity']()}</Label>
+              <div class="severity-row">
+                {#each [['error', m['schedule.alerts_severity_error']()], ['warning', m['schedule.alerts_severity_warning']()], ['info', m['schedule.alerts_severity_info']()]] as [value, label] (value)}
+                  <Button
+                    variant={alertSettings.min_severity === value ? 'default' : 'outline'}
+                    size="xs"
+                    class="h-7"
+                    onclick={() => saveAlertSettings({ min_severity: value })}
+                  >
+                    {label}
+                  </Button>
+                {/each}
+              </div>
+            </div>
+            <div class="alerts-field">
+              <Label>{m['schedule.alerts_quiet_start']()}</Label>
+              <div class="quiet-row">
+                <Input
+                  type="time"
+                  bind:value={quietStart}
+                  class="h-9 w-32"
+                  onchange={saveQuietHours}
+                />
+                <span class="quiet-sep">{m['schedule.alerts_quiet_end']()}</span>
+                <Input
+                  type="time"
+                  bind:value={quietEnd}
+                  class="h-9 w-32"
+                  onchange={saveQuietHours}
+                />
+              </div>
+              <p class="create-hint">{m['schedule.alerts_quiet_hint']()}</p>
+            </div>
+          {/if}
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 
   {#if loading && jobs.length === 0}
     <div class="flex flex-col gap-2">
@@ -428,5 +557,35 @@
   .enabled-label {
     font-size: 0.78rem;
     color: var(--text-secondary);
+  }
+
+  .alerts-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 8px;
+  }
+
+  .alerts-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .severity-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .quiet-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .quiet-sep {
+    font-size: 0.78rem;
+    color: var(--text-muted);
   }
 </style>
