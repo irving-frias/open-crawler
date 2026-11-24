@@ -67,6 +67,7 @@ export interface CrawlFormConfig {
   checkSitemap: boolean;
   checkSemantics: boolean;
   renderJs: boolean;
+  renderWaitMs: number;
   proxyUrl: string;
   proxyUser: string;
   proxyPass: string;
@@ -86,6 +87,7 @@ export interface AppFields {
   checkSitemap: boolean;
   checkSemantics: boolean;
   renderJs: boolean;
+  renderWaitMs: number;
   maxCrawlTime: number;
   proxyUrl: string;
   proxyUser: string;
@@ -204,6 +206,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     checkSitemap: true,
     checkSemantics: true,
     renderJs: false,
+    renderWaitMs: 5000,
     maxCrawlTime: 3600,
     proxyUrl: '',
     proxyUser: '',
@@ -312,6 +315,8 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   if (typeof persisted.checkSemantics === 'boolean')
     state.checkSemantics = persisted.checkSemantics;
   if (typeof persisted.renderJs === 'boolean') state.renderJs = persisted.renderJs;
+  if (typeof persisted.renderWaitMs === 'number' && persisted.renderWaitMs >= 0)
+    state.renderWaitMs = persisted.renderWaitMs;
   if (
     typeof persisted.activeTab === 'string' &&
     (TAB_IDS as readonly string[]).includes(persisted.activeTab)
@@ -338,6 +343,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
       renderJs: state.renderJs,
+      renderWaitMs: state.renderWaitMs,
       activeTab: state.activeTab,
       lastPackage: state.lastPackage,
       activeTransfer: state.activeTransfer,
@@ -602,6 +608,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
       renderJs: state.renderJs,
+      renderWaitMs: state.renderWaitMs,
       proxyUrl: state.proxyUrl,
       proxyUser: state.proxyUser,
       proxyPass: state.proxyPass,
@@ -618,6 +625,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     state.checkSitemap = cfg.checkSitemap ?? true;
     state.checkSemantics = cfg.checkSemantics ?? true;
     state.renderJs = cfg.renderJs ?? false;
+    state.renderWaitMs = cfg.renderWaitMs ?? 5000;
     state.proxyUrl = cfg.proxyUrl ?? '';
     state.proxyUser = cfg.proxyUser ?? '';
     state.proxyPass = cfg.proxyPass ?? '';
@@ -642,6 +650,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
           checkSitemap: cfg.check_sitemap ?? true,
           checkSemantics: cfg.check_semantics ?? true,
           renderJs: cfg.render_js ?? false,
+          renderWaitMs: cfg.render_wait_ms ?? 5000,
           proxyUrl: cfg.proxy?.url ?? '',
           proxyUser: cfg.proxy?.username ?? '',
           proxyPass: cfg.proxy?.password ?? '',
@@ -855,6 +864,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
           check_sitemap: state.checkSitemap,
           check_semantics: state.checkSemantics,
           render_js: state.renderJs,
+          render_wait_ms: state.renderWaitMs,
           max_crawl_time_secs: state.maxCrawlTime,
           cookies: state.cookies
             .split('\n')

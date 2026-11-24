@@ -239,6 +239,7 @@
           bind:checkSitemap={app.checkSitemap}
           bind:checkSemantics={app.checkSemantics}
           bind:renderJs={app.renderJs}
+          bind:renderWaitMs={app.renderWaitMs}
           onStart={app.handleStartCrawl}
           onStop={app.stopCrawl}
           onRefresh={() => app.loadResults(app.currentPage)}

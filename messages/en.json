@@ -22,6 +22,8 @@
   "config.render_js": "Render JavaScript (headless Chrome)",
   "config.render_js_hint": "Renders pages with JavaScript, like Googlebot. Requires Google Chrome or Chromium installed; slower than a static crawl.",
   "config.render_js_unavailable": "JavaScript rendering is unavailable: no Chrome or Chromium was found on this machine.",
+  "config.render_wait_ms": "JS render wait (ms)",
+  "config.render_wait_ms_hint": "How long headless Chrome waits for JavaScript to settle on each page before parsing it (default 5000 ms).",
   "config.start": "Start Crawl",
   "config.rescan": "Re-scan Site",
   "config.resume": "Resume / Start",

@@ -22,6 +22,8 @@
   "config.render_js": "Renderizar JavaScript (Chrome headless)",
   "config.render_js_hint": "Renderiza las páginas con JavaScript, como Googlebot. Requiere Google Chrome o Chromium instalado; es más lento que el rastreo estático.",
   "config.render_js_unavailable": "El renderizado JavaScript no está disponible: no se encontró Chrome ni Chromium en esta máquina.",
+  "config.render_wait_ms": "Espera de renderizado JS (ms)",
+  "config.render_wait_ms_hint": "Tiempo que Chrome headless espera a que el JavaScript de cada página se asiente antes de analizarla (por defecto 5000 ms).",
   "config.start": "Iniciar Rastreo",
   "config.rescan": "Re-escanear Sitio",
   "config.resume": "Reanudar / Iniciar",

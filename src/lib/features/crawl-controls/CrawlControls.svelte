@@ -34,6 +34,7 @@
     checkSitemap = $bindable(),
     checkSemantics = $bindable(),
     renderJs = $bindable(),
+    renderWaitMs = $bindable(),
     onStart,
     onStop,
     onRefresh,
@@ -57,6 +58,7 @@
     checkSitemap: boolean;
     checkSemantics: boolean;
     renderJs: boolean;
+    renderWaitMs: number;
     onStart: () => void;
     onStop: () => void;
     onRefresh: () => void;
@@ -68,6 +70,9 @@
 
   // JS rendering needs a system Chrome/Chromium. Probe once on mount so
   // the toggle is disabled with the reason when no browser is installed.
+  // When the probe says no Chrome, the toggle is forced off (and that
+  // persists through the bindable prop) so it can never stay checked-but-
+  // disabled and send render_js: true to a crawl that would fail fast.
   let jsAvailable = $state<boolean | null>(null);
   let jsMessage = $state('');
   $effect(() => {
@@ -75,10 +80,12 @@
       .then((r) => {
         jsAvailable = r.available;
         jsMessage = r.message;
+        if (!r.available) renderJs = false;
       })
       .catch(() => {
         jsAvailable = false;
         jsMessage = '';
+        renderJs = false;
       });
   });
 
@@ -266,6 +273,20 @@
     {:else}
       <p class="field-hint">{m['config.render_js_hint']()}</p>
     {/if}
+  </div>
+
+  <div class="form-group">
+    <Label for="renderWaitMs">{m['config.render_wait_ms']()}</Label>
+    <Input
+      id="renderWaitMs"
+      type="number"
+      bind:value={renderWaitMs}
+      min="0"
+      max="30000"
+      step="500"
+      disabled={status === 'running' || !renderJs || jsAvailable === false}
+    />
+    <p class="field-hint">{m['config.render_wait_ms_hint']()}</p>
   </div>
 
   <div class="actions">
