@@ -346,21 +346,21 @@ fn page_headers() -> Vec<&'static str> {
 /// Flattens a page into the 33 export columns. SEO values (score, grade,
 /// per-category scores, priority fixes, failed checks) are derived from the
 /// stored `seo_audit_json` when it parses; pages without an audit fall back to
-/// empty cells / zero.
+/// empty cells / zero. The audit is passed in pre-parsed so the XLSX export
+/// can parse each page's JSON once and share it across all five sheets.
 fn page_values(p: &CrawlResult) -> Vec<ExportValue> {
-    let audit = parse_audit(&p.seo_audit_json);
+    page_values_with_audit(p, parse_audit(&p.seo_audit_json).as_ref())
+}
+
+fn page_values_with_audit(p: &CrawlResult, audit: Option<&SeoAuditResult>) -> Vec<ExportValue> {
     let indexable = match p.is_indexable {
         Some(true) => "Yes",
         Some(false) => "No",
         None => "Unknown",
     };
-    let grade = audit.as_ref().map(|a| a.grade.clone()).unwrap_or_default();
-    let priority_fixes = audit
-        .as_ref()
-        .map(|a| a.priority_fixes.len() as f64)
-        .unwrap_or(0.0);
+    let grade = audit.map(|a| a.grade.clone()).unwrap_or_default();
+    let priority_fixes = audit.map(|a| a.priority_fixes.len() as f64).unwrap_or(0.0);
     let failed_checks = audit
-        .as_ref()
         .map(|a| a.checks.iter().filter(|c| !c.passed).count() as f64)
         .unwrap_or(0.0);
 
@@ -397,7 +397,7 @@ fn page_values(p: &CrawlResult) -> Vec<ExportValue> {
         ExportValue::Str(p.redirect_from_url.clone().unwrap_or_default()),
     ];
     for cat in CATEGORY_ORDER {
-        let score = audit.as_ref().and_then(|a| category_score(a, cat));
+        let score = audit.and_then(|a| category_score(a, cat));
         values.push(match score {
             Some(s) => ExportValue::Num(s),
             None => ExportValue::Str(String::new()),
@@ -553,6 +553,32 @@ fn apply_widths(
     Ok(())
 }
 
+/// A crawled page with its JSON blobs parsed once. The single-pass XLSX
+/// export builds one of these per page and hands it to all five sheet
+/// writers, so `seo_audit_json` (and the semantic issues) are parsed a single
+/// time instead of once per sheet.
+struct ParsedPage<'a> {
+    page: &'a CrawlResult,
+    audit: Option<SeoAuditResult>,
+    issues: Option<Vec<serde_json::Value>>,
+    values: Vec<ExportValue>,
+}
+
+fn parse_page(p: &CrawlResult) -> ParsedPage<'_> {
+    let audit = parse_audit(&p.seo_audit_json);
+    let values = page_values_with_audit(p, audit.as_ref());
+    let issues = p
+        .semantic_issues_json
+        .as_deref()
+        .and_then(|js| serde_json::from_str::<Vec<serde_json::Value>>(js).ok());
+    ParsedPage {
+        page: p,
+        audit,
+        issues,
+        values,
+    }
+}
+
 fn write_page_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
@@ -587,10 +613,10 @@ fn write_page_row(
 fn page_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
-    p: &CrawlResult,
+    p: &ParsedPage<'_>,
     fmt: &Formats,
 ) -> Result<u32, AppError> {
-    write_page_row(ws, row, &page_values(p), &fmt.alt, &fmt.wrap)?;
+    write_page_row(ws, row, &p.values, &fmt.alt, &fmt.wrap)?;
     Ok(1)
 }
 
@@ -598,24 +624,21 @@ fn page_row(
 fn issues_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
-    p: &CrawlResult,
+    p: &ParsedPage<'_>,
     fmt: &Formats,
 ) -> Result<u32, AppError> {
-    let Some(ref js) = p.semantic_issues_json else {
-        return Ok(0);
-    };
-    let Ok(issues) = serde_json::from_str::<Vec<serde_json::Value>>(js) else {
+    let Some(issues) = p.issues.as_ref() else {
         return Ok(0);
     };
     let mut written = 0;
-    for iss in &issues {
+    for iss in issues {
         if row + written > MAX_ROWS_PER_SHEET {
             break;
         }
         write_issue_row(
             ws,
             row + written,
-            &p.url,
+            &p.page.url,
             iss,
             &fmt.wrap,
             &fmt.err,
@@ -691,10 +714,10 @@ fn write_issue_row(
 fn audit_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
-    p: &CrawlResult,
+    p: &ParsedPage<'_>,
     _fmt: &Formats,
 ) -> Result<u32, AppError> {
-    let Some(audit) = parse_audit(&p.seo_audit_json) else {
+    let Some(audit) = p.audit.as_ref() else {
         return Ok(0);
     };
     let mut written = 0;
@@ -703,7 +726,7 @@ fn audit_row(
             break;
         }
         let r = row + written;
-        xlsx_str(ws, r, 0, &p.url, None)?;
+        xlsx_str(ws, r, 0, &p.page.url, None)?;
         xlsx_str(ws, r, 1, category_label(&cat.category), None)?;
         match cat.score {
             Some(score) => xlsx_num(ws, r, 2, score, None)?,
@@ -721,10 +744,10 @@ fn audit_row(
 fn checks_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
-    p: &CrawlResult,
+    p: &ParsedPage<'_>,
     fmt: &Formats,
 ) -> Result<u32, AppError> {
-    let Some(audit) = parse_audit(&p.seo_audit_json) else {
+    let Some(audit) = p.audit.as_ref() else {
         return Ok(0);
     };
     let mut written = 0;
@@ -733,7 +756,7 @@ fn checks_row(
             break;
         }
         let r = row + written;
-        xlsx_str(ws, r, 0, &p.url, None)?;
+        xlsx_str(ws, r, 0, &p.page.url, None)?;
         xlsx_str(ws, r, 1, &chk.id, None)?;
         xlsx_str(ws, r, 2, category_label(&chk.category), None)?;
         let sev_fmt = match chk.severity.as_str() {
@@ -756,10 +779,10 @@ fn checks_row(
 fn fixes_row(
     ws: &mut rust_xlsxwriter::Worksheet,
     row: u32,
-    p: &CrawlResult,
+    p: &ParsedPage<'_>,
     fmt: &Formats,
 ) -> Result<u32, AppError> {
-    let Some(audit) = parse_audit(&p.seo_audit_json) else {
+    let Some(audit) = p.audit.as_ref() else {
         return Ok(0);
     };
     let mut written = 0;
@@ -768,7 +791,7 @@ fn fixes_row(
             break;
         }
         let r = row + written;
-        xlsx_str(ws, r, 0, &p.url, None)?;
+        xlsx_str(ws, r, 0, &p.page.url, None)?;
         xlsx_str(ws, r, 1, &fix.priority, None)?;
         xlsx_str(ws, r, 2, category_label(&fix.category), None)?;
         xlsx_str(ws, r, 3, &fix.id, None)?;
@@ -804,9 +827,9 @@ fn finalize_sheet(
     Ok(())
 }
 
-/// One XLSX sheet pass over the crawled pages. The pass re-reads pages in
-/// batches and writes `total_rows` data rows (each pass may split into several
-/// physical sheets when the data exceeds `MAX_ROWS_PER_SHEET`).
+/// One XLSX sheet pass over the crawled pages. All passes share a single
+/// read of the pages (see [`export_page_passes`]): each page is parsed once
+/// into a [`ParsedPage`] and handed to every pass's writer.
 struct PagePass<'a> {
     /// Progress stage emitted while this pass streams.
     stage: &'static str,
@@ -816,8 +839,12 @@ struct PagePass<'a> {
     /// Extra per-sheet column widths applied after the defaults.
     widths: &'a [(u16, f64)],
     /// Writes one page's contribution, returning the number of rows written.
-    write:
-        fn(&mut rust_xlsxwriter::Worksheet, u32, &CrawlResult, &Formats) -> Result<u32, AppError>,
+    write: fn(
+        &mut rust_xlsxwriter::Worksheet,
+        u32,
+        &ParsedPage<'_>,
+        &Formats,
+    ) -> Result<u32, AppError>,
 }
 
 const ISSUE_HEADERS: [&str; 7] = [
@@ -845,6 +872,77 @@ const FIX_HEADERS: [&str; 7] = [
 ];
 const LINK_HEADERS: [&str; 5] = ["From URL", "To URL", "Link Type", "Anchor Text", "Follow"];
 
+/// Open sheets of one pass while the single read streams pages. A pass may
+/// split into several physical sheets when its data exceeds
+/// `MAX_ROWS_PER_SHEET`; the overflow sheets are created in order, right
+/// after their siblings, so the workbook keeps the same sheet order as the
+/// old one-pass-per-sheet export.
+struct OpenPass<'a> {
+    pass: &'a PagePass<'a>,
+    /// Physical sheets in order; index [`OpenPass::cur`] is being written.
+    sheets: Vec<rust_xlsxwriter::Worksheet>,
+    cur: usize,
+    /// Next data row to write in the current sheet (1 = first row after the
+    /// header).
+    row: u32,
+}
+
+impl<'a> OpenPass<'a> {
+    fn new(
+        workbook: &mut rust_xlsxwriter::Workbook,
+        fmt: &Formats,
+        pass: &'a PagePass<'a>,
+    ) -> Result<Self, AppError> {
+        let mut ws = workbook.new_worksheet_with_constant_memory();
+        ws.set_name(sheet_name(pass.base_name, 0, sheet_count(pass.total_rows)))
+            .map_err(|e| AppError::Crawl(e.to_string()))?;
+        write_headers(&mut ws, &fmt.header, pass.headers)?;
+        Ok(Self {
+            pass,
+            sheets: vec![ws],
+            cur: 0,
+            row: 1,
+        })
+    }
+
+    /// Rolls to a fresh sheet when the current one is full, finalizing it
+    /// first. Only called between pages, so a page's rows are never split
+    /// across sheets (matching the old behavior, where a page that did not
+    /// fit was truncated instead).
+    fn rollover(
+        &mut self,
+        workbook: &mut rust_xlsxwriter::Workbook,
+        fmt: &Formats,
+    ) -> Result<(), AppError> {
+        let num_cols = self.pass.headers.len() as u16;
+        finalize_sheet(&mut self.sheets[self.cur], MAX_ROWS_PER_SHEET, num_cols)?;
+        apply_widths(&mut self.sheets[self.cur], self.pass.widths)?;
+        let idx = self.sheets.len();
+        let mut ws = workbook.new_worksheet_with_constant_memory();
+        ws.set_name(sheet_name(
+            self.pass.base_name,
+            idx,
+            sheet_count(self.pass.total_rows),
+        ))
+        .map_err(|e| AppError::Crawl(e.to_string()))?;
+        write_headers(&mut ws, &fmt.header, self.pass.headers)?;
+        self.sheets.push(ws);
+        self.cur = idx;
+        self.row = 1;
+        Ok(())
+    }
+
+    fn finalize_current(&mut self) -> Result<(), AppError> {
+        let num_cols = self.pass.headers.len() as u16;
+        finalize_sheet(
+            &mut self.sheets[self.cur],
+            self.row.saturating_sub(1),
+            num_cols,
+        )?;
+        apply_widths(&mut self.sheets[self.cur], self.pass.widths)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn export_page_passes(
     state: &Arc<RwLock<AppState>>,
@@ -856,60 +954,71 @@ async fn export_page_passes(
     processed: &mut u64,
     total: u64,
 ) -> Result<(), AppError> {
+    // One read feeds every sheet: pages are streamed in batches a single
+    // time (previously each pass re-read all pages with `get_result_batch`
+    // and re-parsed `seo_audit_json`). Each page is parsed once into a
+    // `ParsedPage` shared by the five writers, so the cost drops from
+    // O(5N) rows + 5x JSON parsing to O(N) rows + 1x parsing.
+    //
+    // The sheets are standalone `Worksheet`s (created via
+    // `new_worksheet_with_constant_memory`) so several can stay open at once
+    // — the borrowed `add_worksheet_*` API only allows one live sheet — and
+    // are pushed into the workbook in pass order once all rows are written.
+    let mut open: Vec<OpenPass<'_>> = Vec::new();
     for pass in passes {
         if pass.total_rows == 0 {
             continue;
         }
-        let num_sheets = sheet_count(pass.total_rows);
-        let mut sheet_idx: usize = 0;
-        let mut sheet_rows: u32 = 1;
-        let mut ws = workbook.add_worksheet_with_constant_memory();
-        ws.set_name(sheet_name(pass.base_name, 0, num_sheets))
-            .map_err(|e| AppError::Crawl(e.to_string()))?;
-        write_headers(ws, &fmt.header, pass.headers)?;
+        open.push(OpenPass::new(workbook, fmt, pass)?);
+    }
+    if open.is_empty() {
+        return Ok(());
+    }
 
-        let mut last_timestamp: Option<String> = None;
-        let mut last_id: Option<String> = None;
-        loop {
-            let pid = project_id.to_string();
-            let last_ts = last_timestamp.clone();
-            let last_id_cursor = last_id.clone();
-            let batch = with_repo_arc(state, move |repo| {
-                repo.get_result_batch(
-                    &pid,
-                    last_ts.as_deref(),
-                    last_id_cursor.as_deref(),
-                    PAGE_BATCH_SIZE,
-                )
-            })
-            .await?;
-            if batch.is_empty() {
-                break;
-            }
-            let mut batch_rows: u64 = 0;
-            for p in &batch {
-                if sheet_rows > MAX_ROWS_PER_SHEET {
-                    finalize_sheet(ws, MAX_ROWS_PER_SHEET, pass.headers.len() as u16)?;
-                    apply_widths(ws, pass.widths)?;
-                    sheet_idx += 1;
-                    ws = workbook.add_worksheet_with_constant_memory();
-                    ws.set_name(sheet_name(pass.base_name, sheet_idx, num_sheets))
-                        .map_err(|e| AppError::Crawl(e.to_string()))?;
-                    write_headers(ws, &fmt.header, pass.headers)?;
-                    sheet_rows = 1;
-                }
-                let written = (pass.write)(ws, sheet_rows, p, fmt)?;
-                sheet_rows += written;
-                batch_rows += written as u64;
-            }
-            *processed += batch_rows;
-            emit(pass.stage, *processed, total);
-            let last = batch.last().expect("batch is not empty");
-            last_timestamp = Some(last.crawl_timestamp.clone());
-            last_id = Some(last.id.clone());
+    let mut last_timestamp: Option<String> = None;
+    let mut last_id: Option<String> = None;
+    loop {
+        let pid = project_id.to_string();
+        let last_ts = last_timestamp.clone();
+        let last_id_cursor = last_id.clone();
+        let batch = with_repo_arc(state, move |repo| {
+            repo.get_result_batch(
+                &pid,
+                last_ts.as_deref(),
+                last_id_cursor.as_deref(),
+                PAGE_BATCH_SIZE,
+            )
+        })
+        .await?;
+        if batch.is_empty() {
+            break;
         }
-        finalize_sheet(ws, sheet_rows.saturating_sub(1), pass.headers.len() as u16)?;
-        apply_widths(ws, pass.widths)?;
+        // Parse each page once; the writers below only read the parsed form.
+        let parsed: Vec<ParsedPage<'_>> = batch.iter().map(parse_page).collect();
+        for op in open.iter_mut() {
+            let mut pass_rows: u64 = 0;
+            for p in &parsed {
+                if op.row > MAX_ROWS_PER_SHEET {
+                    op.rollover(workbook, fmt)?;
+                }
+                let written = (op.pass.write)(&mut op.sheets[op.cur], op.row, p, fmt)?;
+                op.row += written;
+                pass_rows += written as u64;
+            }
+            *processed += pass_rows;
+            emit(op.pass.stage, *processed, total);
+        }
+        let last = batch.last().expect("batch is not empty");
+        last_timestamp = Some(last.crawl_timestamp.clone());
+        last_id = Some(last.id.clone());
+    }
+    for op in open.iter_mut() {
+        op.finalize_current()?;
+    }
+    for op in open {
+        for ws in op.sheets {
+            workbook.push_worksheet(ws);
+        }
     }
     Ok(())
 }
@@ -1378,5 +1487,138 @@ mod tests {
         let meta = std::fs::metadata(&path).unwrap();
         assert!(meta.len() > 0, "workbook file should not be empty");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Regression coverage for the single-pass export (Fase 1.2): seeds a
+    /// rich dataset (1005 pages = 2 read batches, audit variants including
+    /// missing / invalid / null-score / empty, a 40k-char title, plus links)
+    /// and writes the workbook to `OC_XLSX_REF_PATH` (default
+    /// `/tmp/xlsx_before.xlsx`). Added alongside the rewrite so the output
+    /// could be compared cell-by-cell against the old multi-pass export
+    /// with an external reader (openpyxl): identical content.
+    const SAMPLE_AUDIT_NULL_SCORE: &str = r#"{
+        "score": 72.0,
+        "grade": "C",
+        "categories": [
+            {"category":"meta","score":null,"weight":0.25,"passed_weight":0.2,"total_weight":0.25,"passed_checks":3,"total_checks":4},
+            {"category":"sxo","score":50.0,"weight":0.08,"passed_weight":0.04,"total_weight":0.08,"passed_checks":1,"total_checks":3}
+        ],
+        "checks": [
+            {"id":"title_length","category":"meta","severity":"warning","passed":false,"weight":2.0,"message":"Title length: 10 chars","guidance":"Keep it 30-65","evidence":"10"}
+        ],
+        "priority_fixes": []
+    }"#;
+
+    const SAMPLE_AUDIT_EMPTY: &str = r#"{
+        "score": 0.0,
+        "grade": "F",
+        "categories": [],
+        "checks": [],
+        "priority_fixes": []
+    }"#;
+
+    #[tokio::test]
+    async fn test_export_xlsx_reference_fixture() {
+        let state = test_state();
+        let mut pages: Vec<CrawlResult> = Vec::new();
+        let mut all_links: Vec<crate::models::PageLink> = Vec::new();
+        for i in 0..1005 {
+            let id = format!("pg{i:04}");
+            let url = format!("https://x.com/p{i:04}");
+            let mut p = sample_page(&id, &url);
+            p.crawl_timestamp = format!("2026-01-01T00:{:02}:{:02}Z", (i / 60) % 60, i % 60);
+            match i % 5 {
+                0 => {}
+                1 => {
+                    p.seo_audit_json = None;
+                    p.seo_score = None;
+                    p.semantic_issues_json = Some(
+                        r#"[{"issue_type":"missing_h1","severity":"info","element":"body","message":"m3"}]"#
+                            .to_string(),
+                    );
+                }
+                2 => {
+                    p.seo_audit_json = Some("{not json".to_string());
+                    p.semantic_issues_json = Some("{bad".to_string());
+                }
+                3 => {
+                    p.seo_audit_json = Some(SAMPLE_AUDIT_NULL_SCORE.to_string());
+                }
+                _ => {
+                    p.seo_audit_json = Some(SAMPLE_AUDIT_EMPTY.to_string());
+                    p.semantic_issues_json = None;
+                }
+            }
+            if i == 4 {
+                p.title = Some("T".repeat(40_000));
+            }
+            if i % 10 == 0 {
+                p.links = vec![
+                    crate::models::PageLink {
+                        from_url: url.clone(),
+                        to_url: "https://x.com/target".to_string(),
+                        config_id: "cfg".to_string(),
+                        project_id: "p1".to_string(),
+                        link_type: "internal".to_string(),
+                        anchor_text: Some("target".to_string()),
+                        is_follow: true,
+                        rel_tokens: Vec::new(),
+                        is_sponsored: false,
+                        is_ugc: false,
+                        is_internal: true,
+                    },
+                    crate::models::PageLink {
+                        from_url: url.clone(),
+                        to_url: "https://ext.example.com/".to_string(),
+                        config_id: "cfg".to_string(),
+                        project_id: "p1".to_string(),
+                        link_type: "external".to_string(),
+                        anchor_text: None,
+                        is_follow: false,
+                        rel_tokens: Vec::new(),
+                        is_sponsored: false,
+                        is_ugc: false,
+                        is_internal: false,
+                    },
+                ];
+                // save_results_batch does not persist links; they go through
+                // save_links_batch, like the crawler's db writer does.
+                all_links.extend(p.links.iter().cloned());
+            }
+            pages.push(p);
+        }
+        seed(&state, &pages).await;
+        with_repo_arc(&state, move |repo| repo.save_links_batch(&all_links))
+            .await
+            .unwrap();
+
+        let (total_pages, total_links, total_issues, total_seo) = with_repo_arc(&state, |repo| {
+            Ok((
+                repo.count_pages("p1")?,
+                repo.count_links("p1")?,
+                repo.count_issues("p1")?,
+                repo.count_seo_rows("p1")?,
+            ))
+        })
+        .await
+        .unwrap();
+
+        let path = std::env::var("OC_XLSX_REF_PATH")
+            .unwrap_or_else(|_| "/tmp/xlsx_before.xlsx".to_string());
+        let _ = std::fs::remove_file(&path);
+        export_xlsx(
+            &state,
+            &noop_emit,
+            "p1",
+            &path,
+            total_pages,
+            total_links,
+            total_issues,
+            total_seo,
+        )
+        .await
+        .unwrap();
+        let meta = std::fs::metadata(&path).unwrap();
+        assert!(meta.len() > 0, "workbook file should not be empty");
     }
 }
