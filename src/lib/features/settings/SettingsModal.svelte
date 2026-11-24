@@ -490,7 +490,9 @@
 
     <Dialog.Footer>
       <Button variant="outline" onclick={() => (open = false)}>{m['settings.cancel']()}</Button>
-      <Button onclick={save} disabled={saving}>{saving ? '...' : m['settings.save']()}</Button>
+      <Button onclick={save} disabled={saving}>
+        {saving ? m['settings.saving']() : m['settings.save']()}
+      </Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

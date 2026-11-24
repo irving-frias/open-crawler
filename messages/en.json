@@ -273,6 +273,7 @@
   "settings.update": "Updates",
   "settings.cancel": "Cancel",
   "settings.save": "Save",
+  "settings.saving": "Saving…",
   "settings.export": "Export XLSX/CSV",
   "settings.notifications": "Desktop Notifications",
   "updater.check": "Check for Updates",
