@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { getDuplicateGroupsPage } from '$lib/api/analytics';
-  import type { DuplicateGroup } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
+  import { getDuplicateGroupsPage } from '#lib/api/analytics.ts';
+  import type { DuplicateGroup } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
   import { Copy, Check, RefreshCw, TriangleAlert, Files, ChevronDown } from '@lucide/svelte';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { cn } from '$lib/utils.js';
+  import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { cn } from '#lib/utils.js';
 
   const PAGE_SIZE = 25;
 

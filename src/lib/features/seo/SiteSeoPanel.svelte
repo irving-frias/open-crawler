@@ -1,17 +1,17 @@
 <script lang="ts">
   import { listen } from '@tauri-apps/api/event';
   import { RefreshCw, Loader2, Globe, Square, ChevronDown, Copy } from '@lucide/svelte';
-  import { m } from '$lib/paraglide/messages.js';
-  import { getSeoOverview, runSeoAuditAll, getSeoAuditStatus, stopSeoAudit } from '$lib/api/seo';
-  import type { SeoOverview, SeoAuditProgress } from '$lib/api/types';
-  import { localizeSeoCheck } from '$lib/seo-checks';
-  import { seoScoreColor } from '$lib/seo-ui';
-  import { cn } from '$lib/utils.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { Progress } from '$lib/components/ui/progress/index.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import { getSeoOverview, runSeoAuditAll, getSeoAuditStatus, stopSeoAudit } from '#lib/api/seo.ts';
+  import type { SeoOverview, SeoAuditProgress } from '#lib/api/types.ts';
+  import { localizeSeoCheck } from '#lib/seo-checks.ts';
+  import { seoScoreColor } from '#lib/seo-ui.ts';
+  import { cn } from '#lib/utils.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { Progress } from '#lib/components/ui/progress/index.js';
 
   let {
     projectId,

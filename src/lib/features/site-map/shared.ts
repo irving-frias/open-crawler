@@ -1,4 +1,4 @@
-import { m } from '$lib/paraglide/messages.js';
+import { m } from '#lib/paraglide/messages.js';
 
 export type StatusClass = '2xx' | '3xx' | '4xx' | '5xx' | 'blocked' | 'unknown';
 

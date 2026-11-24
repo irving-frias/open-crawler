@@ -36,16 +36,16 @@ export const TAB_DEFS: TabDef[] = [
 type AnyComponent = any;
 
 const loaders: Record<LazyTabId, () => Promise<{ default: AnyComponent }>> = {
-  overview: () => import('$lib/features/dashboard/Dashboard.svelte'),
-  dashboard: () => import('$lib/features/semantic/SemanticDashboard.svelte'),
-  site_tree: () => import('$lib/features/site-tree/SiteTree.svelte'),
-  comparator: () => import('$lib/features/comparator/Comparador.svelte'),
-  duplicates: () => import('$lib/features/duplicates/Duplicates.svelte'),
-  keywords: () => import('$lib/features/keywords/Keywords.svelte'),
-  schedule: () => import('$lib/features/schedule/SchedulePanel.svelte'),
-  seo: () => import('$lib/features/seo/SiteSeoPanel.svelte'),
-  links: () => import('$lib/features/links/LinkAnalysisPanel.svelte'),
-  extraction: () => import('$lib/features/extraction/ExtractionPanel.svelte'),
+  overview: () => import('#lib/features/dashboard/Dashboard.svelte'),
+  dashboard: () => import('#lib/features/semantic/SemanticDashboard.svelte'),
+  site_tree: () => import('#lib/features/site-tree/SiteTree.svelte'),
+  comparator: () => import('#lib/features/comparator/Comparador.svelte'),
+  duplicates: () => import('#lib/features/duplicates/Duplicates.svelte'),
+  keywords: () => import('#lib/features/keywords/Keywords.svelte'),
+  schedule: () => import('#lib/features/schedule/SchedulePanel.svelte'),
+  seo: () => import('#lib/features/seo/SiteSeoPanel.svelte'),
+  links: () => import('#lib/features/links/LinkAnalysisPanel.svelte'),
+  extraction: () => import('#lib/features/extraction/ExtractionPanel.svelte'),
 };
 
 const cache: Partial<Record<LazyTabId, AnyComponent>> = {};

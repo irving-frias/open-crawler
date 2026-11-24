@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
+  import { m } from '#lib/paraglide/messages.js';
   import { X } from '@lucide/svelte';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import * as Tabs from '$lib/components/ui/tabs/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import FilterBar, { type FilterState } from '$lib/features/results/FilterBar.svelte';
-  import ResultsTable from '$lib/features/results/ResultsTable.svelte';
-  import Pagination from '$lib/features/results/Pagination.svelte';
-  import { translateIssueName } from '$lib/i18n-issues';
-  import { TAB_DEFS, loadTabComponent, type LazyTabId } from '$lib/tabs';
-  import type { ResultsState, TabValue } from '$lib/app.svelte';
-  import type { FilterOptions } from '$lib/api/types';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import FilterBar, { type FilterState } from '#lib/features/results/FilterBar.svelte';
+  import ResultsTable from '#lib/features/results/ResultsTable.svelte';
+  import Pagination from '#lib/features/results/Pagination.svelte';
+  import { translateIssueName } from '#lib/i18n-issues.ts';
+  import { TAB_DEFS, loadTabComponent, type LazyTabId } from '#lib/tabs.ts';
+  import type { ResultsState, TabValue } from '#lib/app.svelte.ts';
+  import type { FilterOptions } from '#lib/api/types.ts';
 
   let {
     activeTab = $bindable('results' as TabValue),

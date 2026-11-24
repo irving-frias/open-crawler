@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { getDashboardStats } from '$lib/api/analytics';
-  import type { DashboardStats as DashboardStatsT } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
-  import { translateIssueName } from '$lib/i18n-issues';
-  import DonutChart from '$lib/components/charts/DonutChart.svelte';
-  import BarChart from '$lib/components/charts/BarChart.svelte';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { getDashboardStats } from '#lib/api/analytics.ts';
+  import type { DashboardStats as DashboardStatsT } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
+  import { translateIssueName } from '#lib/i18n-issues.ts';
+  import DonutChart from '#lib/components/charts/DonutChart.svelte';
+  import BarChart from '#lib/components/charts/BarChart.svelte';
+  import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 
   let {
     projectId,

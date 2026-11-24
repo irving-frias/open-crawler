@@ -1,19 +1,19 @@
 <script lang="ts">
   import { toast } from 'svelte-sonner';
   import { CalendarClock, Plus, Pencil, Trash2, RefreshCw, Save, X } from '@lucide/svelte';
-  import { m } from '$lib/paraglide/messages.js';
-  import { cn } from '$lib/utils.js';
-  import * as api from '$lib/api';
-  import { getAppShell } from '$lib/app.svelte';
-  import { parseUrlList } from '$lib/app.svelte';
-  import type { AlertSettings, CrawlConfig, ScheduledJob } from '$lib/api/types';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Card, CardContent } from '$lib/components/ui/card/index.js';
-  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import { cn } from '#lib/utils.js';
+  import * as api from '#lib/api/index.ts';
+  import { getAppShell } from '#lib/app.svelte.ts';
+  import { parseUrlList } from '#lib/app.svelte.ts';
+  import type { AlertSettings, CrawlConfig, ScheduledJob } from '#lib/api/types.ts';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Card, CardContent } from '#lib/components/ui/card/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 
   let {
     projectId,

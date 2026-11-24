@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { getSettings, saveSettings } from '$lib/api/settings';
-  import { testAlertNotification } from '$lib/api/alerts';
+  import { getSettings, saveSettings } from '#lib/api/settings.ts';
+  import { testAlertNotification } from '#lib/api/alerts.ts';
   import { toast } from 'svelte-sonner';
-  import type { SettingsMap } from '$lib/api/types';
-  import { setLocale, getLocale, type Locale } from '$lib/paraglide/runtime.js';
-  import { m } from '$lib/paraglide/messages.js';
-  import { applyTheme as applyAppTheme } from '$lib/theme.js';
-  import * as Dialog from '$lib/components/ui/dialog/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Separator } from '$lib/components/ui/separator/index.js';
-  import { checkForUpdates, downloadAndInstall, relaunchApp } from '$lib/updater';
-  import type { UpdaterStatus } from '$lib/updater';
+  import type { SettingsMap } from '#lib/api/types.ts';
+  import { setLocale, getLocale, type Locale } from '#lib/paraglide/runtime.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import { applyTheme as applyAppTheme } from '#lib/theme.js';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Separator } from '#lib/components/ui/separator/index.js';
+  import { checkForUpdates, downloadAndInstall, relaunchApp } from '#lib/updater.ts';
+  import type { UpdaterStatus } from '#lib/updater.ts';
 
   let {
     open = $bindable(false),

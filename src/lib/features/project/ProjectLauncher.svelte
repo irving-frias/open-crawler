@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
-  import { getAppShell } from '$lib/app.svelte';
+  import { m } from '#lib/paraglide/messages.js';
+  import { getAppShell } from '#lib/app.svelte.ts';
   import {
     Settings,
     Plus,
@@ -10,12 +10,12 @@
     FileUp,
     Loader2,
   } from '@lucide/svelte';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
   import { toast } from 'svelte-sonner';
-  import type { Project } from '$lib/api/types';
+  import type { Project } from '#lib/api/types.ts';
 
   const app = getAppShell();
 

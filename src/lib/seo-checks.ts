@@ -1,4 +1,4 @@
-import { getLocale } from '$lib/paraglide/runtime.js';
+import { getLocale } from '#lib/paraglide/runtime.js';
 
 interface CheckTranslation {
   message: string;

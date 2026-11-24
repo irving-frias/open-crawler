@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { listCrawlSnapshots, compareCrawlsPage } from '$lib/api/snapshots';
-  import type { ChangedUrl, CrawlSnapshot, SnapshotStats } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { listCrawlSnapshots, compareCrawlsPage } from '#lib/api/snapshots.ts';
+  import type { ChangedUrl, CrawlSnapshot, SnapshotStats } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 
   let {
     projectId,

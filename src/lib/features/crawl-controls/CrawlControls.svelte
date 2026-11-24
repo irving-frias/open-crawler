@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
+  import { m } from '#lib/paraglide/messages.js';
   import {
     RefreshCw,
     Download,
@@ -11,14 +11,14 @@
     Upload,
   } from '@lucide/svelte';
   import { toast } from 'svelte-sonner';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
-  import * as Popover from '$lib/components/ui/popover/index.js';
-  import type { CrawlStatus, ResumableInfo } from '$lib/app.svelte';
-  import { checkJsRenderingAvailable } from '$lib/api/crawl';
-  import { parseUrlList } from '$lib/app.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import * as Popover from '#lib/components/ui/popover/index.js';
+  import type { CrawlStatus, ResumableInfo } from '#lib/app.svelte.ts';
+  import { checkJsRenderingAvailable } from '#lib/api/crawl.ts';
+  import { parseUrlList } from '#lib/app.svelte.ts';
 
   let {
     status,

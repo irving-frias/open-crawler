@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
-  import type { PageLink } from '$lib/api/types';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import type { PageLink } from '#lib/api/types.ts';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
   import {
     Tooltip,
     TooltipTrigger,
     TooltipContent,
     TooltipProvider,
-  } from '$lib/components/ui/tooltip/index.js';
+  } from '#lib/components/ui/tooltip/index.js';
   import {
     Table,
     TableHeader,
@@ -16,7 +16,7 @@
     TableRow,
     TableHead,
     TableCell,
-  } from '$lib/components/ui/table/index.js';
+  } from '#lib/components/ui/table/index.js';
 
   let {
     links,

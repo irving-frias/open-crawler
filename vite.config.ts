@@ -1,3 +1,4 @@
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
@@ -12,7 +13,7 @@ export default defineConfig({
       strategy: ['localStorage', 'preferredLanguage', 'baseLocale'],
     }),
     tailwindcss(),
-    sveltekit(),
+    sveltekit({ adapter: adapter({ fallback: 'app.html' }) }),
     {
       // vite-plugin-svelte exposes a component's compiled <style> as a virtual
       // module (`File.svelte?svelte&type=style&lang.css`) served from an

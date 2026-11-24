@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { getProjectKeywordsPage } from '$lib/api/analytics';
-  import type { KeywordAggregate } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
+  import { getProjectKeywordsPage } from '#lib/api/analytics.ts';
+  import type { KeywordAggregate } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
   import { RefreshCw, TriangleAlert, Search, ChevronDown } from '@lucide/svelte';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { cn } from '$lib/utils.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { cn } from '#lib/utils.js';
 
   const PAGE_SIZE = 100;
 

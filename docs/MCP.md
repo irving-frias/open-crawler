@@ -48,13 +48,13 @@ MCP client that spawns a stdio server):
 
 ### Tools
 
-| Tool | Arguments | Description |
-| ---- | --------- | ----------- |
-| `list_projects` | — | All crawl projects (`id`, `name`). |
-| `start_crawl` | `project_id`, `config` (CrawlConfig object) | Start a crawl in the background. Returns immediately; poll `get_crawl_status`. Errors if a crawl is already running for the project. |
-| `get_crawl_status` | `project_id` | Running crawl progress (`urls_crawled`, `urls_queued`, `current_url`, `errors`, `elapsed_secs`), or `null` when idle. |
-| `get_results` | `project_id`, `page` (1), `page_size` (50, max 500) | Paginated light result rows with SEO score, plus `total`. |
-| `get_page_detail` | `project_id`, `url` | Full detail of the most recent crawl of one URL: page fields, SEO audit, semantic issues, links. |
+| Tool               | Arguments                                           | Description                                                                                                                          |
+| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_projects`    | —                                                   | All crawl projects (`id`, `name`).                                                                                                   |
+| `start_crawl`      | `project_id`, `config` (CrawlConfig object)         | Start a crawl in the background. Returns immediately; poll `get_crawl_status`. Errors if a crawl is already running for the project. |
+| `get_crawl_status` | `project_id`                                        | Running crawl progress (`urls_crawled`, `urls_queued`, `current_url`, `errors`, `elapsed_secs`), or `null` when idle.                |
+| `get_results`      | `project_id`, `page` (1), `page_size` (50, max 500) | Paginated light result rows with SEO score, plus `total`.                                                                            |
+| `get_page_detail`  | `project_id`, `url`                                 | Full detail of the most recent crawl of one URL: page fields, SEO audit, semantic issues, links.                                     |
 
 `config` is a `CrawlConfig` object: `seed_urls`, `url_list` (list mode, T3),
 `max_depth`, `respect_robots`, `check_sitemap`, `render_js`, `max_crawl_time_secs`,
@@ -96,7 +96,7 @@ Without `project_id` a project is created (name from `--project-name`, then
 crawl to completion and prints a JSON summary on stdout:
 
 ```json
-{"project_id": "…", "pages_crawled": 128, "elapsed_secs": 42}
+{ "project_id": "…", "pages_crawled": 128, "elapsed_secs": 42 }
 ```
 
 Exit code 0 on success, 1 on failure (error on stderr). Logs go to stderr,

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
-  import { Progress } from '$lib/components/ui/progress/index.js';
-  import type { ExportProgress } from '$lib/app.svelte';
+  import { m } from '#lib/paraglide/messages.js';
+  import { Progress } from '#lib/components/ui/progress/index.js';
+  import type { ExportProgress } from '#lib/app.svelte.ts';
 
   let {
     exportProgress,

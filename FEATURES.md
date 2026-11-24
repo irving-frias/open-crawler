@@ -48,7 +48,7 @@ Un directorio por dominio UI: `project/`, `crawl-controls/`, `results/`, `export
 
 Reglas:
 
-- Los componentes feature **no se importan entre sí** a través de `features/`; solo `+page.svelte` y los shells (o `$lib/...` compartido) los montan.
+- Los componentes feature **no se importan entre sí** a través de `features/`; solo `+page.svelte` y los shells (o `#lib/...` compartido) los montan.
 - Los componentes grandes se descomponen en subcarpetas, p. ej. `page-detail/sections/LinksSection.svelte` y `page-detail/sections/PreviewSection.svelte`.
 - `src/lib/components/` queda reservado a genéricos: `charts/` y `ui/`.
 

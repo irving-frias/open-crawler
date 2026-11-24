@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
+  import { m } from '#lib/paraglide/messages.js';
   import { Settings, Plus } from '@lucide/svelte';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import type { ProjectsStore } from '$lib/app.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import type { ProjectsStore } from '#lib/app.svelte.ts';
 
   let {
     projects,

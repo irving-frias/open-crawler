@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
-  import { getAppShell } from '$lib/app.svelte';
-  import * as api from '$lib/api';
-  import * as Dialog from '$lib/components/ui/dialog/index.js';
-  import * as Tabs from '$lib/components/ui/tabs/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import { Checkbox } from '$lib/components/ui/checkbox/index.js';
-  import { Progress } from '$lib/components/ui/progress/index.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import { getAppShell } from '#lib/app.svelte.ts';
+  import * as api from '#lib/api/index.ts';
+  import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+  import { Progress } from '#lib/components/ui/progress/index.js';
   import { toast } from 'svelte-sonner';
   import { Box, Download, FolderOpen, Share2, Loader2 } from '@lucide/svelte';
 

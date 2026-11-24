@@ -1,8 +1,8 @@
 <script lang="ts">
   import { listen } from '@tauri-apps/api/event';
-  import { getSiteTreeStream } from '$lib/api/results';
-  import type { SiteTreeBatch, SiteTreeStreamNode as TreeNode } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
+  import { getSiteTreeStream } from '#lib/api/results.ts';
+  import type { SiteTreeBatch, SiteTreeStreamNode as TreeNode } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
   import {
     ChevronRight,
     ChevronDown,
@@ -16,12 +16,12 @@
     TriangleAlert,
     X,
   } from '@lucide/svelte';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { cn } from '$lib/utils.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { cn } from '#lib/utils.js';
   import {
     LANGUAGE_CODES,
     legendColor,
@@ -30,8 +30,8 @@
     statusLabel,
     statusVariant,
     type StatusClass,
-  } from '$lib/features/site-map/shared.js';
-  import { siteMapFilters, type StatusFilter } from '$lib/features/site-map/filters.svelte.js';
+  } from '#lib/features/site-map/shared.js';
+  import { siteMapFilters, type StatusFilter } from '#lib/features/site-map/filters.svelte.js';
 
   let { projectId }: { projectId: string } = $props();
 

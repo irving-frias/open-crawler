@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { getPageDetail, getPagespeedScore, runSeoAudit, suggestFix, getSettings } from '$lib/api';
+  import {
+    getPageDetail,
+    getPagespeedScore,
+    runSeoAudit,
+    suggestFix,
+    getSettings,
+  } from '#lib/api/index.ts';
   import type {
     PageLink,
     PageSpeedData,
     CrawlResult,
     SeoAuditResult,
     FixSuggestion,
-  } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
-  import { getLocale } from '$lib/paraglide/runtime.js';
+  } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
+  import { getLocale } from '#lib/paraglide/runtime.js';
   import {
     translateIssueName,
     translateIssueMessage,
@@ -17,10 +23,10 @@
     translateIssueExpected,
     parseIssueParams,
     translateSeverity,
-  } from '$lib/i18n-issues';
-  import { localizeSeoCheck } from '$lib/seo-checks';
-  import type { LocalizedCheck } from '$lib/seo-checks';
-  import { seoScoreColor, seoCategoryGains } from '$lib/seo-ui';
+  } from '#lib/i18n-issues.ts';
+  import { localizeSeoCheck } from '#lib/seo-checks.ts';
+  import type { LocalizedCheck } from '#lib/seo-checks.ts';
+  import { seoScoreColor, seoCategoryGains } from '#lib/seo-ui.ts';
   import {
     ArrowLeft,
     X,
@@ -34,33 +40,33 @@
     ScanSearch,
     Sparkles,
   } from '@lucide/svelte';
-  import * as Tabs from '$lib/components/ui/tabs/index.js';
-  import { Card, CardContent, CardHeader } from '$lib/components/ui/card/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+  import * as Tabs from '#lib/components/ui/tabs/index.js';
+  import { Card, CardContent, CardHeader } from '#lib/components/ui/card/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { ScrollArea } from '#lib/components/ui/scroll-area/index.js';
   import {
     Tooltip,
     TooltipTrigger,
     TooltipContent,
     TooltipProvider,
-  } from '$lib/components/ui/tooltip/index.js';
+  } from '#lib/components/ui/tooltip/index.js';
   import {
     Accordion,
     AccordionItem,
     AccordionHeader,
     AccordionTrigger,
     AccordionContent,
-  } from '$lib/components/ui/accordion/index.js';
-  import { Alert } from '$lib/components/ui/alert/index.js';
-  import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
-  import { Progress } from '$lib/components/ui/progress/index.js';
-  import { cn } from '$lib/utils.js';
+  } from '#lib/components/ui/accordion/index.js';
+  import { Alert } from '#lib/components/ui/alert/index.js';
+  import { Popover, PopoverTrigger, PopoverContent } from '#lib/components/ui/popover/index.js';
+  import { Progress } from '#lib/components/ui/progress/index.js';
+  import { cn } from '#lib/utils.js';
   import LinksSection from './sections/LinksSection.svelte';
   import ElementReferencePanel from './ElementReferencePanel.svelte';
-  import { getElementReference } from '$lib/data/html-elements';
-  import type { ElementReference } from '$lib/data/html-elements';
+  import { getElementReference } from '#lib/data/html-elements.ts';
+  import type { ElementReference } from '#lib/data/html-elements.ts';
 
   let {
     pageId = $bindable(''),

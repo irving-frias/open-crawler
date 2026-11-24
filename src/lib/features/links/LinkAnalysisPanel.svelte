@@ -1,29 +1,29 @@
 <script lang="ts">
   import { Link2, RefreshCw, ChevronDown } from '@lucide/svelte';
-  import { m } from '$lib/paraglide/messages.js';
-  import { getLinkAnalysis, getProjectHasLinks } from '$lib/api/links';
+  import { m } from '#lib/paraglide/messages.js';
+  import { getLinkAnalysis, getProjectHasLinks } from '#lib/api/links.ts';
   import {
     getOrphanPagesPage,
     getDeadEndPagesPage,
     getTopAnchorsPage,
     getExternalDomainsPage,
-  } from '$lib/api/links';
-  import { getSeoOverview } from '$lib/api/seo';
+  } from '#lib/api/links.ts';
+  import { getSeoOverview } from '#lib/api/seo.ts';
   import type {
     LinkAnalysis,
     SeoCheckResult,
     SeoOverview,
     AnchorAgg,
     DomainAgg,
-  } from '$lib/api/types';
-  import { localizeSeoCheck } from '$lib/seo-checks';
-  import { seoScoreColor } from '$lib/seo-ui';
-  import { cn } from '$lib/utils.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { Progress } from '$lib/components/ui/progress/index.js';
+  } from '#lib/api/types.ts';
+  import { localizeSeoCheck } from '#lib/seo-checks.ts';
+  import { seoScoreColor } from '#lib/seo-ui.ts';
+  import { cn } from '#lib/utils.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { Progress } from '#lib/components/ui/progress/index.js';
 
   let {
     projectId,

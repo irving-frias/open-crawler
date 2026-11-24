@@ -1,4 +1,4 @@
-import type { SeoCategoryResult } from '$lib/api/types';
+import type { SeoCategoryResult } from '#lib/api/types.ts';
 
 /**
  * Shared presentation helpers for SEO scores. Centralizes the score → color /

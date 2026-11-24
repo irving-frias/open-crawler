@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
-  import { translateIssueMessage, parseIssueParams } from '$lib/i18n-issues';
+  import { m } from '#lib/paraglide/messages.js';
+  import { translateIssueMessage, parseIssueParams } from '#lib/i18n-issues.ts';
   import {
     Search,
     X,
@@ -14,11 +14,11 @@
     BookOpenText,
     Gauge,
   } from '@lucide/svelte';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { parseIssues, getIssueCounts } from '$lib/features/results/issue-cache';
-  import { seoVariant as seoUiVariant, seoGrade as seoUiGrade } from '$lib/seo-ui';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { parseIssues, getIssueCounts } from '#lib/features/results/issue-cache.ts';
+  import { seoVariant as seoUiVariant, seoGrade as seoUiGrade } from '#lib/seo-ui.ts';
 
   let {
     items,

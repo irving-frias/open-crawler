@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getSemanticIssueCounts } from '$lib/api/results';
-  import type { IssueCount } from '$lib/api/types';
-  import { m } from '$lib/paraglide/messages.js';
-  import { translateIssueName } from '$lib/i18n-issues';
+  import { getSemanticIssueCounts } from '#lib/api/results.ts';
+  import type { IssueCount } from '#lib/api/types.ts';
+  import { m } from '#lib/paraglide/messages.js';
+  import { translateIssueName } from '#lib/i18n-issues.ts';
   import {
     ImageOff,
     FileText,
@@ -22,9 +22,9 @@
     TriangleAlert,
     ChevronRight,
   } from '@lucide/svelte';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-  import { cn } from '$lib/utils.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { cn } from '#lib/utils.js';
 
   let {
     projectId,

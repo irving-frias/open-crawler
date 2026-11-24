@@ -1,22 +1,22 @@
 import { listen } from '@tauri-apps/api/event';
 import { toast } from 'svelte-sonner';
-import * as api from '$lib/api';
+import * as api from '#lib/api/index.ts';
 import type {
   ExportPackageInfo,
   ImportConflictMode,
   ImportSummary,
   TransferInfo,
   TransferProgress,
-} from '$lib/api/transfer';
-import type { FilterOptions, Project } from '$lib/api/types';
-import { TAB_IDS } from '$lib/tabs';
-import { applyTheme } from '$lib/theme.js';
-import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
-import { m } from '$lib/paraglide/messages.js';
-import { notify } from '$lib/utils';
-import { checkForUpdates } from '$lib/updater';
+} from '#lib/api/transfer.ts';
+import type { FilterOptions, Project } from '#lib/api/types.ts';
+import { TAB_IDS } from '#lib/tabs.ts';
+import { applyTheme } from '#lib/theme.js';
+import { useOptimistic, type OptimisticAction } from '#lib/use-optimistic.svelte.js';
+import { m } from '#lib/paraglide/messages.js';
+import { notify } from '#lib/utils.ts';
+import { checkForUpdates } from '#lib/updater.ts';
 import { getContext, setContext } from 'svelte';
-import type { FilterState } from '$lib/features/results/FilterBar.svelte';
+import type { FilterState } from '#lib/features/results/FilterBar.svelte';
 
 const APP_SHELL_KEY = Symbol('open-crawler-app-shell');
 

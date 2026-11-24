@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js';
+  import { m } from '#lib/paraglide/messages.js';
   import { SearchX, Pencil, Trash2, Loader2 } from '@lucide/svelte';
-  import { setAppShell } from '$lib/app.svelte';
-  import * as api from '$lib/api';
-  import AppHeader from '$lib/features/project/AppHeader.svelte';
-  import ProjectLauncher from '$lib/features/project/ProjectLauncher.svelte';
-  import DeleteProjectDialog from '$lib/features/project/DeleteProjectDialog.svelte';
-  import CrawlControls from '$lib/features/crawl-controls/CrawlControls.svelte';
-  import CrawlProgress from '$lib/features/crawl-controls/CrawlProgress.svelte';
-  import ResumeDialog from '$lib/features/crawl-controls/ResumeDialog.svelte';
-  import ResultsView from '$lib/features/results/ResultsView.svelte';
-  import ExportProgressBar from '$lib/features/export/ExportProgressBar.svelte';
-  import TransferDialog from '$lib/features/transfer/TransferDialog.svelte';
-  import Splash from '$lib/features/splash/Splash.svelte';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
+  import { setAppShell } from '#lib/app.svelte.ts';
+  import * as api from '#lib/api/index.ts';
+  import AppHeader from '#lib/features/project/AppHeader.svelte';
+  import ProjectLauncher from '#lib/features/project/ProjectLauncher.svelte';
+  import DeleteProjectDialog from '#lib/features/project/DeleteProjectDialog.svelte';
+  import CrawlControls from '#lib/features/crawl-controls/CrawlControls.svelte';
+  import CrawlProgress from '#lib/features/crawl-controls/CrawlProgress.svelte';
+  import ResumeDialog from '#lib/features/crawl-controls/ResumeDialog.svelte';
+  import ResultsView from '#lib/features/results/ResultsView.svelte';
+  import ExportProgressBar from '#lib/features/export/ExportProgressBar.svelte';
+  import TransferDialog from '#lib/features/transfer/TransferDialog.svelte';
+  import Splash from '#lib/features/splash/Splash.svelte';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
 
   // The main window is the launcher on desktop (no `?project`); a dedicated
   // project window loads `index.html?project={id}` and is pinned to that
@@ -30,10 +30,10 @@
   const app = setAppShell(projectId, isLauncher);
 
   let PageDetailPanel = $state<
-    typeof import('$lib/features/page-detail/PageDetailPanel.svelte').default | null
+    typeof import('#lib/features/page-detail/PageDetailPanel.svelte').default | null
   >(null);
   let SettingsModal = $state<
-    typeof import('$lib/features/settings/SettingsModal.svelte').default | null
+    typeof import('#lib/features/settings/SettingsModal.svelte').default | null
   >(null);
 
   const splashMountTime = Date.now();
@@ -71,7 +71,7 @@
 
   $effect(() => {
     if (app.detailPageId && !PageDetailPanel) {
-      import('$lib/features/page-detail/PageDetailPanel.svelte').then(
+      import('#lib/features/page-detail/PageDetailPanel.svelte').then(
         (m) => (PageDetailPanel = m.default)
       );
     }
@@ -79,7 +79,7 @@
 
   $effect(() => {
     if (app.settingsModalOpen && !SettingsModal) {
-      import('$lib/features/settings/SettingsModal.svelte').then(
+      import('#lib/features/settings/SettingsModal.svelte').then(
         (m) => (SettingsModal = m.default)
       );
     }

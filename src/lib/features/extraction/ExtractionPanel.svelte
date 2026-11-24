@@ -1,17 +1,17 @@
 <script lang="ts">
   import { toast } from 'svelte-sonner';
   import { Pencil, Trash2, RefreshCw, Save, X, FlaskConical } from '@lucide/svelte';
-  import { m } from '$lib/paraglide/messages.js';
-  import * as api from '$lib/api';
-  import { getAppShell } from '$lib/app.svelte';
-  import type { CustomExtraction, ExtractionMode, SelectorType } from '$lib/api/types';
-  import { Badge } from '$lib/components/ui/badge/index.js';
-  import { Button } from '$lib/components/ui/button/index.js';
-  import { Card, CardContent } from '$lib/components/ui/card/index.js';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import { Label } from '$lib/components/ui/label/index.js';
-  import * as Select from '$lib/components/ui/select/index.js';
-  import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+  import { m } from '#lib/paraglide/messages.js';
+  import * as api from '#lib/api/index.ts';
+  import { getAppShell } from '#lib/app.svelte.ts';
+  import type { CustomExtraction, ExtractionMode, SelectorType } from '#lib/api/types.ts';
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Card, CardContent } from '#lib/components/ui/card/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import * as Select from '#lib/components/ui/select/index.js';
+  import { Skeleton } from '#lib/components/ui/skeleton/index.js';
 
   let { projectId }: { projectId: string } = $props();
 

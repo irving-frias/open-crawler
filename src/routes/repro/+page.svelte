@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { dev } from '$app/environment';
-  import PageDetailPanel from '$lib/features/page-detail/PageDetailPanel.svelte';
+  import { dev } from '$app/env';
+  import PageDetailPanel from '#lib/features/page-detail/PageDetailPanel.svelte';
 
   // DEV-ONLY harness: renders the page-detail panel against mock data so it
   // can be iterated on without a crawl or a Tauri backend.
