@@ -35,19 +35,21 @@ impl<'a> CrawlRepo<'a> {
     }
 
     /// Rows produced by the SEO audit export sheets: one per page×category,
-    /// plus one per failing check and one per priority fix. Counted over the
-    /// `seo_audit_json` blob so it stays correct even if the normalized
-    /// `seo_category_scores` / `seo_check_issues` tables are out of sync.
+    /// plus one per failing check and one per priority fix. Counted from the
+    /// normalized tables (`seo_category_scores`, `seo_check_issues`) and the
+    /// `seo_priority_fix_count` column, all maintained by
+    /// `save_seo_normalized` on every page write — no `seo_audit_json`
+    /// parsing, so this is O(1) work per export instead of O(3N) JSON
+    /// parses. Skipped categories are stored with a NULL score (migration
+    /// 017), so the category count still matches the JSON-based count
+    /// exactly, including the per-page skipped categories.
     pub fn count_seo_rows(&self, project_id: &str) -> Result<u32, AppError> {
         let n: i64 = self.conn.query_row(
             "SELECT
-                (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
-                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))
-              + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.checks') c
-                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
-                   AND json_extract(c.value, '$.passed') = 0)
-              + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.priority_fixes') c
-                 WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))",
+                (SELECT COUNT(*) FROM seo_category_scores WHERE project_id = ?1)
+              + (SELECT COUNT(*) FROM seo_check_issues WHERE project_id = ?1)
+              + (SELECT COALESCE(SUM(seo_priority_fix_count), 0)
+                 FROM crawled_pages WHERE project_id = ?1)",
             params![project_id],
             |row| row.get(0),
         )?;

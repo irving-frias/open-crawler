@@ -808,6 +808,104 @@ mod tests {
         assert_eq!(overview.top_issues[0].id, "h1_present");
     }
 
+    /// Fase 1.3: `count_seo_rows` (normalized tables) must match the old
+    /// `json_each` count exactly, including the tricky cases: a skipped
+    /// category (score null, e.g. site-level "links" on a page audit) still
+    /// produces an "SEO Audit" sheet row, an empty audit and a page without
+    /// an audit contribute nothing, and invalid JSON contributes nothing.
+    #[test]
+    fn test_count_seo_rows_matches_legacy_json_count() {
+        let repo = test_repo();
+        // Page 1: 2 scored categories + 1 skipped, 1 passed + 2 failing
+        // checks, 2 priority fixes -> 3 + 2 + 2 = 7 rows.
+        let audit = serde_json::json!({
+            "score": 72.0,
+            "grade": "C",
+            "categories": [
+                {"category": "meta", "score": 80.0, "weight": 0.25, "passed_weight": 0.2, "total_weight": 0.25, "passed_checks": 3, "total_checks": 4},
+                {"category": "links", "score": null, "weight": 0.02, "passed_weight": 0.0, "total_weight": 0.0, "passed_checks": 0, "total_checks": 0},
+                {"category": "sxo", "score": 50.0, "weight": 0.08, "passed_weight": 0.04, "total_weight": 0.08, "passed_checks": 1, "total_checks": 3}
+            ],
+            "checks": [
+                {"id": "title_length", "category": "meta", "severity": "warning", "passed": false, "weight": 2.0, "message": "Title too short", "guidance": "Extend"},
+                {"id": "https_used", "category": "technical", "severity": "error", "passed": true, "weight": 3.0, "message": "HTTPS ok", "guidance": "-"},
+                {"id": "h1_present", "category": "meta", "severity": "error", "passed": false, "weight": 1.0, "message": "Missing h1", "guidance": "Add h1"}
+            ],
+            "priority_fixes": [
+                {"id": "title_length", "priority": "important", "message": "Title too short", "guidance": "Extend", "category": "meta"},
+                {"id": "h1_present", "priority": "critical", "message": "Missing h1", "guidance": "Add h1", "category": "meta"}
+            ]
+        });
+        let mut p1 = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        p1.seo_score = Some(72.0);
+        p1.seo_audit_json = Some(audit.to_string());
+        // Page 2: empty audit -> 0 rows.
+        let mut p2 = page("pg2", "https://x.com/b", Some("B"), 200, true);
+        p2.seo_score = Some(0.0);
+        p2.seo_audit_json = Some(
+            r#"{"score": 0.0, "grade": "F", "categories": [], "checks": [], "priority_fixes": []}"#
+                .to_string(),
+        );
+        // Page 3: no audit at all -> 0 rows.
+        let p3 = page("pg3", "https://x.com/c", Some("C"), 200, true);
+        // Page 4: invalid JSON -> 0 rows.
+        let mut p4 = page("pg4", "https://x.com/d", Some("D"), 200, true);
+        p4.seo_audit_json = Some("{not json".to_string());
+        repo.save_results_batch(&[p1, p2, p3, p4]).unwrap();
+
+        // The pre-1.3 query, run verbatim against the same data.
+        let legacy: i64 = repo
+            .conn
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))
+                  + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.checks') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+                       AND json_extract(c.value, '$.passed') = 0)
+                  + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.priority_fixes') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))",
+                rusqlite::params!["p1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            legacy, 7,
+            "legacy count: 3 categories + 2 failing checks + 2 fixes"
+        );
+
+        let new = repo.count_seo_rows("p1").unwrap();
+        assert_eq!(
+            new, legacy as u32,
+            "normalized count must match the legacy json_each count"
+        );
+
+        // The skipped category must be persisted (NULL score) so the count
+        // above can see it, but the overview must still ignore it.
+        let skipped: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_category_scores WHERE project_id = 'p1' AND score IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            skipped, 1,
+            "skipped 'links' category must be stored with NULL score"
+        );
+
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.total_fixes, 2);
+        assert!(
+            !overview
+                .category_averages
+                .iter()
+                .any(|c| c.category == "links"),
+            "skipped categories must not appear in the overview averages"
+        );
+    }
+
     #[test]
     fn test_recrawl_replaces_row_per_url() {
         let repo = test_repo();

@@ -1603,6 +1603,36 @@ mod tests {
         .await
         .unwrap();
 
+        // Fase 1.3: 201 pages carry SAMPLE_AUDIT (4 categories + 1 failing
+        // check + 1 fix = 6) and 201 carry SAMPLE_AUDIT_NULL_SCORE (2
+        // categories, one skipped + 1 failing check + 0 fixes = 3); the
+        // no-audit / invalid-JSON / empty-audit pages contribute 0.
+        // Total = 201 * 6 + 201 * 3 = 1809.
+        assert_eq!(
+            total_seo, 1809,
+            "normalized count over the 1005-page fixture"
+        );
+        let legacy: i64 = with_repo_arc(&state, |repo| {
+            Ok(repo.connection().query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.categories') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))
+                  + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.checks') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json)
+                       AND json_extract(c.value, '$.passed') = 0)
+                  + (SELECT COUNT(*) FROM crawled_pages p, json_each(p.seo_audit_json, '$.priority_fixes') c
+                     WHERE p.project_id = ?1 AND p.seo_audit_json IS NOT NULL AND json_valid(p.seo_audit_json))",
+                rusqlite::params!["p1"],
+                |row| row.get(0),
+            )?)
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            legacy as u32, total_seo,
+            "normalized count must match the legacy json_each count on the fixture"
+        );
+
         let path = std::env::var("OC_XLSX_REF_PATH")
             .unwrap_or_else(|_| "/tmp/xlsx_before.xlsx".to_string());
         let _ = std::fs::remove_file(&path);

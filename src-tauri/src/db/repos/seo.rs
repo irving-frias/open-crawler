@@ -52,12 +52,13 @@ pub(crate) fn save_seo_normalized(
             "INSERT INTO seo_category_scores (page_id, project_id, category, score)
              VALUES (?1, ?2, ?3, ?4)",
         )?;
+        // Every category is persisted, including skipped ones (score None ->
+        // NULL): the XLSX "SEO Audit" sheet writes one row per category and
+        // `count_seo_rows` counts them from this table, so omitting skipped
+        // categories would undercount. `get_seo_overview` filters NULL
+        // scores out of its averages, so aggregation is unaffected.
         for cat in &audit.categories {
-            // Skipped categories (score: None) are not persisted: the column is
-            // NOT NULL and they carry no numeric value for site aggregation.
-            if let Some(score) = cat.score {
-                cat_stmt.execute(params![page_id, project_id, cat.category, score])?;
-            }
+            cat_stmt.execute(params![page_id, project_id, cat.category, cat.score])?;
         }
     }
 
@@ -239,11 +240,13 @@ impl<'a> CrawlRepo<'a> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Per-category averages across pages.
+        // Per-category averages across pages. Skipped categories are stored
+        // with a NULL score (see `save_seo_normalized`) and must not count
+        // towards the average or the page count for the category.
         let mut cat_stmt = self.conn.prepare(
             "SELECT category, AVG(score), COUNT(DISTINCT page_id)
              FROM seo_category_scores
-             WHERE project_id = ?1
+             WHERE project_id = ?1 AND score IS NOT NULL
              GROUP BY category",
         )?;
         let mut category_averages: Vec<SeoCategoryAvg> = cat_stmt

@@ -44,6 +44,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("015_response_headers.sql"),
     ),
     ("016_perf_indexes", include_str!("016_perf_indexes.sql")),
+    (
+        "017_seo_skipped_categories",
+        include_str!("017_seo_skipped_categories.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {
