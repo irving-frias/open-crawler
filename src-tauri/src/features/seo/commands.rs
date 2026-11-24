@@ -303,10 +303,67 @@ pub async fn stop_seo_audit(
     Ok(())
 }
 
-/// Re-fetches every page in the project, runs the SEO audit on each fresh
-/// response and persists the updated score + JSON. Emits `seo-audit-progress`
-/// events so the UI can show progress while the loop runs. Registered in
-/// `AppState.seo_audits` so each project can be polled/cancelled independently.
+/// Parses the stored `response_headers_json` back into the header map the
+/// audit expects (lowercase names). Malformed or absent JSON means "no
+/// headers": the security/compliance checks then skip, exactly as they do
+/// for a header-less response.
+fn stored_headers_to_map(json: &Option<String>) -> std::collections::HashMap<String, String> {
+    let Some(json) = json else {
+        return std::collections::HashMap::new();
+    };
+    serde_json::from_str::<std::collections::HashMap<String, String>>(json).unwrap_or_default()
+}
+
+/// Crawl-time context of one page, as stored at crawl time. Grouped so
+/// `audit_page_html` stays under clippy's argument limit.
+struct PageAuditContext {
+    status_code: u16,
+    size_bytes: usize,
+    load_time_ms: u64,
+    pagespeed_score: Option<f64>,
+    response_headers: std::collections::HashMap<String, String>,
+}
+
+/// Runs the SEO audit for one page from already-known HTML — stored in the
+/// database or freshly fetched — with the given crawl-time context. Pure
+/// audit work: the only I/O is the cached site-resource fetch inside
+/// `audit_page_with_site` (robots.txt / sitemap.xml, once per origin).
+/// Pass `site_client: None` to skip the site-resource fetch (used by tests,
+/// where the site checks then report as skipped instead of fetching).
+async fn audit_page_html(
+    parser: &SeoParser,
+    html: &str,
+    url: &url::Url,
+    ctx: &PageAuditContext,
+    site_client: Option<&reqwest::Client>,
+) -> SeoAuditResult {
+    let (seo_data, _) = parser.parse(html, url);
+    let ctx = AuditContext {
+        url: url.to_string(),
+        status_code: ctx.status_code,
+        size_bytes: ctx.size_bytes,
+        load_time_ms: ctx.load_time_ms,
+        pagespeed_score: ctx.pagespeed_score,
+        response_headers: ctx.response_headers.clone(),
+        site_resources: None,
+    };
+    match site_client {
+        Some(client) => audit_page_with_site(&seo_data, html, &ctx, client).await,
+        None => crate::seo::audit::audit_page(&seo_data, html, &ctx),
+    }
+}
+
+/// Re-audits every page in the project from the HTML already stored in the
+/// database and persists the updated scores + JSON in a single transaction.
+/// Pages without stored HTML (old crawls) are re-fetched over HTTP, one at a
+/// time, as a fallback. Emits `seo-audit-progress` events so the UI can show
+/// progress while the loop runs. Registered in `AppState.seo_audits` so each
+/// project can be polled/cancelled independently.
+///
+/// This used to re-download every page and run one DB transaction per page
+/// (N fetches + N transactions). The stored `html_body` is the same document
+/// the crawl already parsed, so auditing from it gives identical results
+/// without the network round-trips.
 #[tauri::command]
 pub async fn run_seo_audit_all(
     app: AppHandle,
@@ -326,8 +383,11 @@ pub async fn run_seo_audit_all(
         }
     }
 
+    // One SELECT for the whole project: id, URL, stored HTML and the
+    // crawl-time context of every page. No per-page queries, no HTTP fetch
+    // for pages that already have their HTML stored.
     let pid = project_id.clone();
-    let pages = with_repo(&state, move |repo| repo.list_page_id_urls(&pid)).await?;
+    let pages = with_repo(&state, move |repo| repo.list_pages_for_seo_audit(&pid)).await?;
     let total = pages.len() as u32;
 
     let project_id_cfg = project_id.clone();
@@ -376,38 +436,62 @@ pub async fn run_seo_audit_all(
 
     let mut processed: u32 = 0;
     let mut errors: u32 = 0;
+    // Audits accumulate in memory and are persisted once, in a single
+    // transaction, when the loop finishes (or is cancelled). This replaces
+    // the old one-transaction-per-page write pattern.
+    let mut pending_writes: Vec<(String, f64, Option<String>, Option<String>)> = Vec::new();
 
-    // Concurrently fetch + parse pages (the slow network part) with a bounded
-    // buffer; DB writes stay serialized through `with_repo` in the consumer.
+    // Audit pages concurrently (CPU-bound parsing + checks) with a bounded
+    // buffer. Only pages without stored HTML hit the network, via the
+    // fallback fetch below.
     const SEO_AUDIT_CONCURRENCY: usize = 4;
     let fetcher = Arc::new(fetcher);
     let site_client = http.inner().clone();
-    let work = pages.into_iter().map(|(page_id, url)| {
+    let work = pages.into_iter().map(|stored| {
         let fetcher = fetcher.clone();
         let parser = parser.clone();
         let site_client = site_client.clone();
         async move {
-            let parsed = match url::Url::parse(&url) {
+            let parsed = match url::Url::parse(&stored.url) {
                 Ok(u) => u,
                 Err(_) => {
-                    return Err(AppError::Crawl(format!("Invalid URL: {url}")));
+                    return Err(AppError::Crawl(format!("Invalid URL: {}", stored.url)));
                 }
             };
+            // Fast path: audit the HTML already stored from the crawl.
+            if let Some(html) = stored.html_body.filter(|h| !h.is_empty()) {
+                let audit_ctx = PageAuditContext {
+                    status_code: stored.status_code,
+                    size_bytes: stored.size_bytes,
+                    load_time_ms: stored.load_time_ms,
+                    pagespeed_score: stored.pagespeed_score,
+                    response_headers: stored_headers_to_map(&stored.response_headers_json),
+                };
+                let audit =
+                    audit_page_html(&parser, &html, &parsed, &audit_ctx, Some(&site_client)).await;
+                let json = serde_json::to_string(&audit).ok();
+                return Ok((
+                    stored.page_id,
+                    audit.score,
+                    json,
+                    stored.response_headers_json,
+                ));
+            }
+            // Fallback: no stored HTML — re-fetch this page over HTTP.
             let response = fetcher.fetch(&parsed).await?;
-            let (seo_data, _) = parser.parse(&response.html, &parsed);
-            let audit = audit_page_with_site(
-                &seo_data,
+            let audit_ctx = PageAuditContext {
+                status_code: response.status,
+                size_bytes: response.size_bytes,
+                load_time_ms: response.load_time_ms,
+                pagespeed_score: None,
+                response_headers: response.headers.clone(),
+            };
+            let audit = audit_page_html(
+                &parser,
                 &response.html,
-                &AuditContext {
-                    url: response.url.to_string(),
-                    status_code: response.status,
-                    size_bytes: response.size_bytes,
-                    load_time_ms: response.load_time_ms,
-                    pagespeed_score: None,
-                    response_headers: response.headers.clone(),
-                    site_resources: None,
-                },
-                &site_client,
+                &parsed,
+                &audit_ctx,
+                Some(&site_client),
             )
             .await;
             let json = serde_json::to_string(&audit).ok();
@@ -416,7 +500,7 @@ pub async fn run_seo_audit_all(
             } else {
                 serde_json::to_string(&response.headers).ok()
             };
-            Ok((page_id, audit.score, json, headers_json))
+            Ok((stored.page_id, audit.score, json, headers_json))
         }
     });
 
@@ -429,27 +513,28 @@ pub async fn run_seo_audit_all(
 
         match outcome {
             Ok((page_id, score, json, headers_json)) => {
-                let pid = page_id;
-                let pid_project = project_id.clone();
-                if with_repo(&state, move |repo| {
-                    repo.update_seo_audit(
-                        &pid_project,
-                        &pid,
-                        score,
-                        json.as_deref(),
-                        headers_json.as_deref(),
-                    )
-                })
-                .await
-                .is_err()
-                {
-                    errors += 1;
-                }
+                pending_writes.push((page_id, score, json, headers_json));
             }
             Err(_) => errors += 1,
         }
         processed += 1;
         emit_seo_progress(&app, &state, &project_id, processed, total, errors).await;
+    }
+
+    // Single transaction for the whole re-audit. If it fails, the audits
+    // computed in this run are lost — count them as errors, not as done.
+    if !pending_writes.is_empty() {
+        let pid_project = project_id.clone();
+        let writes = std::mem::take(&mut pending_writes);
+        let write_count = writes.len() as u32;
+        let failed = with_repo(&state, move |repo| {
+            repo.update_seo_audits_batch(&pid_project, &writes)
+        })
+        .await
+        .is_err();
+        if failed {
+            errors += write_count;
+        }
     }
 
     // Deregister the running audit (also when cancelled).
@@ -514,4 +599,95 @@ async fn emit_seo_progress(
         }
     }
     let _ = app.emit("seo-audit-progress", progress);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HTML: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="A sample page description used for testing the SEO audit engine with enough text to matter.">
+    <title>Sample Page For SEO Testing</title>
+    <link rel="canonical" href="https://example.com/page">
+</head>
+<body>
+    <header>Site header</header>
+    <nav><a href="/">Home</a></nav>
+    <main>
+        <h1>Sample Page For SEO Testing</h1>
+        <p>This is the first paragraph of the page. It introduces the topic with a clear and direct answer that helps readers and search engines understand the content quickly.</p>
+        <p>Here is a second paragraph that adds more detail about the subject, expands the context, and gives enough words to make the page substantial and readable.</p>
+    </main>
+    <footer>Site footer</footer>
+</body>
+</html>"#;
+
+    #[test]
+    fn test_stored_headers_to_map_parses_and_tolerates_bad_json() {
+        let map = stored_headers_to_map(&Some(
+            "{\"strict-transport-security\":\"max-age=31536000\",\"x-frame-options\":\"DENY\"}"
+                .to_string(),
+        ));
+        assert_eq!(
+            map.get("strict-transport-security").map(String::as_str),
+            Some("max-age=31536000")
+        );
+        assert_eq!(map.get("x-frame-options").map(String::as_str), Some("DENY"));
+        assert!(stored_headers_to_map(&None).is_empty());
+        assert!(stored_headers_to_map(&Some("not json".to_string())).is_empty());
+    }
+
+    /// The re-audit's fast path: auditing from stored HTML (no network)
+    /// must produce the same audit as auditing the same document inline.
+    #[tokio::test]
+    async fn test_audit_page_html_from_stored_html_matches_inline_audit() {
+        let parser = SeoParser::new();
+        let url = url::Url::parse("https://example.com/page").unwrap();
+        let mut headers = std::collections::HashMap::new();
+        headers.insert(
+            "strict-transport-security".to_string(),
+            "max-age=31536000".to_string(),
+        );
+
+        let audit_ctx = PageAuditContext {
+            status_code: 200,
+            size_bytes: HTML.len(),
+            load_time_ms: 12,
+            pagespeed_score: None,
+            response_headers: headers.clone(),
+        };
+        let from_stored = audit_page_html(&parser, HTML, &url, &audit_ctx, None).await;
+
+        let (seo_data, _) = parser.parse(HTML, &url);
+        let inline = crate::seo::audit::audit_page(
+            &seo_data,
+            HTML,
+            &AuditContext {
+                url: url.to_string(),
+                status_code: 200,
+                size_bytes: HTML.len(),
+                load_time_ms: 12,
+                pagespeed_score: None,
+                response_headers: headers,
+                site_resources: None,
+            },
+        );
+
+        assert_eq!(from_stored.score, inline.score);
+        assert_eq!(from_stored.checks.len(), inline.checks.len());
+        assert!(
+            from_stored.score > 0.0,
+            "a well-formed page should score above zero"
+        );
+        // The HSTS header is visible to the stored-HTML path.
+        let hsts = from_stored
+            .checks
+            .iter()
+            .find(|c| c.id == "hsts_header")
+            .expect("hsts_header check must exist");
+        assert!(hsts.passed, "stored headers must reach the audit");
+    }
 }

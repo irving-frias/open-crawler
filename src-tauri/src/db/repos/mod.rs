@@ -1138,4 +1138,90 @@ mod tests {
         assert!(urls.contains(&"https://x.com/a"));
         assert!(urls.contains(&"https://x.com/b"));
     }
+
+    #[test]
+    fn test_list_pages_for_seo_audit_returns_stored_html() {
+        let repo = test_repo();
+        let mut with_html = page("a", "https://x.com/a", Some("A"), 200, true);
+        with_html.html_body =
+            Some("<html><head><title>A</title></head><body>x</body></html>".to_string());
+        with_html.size_bytes = Some(123);
+        with_html.load_time_ms = Some(42);
+        with_html.response_headers_json = Some("{\"x-frame-options\":\"DENY\"}".to_string());
+        let without_html = page("b", "https://x.com/b", Some("B"), 404, true);
+        repo.save_results_batch(&[with_html, without_html]).unwrap();
+
+        let pages = repo.list_pages_for_seo_audit("p1").unwrap();
+        assert_eq!(pages.len(), 2);
+        let first = &pages[0];
+        assert_eq!(first.url, "https://x.com/a");
+        assert_eq!(first.status_code, 200);
+        assert_eq!(first.size_bytes, 123);
+        assert_eq!(first.load_time_ms, 42);
+        assert!(first
+            .html_body
+            .as_deref()
+            .unwrap()
+            .contains("<title>A</title>"));
+        assert_eq!(
+            first.response_headers_json.as_deref(),
+            Some("{\"x-frame-options\":\"DENY\"}")
+        );
+        // No stored HTML: the caller must re-fetch this page over HTTP.
+        assert_eq!(pages[1].url, "https://x.com/b");
+        assert_eq!(pages[1].status_code, 404);
+        assert!(pages[1].html_body.is_none());
+    }
+
+    #[test]
+    fn test_update_seo_audits_batch_writes_all_pages_in_one_call() {
+        let repo = test_repo();
+        repo.save_results_batch(&[
+            page("a", "https://x.com/a", Some("A"), 200, true),
+            page("b", "https://x.com/b", Some("B"), 200, true),
+        ])
+        .unwrap();
+
+        // A real audit JSON, built with the same audit engine the re-audit
+        // uses, so the normalized rows are exercised too.
+        let parser = crate::crawler::parser::SeoParser::new();
+        let url = url::Url::parse("https://x.com/a").unwrap();
+        let html = "<html lang=\"en\"><head><title>A</title></head><body><main><h1>A</h1><p>Text.</p></main></body></html>";
+        let (seo_data, _) = parser.parse(html, &url);
+        let audit = crate::seo::audit::audit_page(
+            &seo_data,
+            html,
+            &crate::seo::AuditContext {
+                url: url.to_string(),
+                status_code: 200,
+                size_bytes: html.len(),
+                load_time_ms: 10,
+                pagespeed_score: None,
+                response_headers: std::collections::HashMap::new(),
+                site_resources: None,
+            },
+        );
+        let json = serde_json::to_string(&audit).unwrap();
+
+        repo.update_seo_audits_batch(
+            "p1",
+            &[
+                ("a".to_string(), audit.score, Some(json.clone()), None),
+                ("b".to_string(), 50.0, Some(json.clone()), None),
+            ],
+        )
+        .unwrap();
+
+        let stored_a = repo.get_seo_audit_json("a").unwrap().unwrap();
+        assert_eq!(stored_a.score, Some(audit.score));
+        assert_eq!(stored_a.json.as_deref(), Some(json.as_str()));
+        let stored_b = repo.get_seo_audit_json("b").unwrap().unwrap();
+        assert_eq!(stored_b.score, Some(50.0));
+        // Normalized rows stay in sync with the batch write.
+        let overview = repo.get_seo_overview("p1").unwrap();
+        assert_eq!(overview.audited_pages, 2);
+
+        // Empty batch is a no-op, not an error.
+        repo.update_seo_audits_batch("p1", &[]).unwrap();
+    }
 }

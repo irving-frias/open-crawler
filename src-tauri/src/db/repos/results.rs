@@ -426,4 +426,56 @@ impl<'a> CrawlRepo<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+
+    /// One stored page, with everything the SEO re-audit needs, read in a
+    /// single SELECT: the stored `html_body` (decompressed), the crawl-time
+    /// context (status, size, load time, PageSpeed score, response headers)
+    /// and the URL. This is what `run_seo_audit_all` uses so a re-audit does
+    /// not re-download pages it already has on disk (see `StoredPageForAudit`).
+    pub fn list_pages_for_seo_audit(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<StoredPageForAudit>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, url, status_code, size_bytes, load_time_ms,
+                    pagespeed_score, html_body, response_headers_json
+             FROM crawled_pages WHERE project_id = ?1 ORDER BY url",
+        )?;
+        let rows = stmt
+            .query_map(params![project_id], |row| {
+                // `html_body` is stored gzip+base64; fall back to the raw value
+                // for legacy rows that were stored uncompressed (same rule as
+                // `get_page_html`).
+                let stored_html: Option<String> = row.get(6)?;
+                let html_body = decompress_html_body(&stored_html).or(stored_html);
+                Ok(StoredPageForAudit {
+                    page_id: row.get(0)?,
+                    url: row.get(1)?,
+                    status_code: row.get::<_, Option<u16>>(2)?.unwrap_or(200),
+                    size_bytes: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as usize,
+                    load_time_ms: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
+                    pagespeed_score: row.get(5)?,
+                    html_body,
+                    response_headers_json: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+}
+
+/// A crawled page as stored in the database, with the fields the SEO audit
+/// needs. `html_body` is `None` when the page was stored without HTML (old
+/// crawls, or pages whose body exceeded the storage cap) — callers must
+/// re-fetch those over HTTP instead of auditing an empty document.
+#[derive(Debug, Clone)]
+pub struct StoredPageForAudit {
+    pub page_id: String,
+    pub url: String,
+    pub status_code: u16,
+    pub size_bytes: usize,
+    pub load_time_ms: u64,
+    pub pagespeed_score: Option<f64>,
+    pub html_body: Option<String>,
+    pub response_headers_json: Option<String>,
 }

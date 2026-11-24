@@ -94,6 +94,27 @@ pub(crate) fn save_seo_normalized(
     Ok(())
 }
 
+/// Single-page write inside an already-open transaction. Shared by
+/// [`CrawlRepo::update_seo_audit`] (one transaction per call) and
+/// [`CrawlRepo::update_seo_audits_batch`] (one transaction for the batch).
+fn update_seo_audit_in_tx(
+    tx: &Connection,
+    project_id: &str,
+    page_id: &str,
+    score: f64,
+    json: Option<&str>,
+    response_headers_json: Option<&str>,
+) -> Result<(), AppError> {
+    tx.execute(
+        "UPDATE crawled_pages SET seo_score = ?1, seo_audit_json = ?2, response_headers_json = ?3 WHERE id = ?4",
+        params![score, json, response_headers_json, page_id],
+    )?;
+    // Keep normalized rows in sync after a re-audit.
+    delete_seo_normalized(tx, std::slice::from_ref(&page_id.to_string()))?;
+    save_seo_normalized(tx, project_id, page_id, &json.map(|s| s.to_string()))?;
+    Ok(())
+}
+
 impl<'a> CrawlRepo<'a> {
     pub fn get_seo_audit_json(&self, page_id: &str) -> Result<Option<StoredSeoAudit>, AppError> {
         let row = self
@@ -121,13 +142,35 @@ impl<'a> CrawlRepo<'a> {
         response_headers_json: Option<&str>,
     ) -> Result<(), AppError> {
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
-            "UPDATE crawled_pages SET seo_score = ?1, seo_audit_json = ?2, response_headers_json = ?3 WHERE id = ?4",
-            params![score, json, response_headers_json, page_id],
-        )?;
-        // Keep normalized rows in sync after a re-audit.
-        delete_seo_normalized(&tx, std::slice::from_ref(&page_id.to_string()))?;
-        save_seo_normalized(&tx, project_id, page_id, &json.map(|s| s.to_string()))?;
+        update_seo_audit_in_tx(&tx, project_id, page_id, score, json, response_headers_json)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Persists a whole re-audit in **one** transaction: one `UPDATE` per
+    /// page plus its normalized rows, committed together. This is what the
+    /// bulk re-audit uses — the old per-page `update_seo_audit` call inside
+    /// the audit loop was one transaction per page (the N+1 write pattern).
+    /// An empty batch is a no-op. On any failure nothing is committed.
+    pub fn update_seo_audits_batch(
+        &self,
+        project_id: &str,
+        audits: &[(String, f64, Option<String>, Option<String>)],
+    ) -> Result<(), AppError> {
+        if audits.is_empty() {
+            return Ok(());
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        for (page_id, score, json, headers_json) in audits {
+            update_seo_audit_in_tx(
+                &tx,
+                project_id,
+                page_id,
+                *score,
+                json.as_deref(),
+                headers_json.as_deref(),
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
