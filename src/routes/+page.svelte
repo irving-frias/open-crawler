@@ -238,6 +238,7 @@
           bind:respectRobots={app.respectRobots}
           bind:checkSitemap={app.checkSitemap}
           bind:checkSemantics={app.checkSemantics}
+          bind:renderJs={app.renderJs}
           onStart={app.handleStartCrawl}
           onStop={app.stopCrawl}
           onRefresh={() => app.loadResults(app.currentPage)}

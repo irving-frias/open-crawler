@@ -212,6 +212,7 @@ pub fn run() {
             crate::commands::get_running_crawls,
             crate::commands::check_resumable_crawl,
             crate::commands::get_last_crawl_config,
+            crate::commands::check_js_rendering_available,
             // results
             crate::commands::get_results,
             crate::commands::get_site_tree,

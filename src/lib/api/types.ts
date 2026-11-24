@@ -245,6 +245,8 @@ export interface CrawlConfig {
   check_sitemap?: boolean;
   max_crawl_time_secs?: number;
   check_semantics?: boolean;
+  render_js?: boolean;
+  render_wait_ms?: number;
   include_patterns?: string[];
   exclude_patterns?: string[];
   custom_headers?: [string, string][];
@@ -260,6 +262,12 @@ export interface ResumableCrawlInfo {
   errors: number;
   elapsed_secs: number;
   queue_remaining: number;
+}
+
+export interface JsAvailability {
+  available: boolean;
+  chrome_path: string | null;
+  message: string;
 }
 
 export type ProjectStats = Record<string, number | string>;

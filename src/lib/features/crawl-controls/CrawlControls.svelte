@@ -14,6 +14,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox/index.js';
   import * as Popover from '$lib/components/ui/popover/index.js';
   import type { CrawlStatus, ResumableInfo } from '$lib/app.svelte';
+  import { checkJsRenderingAvailable } from '$lib/api/crawl';
 
   let {
     status,
@@ -32,6 +33,7 @@
     respectRobots = $bindable(),
     checkSitemap = $bindable(),
     checkSemantics = $bindable(),
+    renderJs = $bindable(),
     onStart,
     onStop,
     onRefresh,
@@ -54,6 +56,7 @@
     respectRobots: boolean;
     checkSitemap: boolean;
     checkSemantics: boolean;
+    renderJs: boolean;
     onStart: () => void;
     onStop: () => void;
     onRefresh: () => void;
@@ -62,6 +65,22 @@
   } = $props();
 
   let seedError = $state(false);
+
+  // JS rendering needs a system Chrome/Chromium. Probe once on mount so
+  // the toggle is disabled with the reason when no browser is installed.
+  let jsAvailable = $state<boolean | null>(null);
+  let jsMessage = $state('');
+  $effect(() => {
+    checkJsRenderingAvailable()
+      .then((r) => {
+        jsAvailable = r.available;
+        jsMessage = r.message;
+      })
+      .catch(() => {
+        jsAvailable = false;
+        jsMessage = '';
+      });
+  });
 
   function isValidUrl(value: string): boolean {
     const v = value.trim();
@@ -236,6 +255,17 @@
       <Checkbox bind:checked={checkSemantics} disabled={status === 'running'} />
       <span>{m['config.check_semantics']()}</span>
     </label>
+    <label class="checkbox-label">
+      <Checkbox bind:checked={renderJs} disabled={status === 'running' || jsAvailable === false} />
+      <span>{m['config.render_js']()}</span>
+    </label>
+    {#if jsAvailable === false}
+      <p class="field-hint">
+        {jsMessage || m['config.render_js_unavailable']()}
+      </p>
+    {:else}
+      <p class="field-hint">{m['config.render_js_hint']()}</p>
+    {/if}
   </div>
 
   <div class="actions">

@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::crawler::db_writer::{create_db_writer_channel, CrawlResultMsg, DbWriter};
 use crate::crawler::dedup::Deduplicator;
-use crate::crawler::fetcher::{HtmlFetcher, HttpFetcher};
+use crate::crawler::fetcher::{ChromiumFetcher, HtmlFetcher, HttpFetcher};
 use crate::crawler::frontier::Frontier;
 use crate::crawler::parser::SeoParser;
 use crate::crawler::robots::RobotsChecker;
@@ -129,7 +129,13 @@ impl CrawlEngine {
             .clone()
             .ok_or_else(|| AppError::InvalidConfig("No configuration set".to_string()))?;
 
-        let concurrency = config.concurrency.max(1);
+        // One Chrome process per page when rendering JS, so cap the
+        // concurrency: more workers would just spawn more browsers.
+        let concurrency = if config.render_js {
+            config.concurrency.clamp(1, 2)
+        } else {
+            config.concurrency.max(1)
+        };
         let project_id = project_id.to_string();
         info!("=== CRAWL STARTING for project: {} ===", project_id);
         info!(
@@ -154,7 +160,12 @@ impl CrawlEngine {
         }
         info!("Allowed origins: {:?}", self.allowed_origins);
 
-        // Create fetcher with implicit user agent.
+        // Create fetcher with implicit user agent. With JS rendering on,
+        // pages are rendered in a headless system Chrome instead (see
+        // `crawler::fetcher::ChromiumFetcher`); the browser is checked
+        // eagerly so a crawl with JS on but no Chrome installed fails fast
+        // with a clear message, instead of failing on page one. Sitemap
+        // discovery and robots.txt keep using plain HTTP either way.
         let http_fetcher = HttpFetcher::new(
             self.client.clone(),
             config.user_agent(),
@@ -164,7 +175,17 @@ impl CrawlEngine {
             config.site_auth.clone(),
             config.proxy.as_ref(),
         )?;
-        self.fetcher = Some(Arc::new(Box::new(http_fetcher)));
+        if config.render_js {
+            info!("JS rendering enabled for this crawl (headless Chrome --dump-dom)");
+            let chromium_fetcher = ChromiumFetcher::new(
+                http_fetcher,
+                config.render_wait_ms,
+                config.request_timeout_ms,
+            )?;
+            self.fetcher = Some(Arc::new(Box::new(chromium_fetcher)));
+        } else {
+            self.fetcher = Some(Arc::new(Box::new(http_fetcher)));
+        }
 
         // Initialize frontier
         self.frontier = Some(Frontier::new(config.max_depth, 100_000));
@@ -1196,5 +1217,104 @@ mod tests {
         let discovered: Vec<(String, u32)> = frontier.read().await.drain_all();
         assert_eq!(discovered.len(), 1);
         assert!(discovered[0].0.ends_with("/b"), "got {:?}", discovered);
+    }
+
+    /// Serves one page whose only link is injected by JavaScript. The same
+    /// shape as `spawn_no_sitemap_site`, but the link is invisible to a
+    /// static fetch — only a rendered DOM contains it.
+    async fn spawn_js_site() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let origin = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = match listener.accept().await {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let req = String::from_utf8_lossy(&buf);
+                let path = req.split_whitespace().nth(1).unwrap_or("/");
+
+                let (status, body) = match path {
+                    "/" => (
+                        "200 OK",
+                        r#"<!DOCTYPE html><html lang="en"><head><title>JS Home</title></head><body><h1>JS Home</h1><div id="app"></div><script>document.getElementById('app').innerHTML='<a href="/injected">Injected</a>';</script></body></html>"#,
+                    ),
+                    "/injected" => (
+                        "200 OK",
+                        r#"<!DOCTYPE html><html lang="en"><head><title>Injected</title></head><body><h1>Injected</h1></body></html>"#,
+                    ),
+                    _ => ("404 Not Found", "<html><body>404</body></html>"),
+                };
+
+                let resp = format!(
+                    "HTTP/1.1 {}\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{}",
+                    status,
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        origin
+    }
+
+    /// With JS rendering on, `fetch_and_parse` must discover the link that
+    /// only exists in the rendered DOM — proving the rendered HTML flows
+    /// through the normal parse/check pipeline. Skipped when no system
+    /// Chrome is installed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn link_discovery_finds_js_injected_links() {
+        use crate::crawler::fetcher::{check_js_availability, ChromiumFetcher};
+
+        if !check_js_availability().available {
+            eprintln!("skipping: no Chrome/Chromium installed");
+            return;
+        }
+        let origin = spawn_js_site().await;
+        let seed = format!("{}/", origin);
+
+        let http =
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let fetcher = ChromiumFetcher::new(http, 5000, 30_000).unwrap();
+        let parser = SeoParser::new();
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+
+        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(pages, 1);
+        assert_eq!(new_urls, 1, "should discover the JS-injected link");
+        let discovered: Vec<(String, u32)> = frontier.read().await.drain_all();
+        assert_eq!(discovered.len(), 1);
+        assert!(
+            discovered[0].0.ends_with("/injected"),
+            "got {:?}",
+            discovered
+        );
     }
 }

@@ -66,6 +66,7 @@ export interface CrawlFormConfig {
   respectRobots: boolean;
   checkSitemap: boolean;
   checkSemantics: boolean;
+  renderJs: boolean;
   proxyUrl: string;
   proxyUser: string;
   proxyPass: string;
@@ -84,6 +85,7 @@ export interface AppFields {
   respectRobots: boolean;
   checkSitemap: boolean;
   checkSemantics: boolean;
+  renderJs: boolean;
   maxCrawlTime: number;
   proxyUrl: string;
   proxyUser: string;
@@ -201,6 +203,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     respectRobots: true,
     checkSitemap: true,
     checkSemantics: true,
+    renderJs: false,
     maxCrawlTime: 3600,
     proxyUrl: '',
     proxyUser: '',
@@ -308,6 +311,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
   if (typeof persisted.checkSitemap === 'boolean') state.checkSitemap = persisted.checkSitemap;
   if (typeof persisted.checkSemantics === 'boolean')
     state.checkSemantics = persisted.checkSemantics;
+  if (typeof persisted.renderJs === 'boolean') state.renderJs = persisted.renderJs;
   if (
     typeof persisted.activeTab === 'string' &&
     (TAB_IDS as readonly string[]).includes(persisted.activeTab)
@@ -333,6 +337,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       respectRobots: state.respectRobots,
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
+      renderJs: state.renderJs,
       activeTab: state.activeTab,
       lastPackage: state.lastPackage,
       activeTransfer: state.activeTransfer,
@@ -596,6 +601,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
       respectRobots: state.respectRobots,
       checkSitemap: state.checkSitemap,
       checkSemantics: state.checkSemantics,
+      renderJs: state.renderJs,
       proxyUrl: state.proxyUrl,
       proxyUser: state.proxyUser,
       proxyPass: state.proxyPass,
@@ -611,6 +617,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     state.respectRobots = cfg.respectRobots ?? true;
     state.checkSitemap = cfg.checkSitemap ?? true;
     state.checkSemantics = cfg.checkSemantics ?? true;
+    state.renderJs = cfg.renderJs ?? false;
     state.proxyUrl = cfg.proxyUrl ?? '';
     state.proxyUser = cfg.proxyUser ?? '';
     state.proxyPass = cfg.proxyPass ?? '';
@@ -634,6 +641,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
           respectRobots: cfg.respect_robots ?? true,
           checkSitemap: cfg.check_sitemap ?? true,
           checkSemantics: cfg.check_semantics ?? true,
+          renderJs: cfg.render_js ?? false,
           proxyUrl: cfg.proxy?.url ?? '',
           proxyUser: cfg.proxy?.username ?? '',
           proxyPass: cfg.proxy?.password ?? '',
@@ -843,6 +851,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         respect_robots: state.respectRobots,
         check_sitemap: state.checkSitemap,
         check_semantics: state.checkSemantics,
+        render_js: state.renderJs,
         max_crawl_time_secs: state.maxCrawlTime,
         cookies: state.cookies
           .split('\n')

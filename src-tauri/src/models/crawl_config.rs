@@ -45,6 +45,17 @@ pub struct CrawlConfig {
     pub max_crawl_time_secs: u64,
     #[serde(default = "default_true")]
     pub check_semantics: bool,
+    /// Render pages in a headless system Chrome before parsing (JS mode, off
+    /// by default). When true, pages are rendered with JavaScript — SPAs and
+    /// JS-injected content become visible to the crawl and the SEO checks.
+    /// Requires Google Chrome or Chromium installed; the crawl fails fast
+    /// with a clear message when no browser is found.
+    #[serde(default)]
+    pub render_js: bool,
+    /// Virtual time budget in milliseconds for the headless Chrome render
+    /// (scripts and delayed rendering settle within this budget).
+    #[serde(default = "default_render_wait_ms")]
+    pub render_wait_ms: u64,
     #[serde(default)]
     pub include_patterns: Vec<String>,
     #[serde(default)]
@@ -82,6 +93,9 @@ fn default_max_crawl_secs() -> u64 {
 fn default_request_timeout_ms() -> u64 {
     30000 // 30 seconds
 }
+fn default_render_wait_ms() -> u64 {
+    5000 // 5 seconds of virtual time for the headless Chrome render
+}
 
 impl CrawlConfig {
     pub fn user_agent(&self) -> &str {
@@ -104,6 +118,8 @@ impl Default for CrawlConfig {
             check_sitemap: true,
             max_crawl_time_secs: default_max_crawl_secs(),
             check_semantics: true,
+            render_js: false,
+            render_wait_ms: default_render_wait_ms(),
             include_patterns: Vec::new(),
             exclude_patterns: Vec::new(),
             custom_headers: Vec::new(),

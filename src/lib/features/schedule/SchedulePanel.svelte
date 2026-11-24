@@ -28,6 +28,7 @@
     respect_robots: app.respectRobots,
     check_sitemap: app.checkSitemap,
     check_semantics: app.checkSemantics,
+    render_js: app.renderJs,
     max_crawl_time_secs: app.maxCrawlTime,
     cookies: app.cookies
       .split('\n')
@@ -69,6 +70,7 @@
       respect_robots: c.respect_robots,
       check_sitemap: c.check_sitemap,
       check_semantics: c.check_semantics,
+      render_js: c.render_js,
       max_crawl_time_secs: c.max_crawl_time_secs,
       concurrency: c.concurrency,
       delay_ms: c.delay_ms,

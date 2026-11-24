@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CrawlConfig, CrawlProgress, ResumableCrawlInfo } from './types';
+import type { CrawlConfig, CrawlProgress, JsAvailability, ResumableCrawlInfo } from './types';
 
 export function startCrawl(projectId: string, config: CrawlConfig): Promise<void> {
   return invoke<void>('start_crawl', { projectId, config });
@@ -23,6 +23,10 @@ export function checkResumableCrawl(projectId: string): Promise<ResumableCrawlIn
 
 export function getLastCrawlConfig(projectId: string): Promise<CrawlConfig | null> {
   return invoke<CrawlConfig | null>('get_last_crawl_config', { projectId });
+}
+
+export function checkJsRenderingAvailable(): Promise<JsAvailability> {
+  return invoke<JsAvailability>('check_js_rendering_available');
 }
 
 export function isMobile(): Promise<boolean> {

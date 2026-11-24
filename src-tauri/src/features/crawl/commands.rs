@@ -209,3 +209,12 @@ pub async fn get_running_crawls(
     let crawls = state_read.crawls.read().await;
     Ok(crawls.keys().cloned().collect())
 }
+
+/// Probes whether JavaScript rendering can run on this machine, without
+/// launching a browser. The UI calls this to enable/disable the JS-rendering
+/// toggle (and to show why it is unavailable).
+#[tauri::command]
+pub async fn check_js_rendering_available(
+) -> Result<crate::crawler::fetcher::JsAvailability, AppError> {
+    Ok(crate::crawler::fetcher::check_js_availability())
+}
