@@ -74,13 +74,16 @@ async fn run_due_jobs(app: &AppHandle, state: &Arc<RwLock<AppState>>) -> Result<
 
         advance_next_run(state, &job).await;
 
-        let config: CrawlConfig = match serde_json::from_str(&job.config_json) {
+        let mut config: CrawlConfig = match serde_json::from_str(&job.config_json) {
             Ok(c) => c,
             Err(e) => {
                 error!("Scheduled job {} has invalid config_json: {}", job.id, e);
                 continue;
             }
         };
+        // Marks the crawl as scheduled so the engine runs the alert check
+        // once the crawl snapshot exists (manual crawls never alert).
+        config.scheduled_job_id = Some(job.id.clone());
 
         let _ = app.emit(
             "scheduled-job-ran",

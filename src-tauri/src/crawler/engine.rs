@@ -648,28 +648,55 @@ impl CrawlEngine {
         // Create a crawl snapshot for later comparison (non-blocking)
         {
             let state = state.clone();
+            let app = app.clone();
             let project_id = project_id.clone();
             let config_id = config_id.clone();
+            // Set only for crawls launched by the cron scheduler.
+            let scheduled_job_id = config.scheduled_job_id.clone();
             tokio::spawn(async move {
-                let state_read = state.read().await;
-                let lock_result = state_read.db.lock();
-                match lock_result {
-                    Ok(db) => {
-                        let repo = CrawlRepo::new(&db, None);
-                        match repo.create_crawl_snapshot(&project_id, &config_id) {
-                            Ok(snapshot) => {
-                                info!(
-                                    "Created crawl snapshot {} for project {} ({} pages)",
-                                    snapshot.id, project_id, snapshot.total_pages
-                                );
-                            }
-                            Err(e) => {
-                                error!("Failed to create crawl snapshot: {}", e);
+                // The DB lock is released before the alert check below:
+                // the guard is not Send and must not be held across an await.
+                let snapshot = {
+                    let state_read = state.read().await;
+                    let lock_result = state_read.db.lock();
+                    match lock_result {
+                        Ok(db) => {
+                            let repo = CrawlRepo::new(&db, None);
+                            match repo.create_crawl_snapshot(&project_id, &config_id) {
+                                Ok(snapshot) => {
+                                    info!(
+                                        "Created crawl snapshot {} for project {} ({} pages)",
+                                        snapshot.id, project_id, snapshot.total_pages
+                                    );
+                                    Some(snapshot)
+                                }
+                                Err(e) => {
+                                    error!("Failed to create crawl snapshot: {}", e);
+                                    None
+                                }
                             }
                         }
+                        Err(e) => {
+                            error!("Failed to lock DB for snapshot: {}", e);
+                            None
+                        }
                     }
-                    Err(e) => {
-                        error!("Failed to lock DB for snapshot: {}", e);
+                };
+                // Scheduled crawl: diff against the previous snapshot and
+                // alert only on new errors. Never fails the crawl itself.
+                if let (Some(snapshot), Some(_)) = (snapshot, scheduled_job_id.as_ref()) {
+                    match crate::features::alerts::service::check_and_notify(
+                        &app,
+                        &state,
+                        &project_id,
+                        &snapshot,
+                    )
+                    .await
+                    {
+                        Ok(outcome) => {
+                            info!("Alert check for project {}: {:?}", project_id, outcome)
+                        }
+                        Err(e) => error!("Alert check failed for project {}: {}", project_id, e),
                     }
                 }
             });

@@ -70,6 +70,13 @@ pub struct CrawlConfig {
     pub request_timeout_ms: u64,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
+    /// Id of the `scheduled_jobs` row that launched this crawl, set only
+    /// by the cron scheduler. When present, the engine runs the alert
+    /// check after the crawl snapshot is created; manual crawls leave it
+    /// empty and never alert. Not part of the crawl behaviour itself, so
+    /// it is omitted from serialized configs.
+    #[serde(default, skip_serializing)]
+    pub scheduled_job_id: Option<String>,
 }
 
 fn default_max_depth() -> u32 {
@@ -127,6 +134,7 @@ impl Default for CrawlConfig {
             site_auth: None,
             request_timeout_ms: default_request_timeout_ms(),
             proxy: None,
+            scheduled_job_id: None,
         }
     }
 }
