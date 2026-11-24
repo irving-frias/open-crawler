@@ -425,7 +425,7 @@ anterior de SEO y optimización ya está commiteado (`b3c28dd`, `3147f58`).
   Run `31925399852` success; release re-publicada con 19 assets (latest.json +
   .sig por plataforma) y endpoint `.../latest/download/latest.json` → 200.
 - Verificación local del fix: `bun run tauri bundle --target aarch64-apple-darwin
-  --bundles app,dmg` con `TAURI_SIGNING_PRIVATE_KEY` (de `.secrets/tauri.key`) y
+--bundles app,dmg` con `TAURI_SIGNING_PRIVATE_KEY` (de `.secrets/tauri.key`) y
   password `opencrawler2026` genera `Open Crawler.app.tar.gz.sig`.
 
 **Guardar el password del keystore Android** (`bx067ADsyJeDRluvPazxW6aH9AHXpDkK`)
