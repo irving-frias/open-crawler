@@ -40,9 +40,9 @@
       <h1 class="logo">{m['app.title']()}</h1>
     </button>
     {#if compact}
-      <span class="header-project-name"
-        >{projects.optimistic.find((p) => p.id === selectedProjectId)?.name ?? ''}</span
-      >
+      <span class="header-project-name">
+        {projects.optimistic.find((p) => p.id === selectedProjectId)?.name ?? ''}
+      </span>
     {/if}
     {#if showSettings}
       <Button

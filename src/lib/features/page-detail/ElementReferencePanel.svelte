@@ -66,8 +66,9 @@
                 {#if typeof seg === 'string'}
                   {seg}
                 {:else if seg.href}
-                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a
-                  >
+                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">
+                    {seg.text}
+                  </a>
                 {:else}
                   {seg.text}
                 {/if}
@@ -94,8 +95,9 @@
                 {#if typeof seg === 'string'}
                   {seg}
                 {:else if seg.href}
-                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">{seg.text}</a
-                  >
+                  <a href={seg.href} target="_blank" rel="noreferrer" class="ref-link">
+                    {seg.text}
+                  </a>
                 {:else}
                   {seg.text}
                 {/if}

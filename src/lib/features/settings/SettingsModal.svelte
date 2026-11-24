@@ -250,9 +250,9 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={notificationsEnabled} id="cfg-notifications" />
-          <Label for="cfg-notifications" class="cursor-pointer font-normal"
-            >{m['settings.notifications']()}</Label
-          >
+          <Label for="cfg-notifications" class="cursor-pointer font-normal">
+            {m['settings.notifications']()}
+          </Label>
         </div>
       </div>
 
@@ -292,9 +292,9 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={aiEnabled} id="cfg-ai-enabled" />
-          <Label for="cfg-ai-enabled" class="cursor-pointer font-normal"
-            >{m['settings.ai_enabled']()}</Label
-          >
+          <Label for="cfg-ai-enabled" class="cursor-pointer font-normal">
+            {m['settings.ai_enabled']()}
+          </Label>
         </div>
         <p class="text-xs text-muted-foreground">{m['settings.ai_enabled_hint']()}</p>
       </div>
@@ -426,21 +426,21 @@
       <div class="grid gap-2 pt-1">
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={respectRobots} id="cfg-respect-robots" />
-          <Label for="cfg-respect-robots" class="cursor-pointer font-normal"
-            >{m['config.respect_robots']()}</Label
-          >
+          <Label for="cfg-respect-robots" class="cursor-pointer font-normal">
+            {m['config.respect_robots']()}
+          </Label>
         </div>
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={checkSitemap} id="cfg-check-sitemap" />
-          <Label for="cfg-check-sitemap" class="cursor-pointer font-normal"
-            >{m['config.check_sitemap']()}</Label
-          >
+          <Label for="cfg-check-sitemap" class="cursor-pointer font-normal">
+            {m['config.check_sitemap']()}
+          </Label>
         </div>
         <div class="flex items-center gap-2">
           <Checkbox bind:checked={checkSemantics} id="cfg-check-semantics" />
-          <Label for="cfg-check-semantics" class="cursor-pointer font-normal"
-            >{m['config.check_semantics']()}</Label
-          >
+          <Label for="cfg-check-semantics" class="cursor-pointer font-normal">
+            {m['config.check_semantics']()}
+          </Label>
         </div>
       </div>
     </div>
@@ -461,9 +461,10 @@
           <span
             class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
           ></span>
-          <span class="text-sm text-muted-foreground"
-            >{m['updater.installing']()} {updaterProgress}%</span
-          >
+          <span class="text-sm text-muted-foreground">
+            {m['updater.installing']()}
+            {updaterProgress}%
+          </span>
         </div>
       {:else if updaterStatus === 'restart'}
         <p class="text-sm text-muted-foreground">{m['updater.install']()}</p>
@@ -479,9 +480,9 @@
         <div class="flex items-center gap-2">
           <Button variant="outline" onclick={checkUpdates}>{m['updater.check']()}</Button>
           {#if updaterError}
-            <span class="text-sm text-destructive"
-              >{m['updater.error']({ error: updaterError })}</span
-            >
+            <span class="text-sm text-destructive">
+              {m['updater.error']({ error: updaterError })}
+            </span>
           {/if}
         </div>
       {/if}

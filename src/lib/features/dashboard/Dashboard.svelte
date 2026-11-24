@@ -126,9 +126,9 @@
       </div>
       <div class="stat-card">
         <span class="stat-label">{m['dashboard.avg_load']()}</span>
-        <span class="stat-value"
-          >{Math.round(stats.avg_load_ms).toLocaleString()}{m['dashboard.unit_ms']()}</span
-        >
+        <span class="stat-value">
+          {Math.round(stats.avg_load_ms).toLocaleString()}{m['dashboard.unit_ms']()}
+        </span>
       </div>
       <div class="stat-card">
         <span class="stat-label">{m['dashboard.avg_size']()}</span>

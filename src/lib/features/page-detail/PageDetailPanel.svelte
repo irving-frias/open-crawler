@@ -435,9 +435,9 @@
       <div class="header-right">
         {#if detail}
           <Badge variant={statusBadgeVariant(detail.status_code)}>{statusText(detail)}</Badge>
-          <span class="header-meta"
-            >{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}</span
-          >
+          <span class="header-meta">
+            {detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : ''}
+          </span>
           <span class="header-meta">{detail.load_time_ms ? `${detail.load_time_ms}ms` : ''}</span>
         {/if}
         <Button
@@ -455,9 +455,9 @@
     <Tabs.Root bind:value={activeTab} class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
       <Tabs.List variant="line" class="flex-shrink-0 rounded-none border-b border-border px-4">
         <Tabs.Trigger value="overview">{m['detail.overview']()}</Tabs.Trigger>
-        <Tabs.Trigger value="links"
-          >{m['detail.links']({ count: links.length.toString() })}</Tabs.Trigger
-        >
+        <Tabs.Trigger value="links">
+          {m['detail.links']({ count: links.length.toString() })}
+        </Tabs.Trigger>
       </Tabs.List>
 
       {#if loading}
@@ -541,9 +541,9 @@
                         <Gauge class="size-4" />
                         {m['detail.pagespeed']()}
                         {#if pagespeed?.score != null}
-                          <span class="pagespeed-chip" style="color: {scoreColor(pagespeed.score)}"
-                            >{pagespeed.score}</span
-                          >
+                          <span class="pagespeed-chip" style="color: {scoreColor(pagespeed.score)}">
+                            {pagespeed.score}
+                          </span>
                         {/if}
                       </span>
                     </AccordionTrigger>
@@ -584,11 +584,11 @@
                 {#if allIssues.length > 0}
                   <AccordionItem value="semantic-issues" class="overview-full">
                     <AccordionHeader>
-                      <AccordionTrigger
-                        >{m['detail.semantic_issues']({
+                      <AccordionTrigger>
+                        {m['detail.semantic_issues']({
                           count: allIssues.length.toString(),
-                        })}</AccordionTrigger
-                      >
+                        })}
+                      </AccordionTrigger>
                     </AccordionHeader>
                     <AccordionContent>
                       {@render issuesContent()}
@@ -635,13 +635,13 @@
       </div>
       <div class="field">
         <span class="field-label">{m['detail.indexable']()}</span>
-        <span class="field-value"
-          >{detail.is_indexable === true
+        <span class="field-value">
+          {detail.is_indexable === true
             ? m['detail.yes']()
             : detail.is_indexable === false
               ? m['detail.no']()
-              : m['detail.unknown']()}</span
-        >
+              : m['detail.unknown']()}
+        </span>
       </div>
     </CardContent>
   </Card>
@@ -925,9 +925,9 @@
         </div>
         <div class="field">
           <span class="field-label">{m['detail.size']()}</span>
-          <span class="field-value"
-            >{detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}</span
-          >
+          <span class="field-value">
+            {detail.size_bytes ? `${(detail.size_bytes / 1024).toFixed(1)} KB` : '-'}
+          </span>
         </div>
         <div class="field">
           <span class="field-label">{m['detail.load_time']()}</span>
@@ -991,9 +991,9 @@
         <div class="field">
           <span class="field-label">{field.key}</span>
           {#if field.key === 'og:image' || field.key === 'og:url' || field.key === 'twitter:image'}
-            <a href={field.value} target="_blank" rel="noreferrer" class="field-value"
-              >{field.value}</a
-            >
+            <a href={field.value} target="_blank" rel="noreferrer" class="field-value">
+              {field.value}
+            </a>
           {:else}
             <span class="field-value">{field.value}</span>
           {/if}
@@ -1115,9 +1115,9 @@
           {@const refInfo = elementReference(issue)}
           <div class="issue-card issue-{issue.severity}">
             <div class="issue-header">
-              <Badge variant={severityBadgeVariant(issue.severity)}
-                >{translateSeverity(issue.severity)}</Badge
-              >
+              <Badge variant={severityBadgeVariant(issue.severity)}>
+                {translateSeverity(issue.severity)}
+              </Badge>
               <span class="issue-type">{translateIssueName(issue.issue_type)}</span>
             </div>
             <div class="issue-message">{translateIssueMessage(issue.issue_type, params)}</div>
@@ -1149,9 +1149,9 @@
                   </PopoverTrigger>
                   <PopoverContent class="w-80">
                     <div class="flex flex-col gap-2">
-                      <span class="text-xs font-medium text-muted-foreground"
-                        >{m['detail.copy_xpath']()}</span
-                      >
+                      <span class="text-xs font-medium text-muted-foreground">
+                        {m['detail.copy_xpath']()}
+                      </span>
                       <code class="text-xs font-mono break-all">{issue.xpath}</code>
                       <Button
                         variant="outline"

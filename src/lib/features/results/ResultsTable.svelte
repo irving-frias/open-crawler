@@ -313,9 +313,9 @@
                     {/if}
                   </span>
                   <span class="issue-element">{issue.element}</span>
-                  <span class="issue-message"
-                    >{translateIssueMessage(issue.issue_type, params)}</span
-                  >
+                  <span class="issue-message">
+                    {translateIssueMessage(issue.issue_type, params)}
+                  </span>
                   {#if issue.xpath && !issue.issue_type.startsWith('missing_')}
                     <code class="issue-selector">{issue.xpath}</code>
                   {:else if issue.xpath}

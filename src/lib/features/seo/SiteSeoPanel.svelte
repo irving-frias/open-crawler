@@ -298,8 +298,9 @@
                 style="color: {scoreColor(overview.avg_score ?? 0)}"
               >
                 {Math.round(overview.avg_score ?? 0)}
-                {#if overview.avg_grade}<span class="seo-site-grade">· {overview.avg_grade}</span
-                  >{/if}
+                {#if overview.avg_grade}<span class="seo-site-grade">
+                    · {overview.avg_grade}
+                  </span>{/if}
               </span>
             </div>
             <div class="seo-site-stat">

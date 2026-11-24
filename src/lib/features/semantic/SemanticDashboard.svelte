@@ -206,26 +206,26 @@
       </div>
       <div class="severity-legend">
         {#if severityTotals.error > 0}
-          <span class="legend-item"
-            ><span class="legend-dot error"></span>
-            {m['dashboard.errors']({ count: severityTotals.error.toString() })}</span
-          >
+          <span class="legend-item">
+            <span class="legend-dot error"></span>
+            {m['dashboard.errors']({ count: severityTotals.error.toString() })}
+          </span>
         {/if}
         {#if severityTotals.warning > 0}
-          <span class="legend-item"
-            ><span class="legend-dot warning"></span>
-            {m['dashboard.warnings']({ count: severityTotals.warning.toString() })}</span
-          >
+          <span class="legend-item">
+            <span class="legend-dot warning"></span>
+            {m['dashboard.warnings']({ count: severityTotals.warning.toString() })}
+          </span>
         {/if}
         {#if severityTotals.info > 0}
-          <span class="legend-item"
-            ><span class="legend-dot info"></span>
-            {m['dashboard.info']({ count: severityTotals.info.toString() })}</span
-          >
+          <span class="legend-item">
+            <span class="legend-dot info"></span>
+            {m['dashboard.info']({ count: severityTotals.info.toString() })}
+          </span>
         {/if}
-        <span class="legend-total"
-          >{m['dashboard.total_issues']({ count: totalIssues.toString() })}</span
-        >
+        <span class="legend-total">
+          {m['dashboard.total_issues']({ count: totalIssues.toString() })}
+        </span>
       </div>
 
       <!-- Issue Type Cards -->

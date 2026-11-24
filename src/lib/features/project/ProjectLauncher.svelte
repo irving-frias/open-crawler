@@ -115,9 +115,9 @@
         {#each projects as project (project.id)}
           <div class="launcher-card">
             <div class="launcher-card-head">
-              <span class="launcher-avatar"
-                >{project.name.trim().charAt(0).toUpperCase() || '?'}</span
-              >
+              <span class="launcher-avatar">
+                {project.name.trim().charAt(0).toUpperCase() || '?'}
+              </span>
               <span class="launcher-card-name" title={project.name}>{project.name}</span>
               <Button
                 variant="ghost"

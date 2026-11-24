@@ -131,9 +131,10 @@
           <CardHeader class="pb-2">
             <CardTitle class="flex items-center gap-2 text-sm">
               <Badge variant="warning">{m['duplicates.group']()}</Badge>
-              <span class="text-muted-foreground font-normal"
-                >{group.size} {m['duplicates.pages']()}</span
-              >
+              <span class="text-muted-foreground font-normal">
+                {group.size}
+                {m['duplicates.pages']()}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
