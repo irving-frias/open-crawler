@@ -103,6 +103,15 @@ pub struct PaginatedResults {
     pub page_size: u32,
 }
 
+/// Distinct values across the whole project for the results filter bar,
+/// so its options are not limited to the rows of the current page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilterOptions {
+    pub status_codes: Vec<u32>,
+    pub severities: Vec<String>,
+    pub issue_types: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResultsFilter {
     pub status_code: Option<u16>,

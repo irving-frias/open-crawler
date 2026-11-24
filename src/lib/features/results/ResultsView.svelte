@@ -13,6 +13,7 @@
   import { translateIssueName } from '$lib/i18n-issues';
   import { TAB_DEFS, loadTabComponent, type LazyTabId } from '$lib/tabs';
   import type { ResultsState, TabValue } from '$lib/app.svelte';
+  import type { FilterOptions } from '$lib/api/types';
 
   let {
     activeTab = $bindable('results' as TabValue),
@@ -22,6 +23,7 @@
     pageSize,
     pageSizeSelect = $bindable(),
     filters,
+    filterOptions,
     debouncedSearch,
     expandedIssueUrl = $bindable(),
     selectedProjectId,
@@ -40,6 +42,7 @@
     pageSize: number;
     pageSizeSelect: string;
     filters: FilterState;
+    filterOptions: FilterOptions | null;
     debouncedSearch: string;
     expandedIssueUrl: string;
     selectedProjectId: string;
@@ -138,7 +141,7 @@
       {/if}
     </div>
 
-    <FilterBar items={results.items} {filters} onFilter={onFilterChange} />
+    <FilterBar items={results.items} {filters} options={filterOptions} onFilter={onFilterChange} />
 
     {#if resultsLoading}
       <div class="results-skeleton">

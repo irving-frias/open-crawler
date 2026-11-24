@@ -7,15 +7,20 @@
   import { cn } from '$lib/utils.js';
   import { translateIssueName } from '$lib/i18n-issues';
   import { parseIssues } from '$lib/features/results/issue-cache';
+  import type { FilterOptions } from '$lib/api/types';
 
   let {
     items,
     filters,
     onFilter,
+    options = null,
   }: {
     items: any[];
     filters: FilterState;
     onFilter: (filters: FilterState) => void;
+    // Distinct values across the whole project (backend endpoint). When
+    // null, the options fall back to the current page's rows.
+    options?: FilterOptions | null;
   } = $props();
 
   export type FilterState = {
@@ -38,7 +43,7 @@
   const is404 = $derived(filters.is404);
   const issueType = $derived(filters.issueType);
 
-  const AVAILABLE_STATUSES = $derived.by(() => {
+  const pageStatuses = $derived.by(() => {
     let statusCount: Record<number, number> = {};
     for (const page of items) {
       if (page.status_code) {
@@ -50,7 +55,7 @@
       .sort((a, b) => a - b);
   });
 
-  const availableSeverities = $derived.by(() => {
+  const pageSeverities = $derived.by(() => {
     let sevCount: Record<string, number> = {};
     for (const page of items) {
       for (const issue of parseIssues(page.semantic_issues_json)) {
@@ -62,7 +67,7 @@
     return Object.keys(sevCount).sort();
   });
 
-  const availableIssueTypes = $derived.by(() => {
+  const pageIssueTypes = $derived.by(() => {
     const types = new Set<string>();
     for (const page of items) {
       for (const issue of parseIssues(page.semantic_issues_json)) {
@@ -71,6 +76,12 @@
     }
     return [...types].sort();
   });
+
+  // Project-wide options from the backend when available; the page-derived
+  // values above are only a fallback (e.g. before the endpoint responds).
+  const AVAILABLE_STATUSES = $derived(options ? options.status_codes : pageStatuses);
+  const availableSeverities = $derived(options ? options.severities : pageSeverities);
+  const availableIssueTypes = $derived(options ? options.issue_types : pageIssueTypes);
 
   const activeFilterCount = $derived(
     selectedStatuses.length +
@@ -170,9 +181,9 @@
           <SlidersHorizontal class="size-4" />
           {m['filter.filters']()}
           {#if activeFilterCount > 0}
-            <Badge variant="default" class="size-5 justify-center rounded-full px-1"
-              >{activeFilterCount}</Badge
-            >
+            <Badge variant="default" class="size-5 justify-center rounded-full px-1">
+              {activeFilterCount}
+            </Badge>
           {/if}
           <ChevronDown class="size-3.5 opacity-60" />
         </Button>

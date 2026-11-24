@@ -78,6 +78,14 @@ export interface PaginatedResults {
   page_size: number;
 }
 
+/// Distinct filter values across the whole project (backend endpoint),
+/// so the filter bar is not limited to the rows of the current page.
+export interface FilterOptions {
+  status_codes: number[];
+  severities: string[];
+  issue_types: string[];
+}
+
 export interface IssueCount {
   issue_type: string;
   severity: string;
@@ -381,18 +389,6 @@ export interface SeoIssueCount {
   category: string;
   severity: string;
   occurrences: number;
-  message: string;
-  guidance: string;
-  evidence?: string | null;
-  examples?: SemanticIssue[];
-}
-
-export interface SeoCheckResult {
-  id: string;
-  category: string;
-  severity: string;
-  passed: boolean;
-  weight: number;
   message: string;
   guidance: string;
   evidence?: string | null;

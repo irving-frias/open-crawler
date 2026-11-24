@@ -264,6 +264,7 @@
             pageSize={app.pageSize}
             bind:pageSizeSelect={app.pageSizeSelect}
             filters={app.activeFilters}
+            filterOptions={app.filterOptions}
             debouncedSearch={app.debouncedSearch}
             bind:expandedIssueUrl={app.expandedIssueUrl}
             selectedProjectId={app.selectedProjectId}

@@ -215,6 +215,7 @@ pub fn run() {
             crate::commands::check_js_rendering_available,
             // results
             crate::commands::get_results,
+            crate::commands::get_filter_options,
             crate::commands::get_site_tree,
             crate::commands::get_site_tree_full,
             crate::commands::get_site_tree_stream,

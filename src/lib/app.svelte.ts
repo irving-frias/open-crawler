@@ -8,7 +8,7 @@ import type {
   TransferInfo,
   TransferProgress,
 } from '$lib/api/transfer';
-import type { Project } from '$lib/api/types';
+import type { FilterOptions, Project } from '$lib/api/types';
 import { TAB_IDS } from '$lib/tabs';
 import { applyTheme } from '$lib/theme.js';
 import { useOptimistic, type OptimisticAction } from '$lib/use-optimistic.svelte.js';
@@ -100,6 +100,7 @@ export interface AppFields {
   status: CrawlStatus;
   progress: CrawlProgressState;
   results: ResultsState;
+  filterOptions: FilterOptions | null;
   error: string;
   sitemapInfo: string;
   activeFilters: FilterState;
@@ -219,6 +220,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     status: 'idle' as CrawlStatus,
     progress: { crawled: 0, queued: 0, current: '', errors: 0 } as CrawlProgressState,
     results: { items: [], total: 0, page: 1, page_size: 50 } as ResultsState,
+    filterOptions: null as FilterOptions | null,
     error: '',
     sitemapInfo: '',
     activeFilters: {
@@ -683,6 +685,7 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
     state.status = 'idle';
     state.progress = { crawled: 0, queued: 0, current: '', errors: 0 };
     state.results = { items: [], total: 0, page: 1, page_size: 50 };
+    state.filterOptions = null;
     state.currentPage = 1;
     state.error = '';
     state.sitemapInfo = '';
@@ -979,6 +982,19 @@ export function createAppShell(projectId: string | null = null, isLauncher = fal
         return;
       }
       state.results = data;
+      // Refresh the project-wide filter options whenever the result set
+      // changed (new crawl data can add statuses/severities/issue types).
+      // Fire-and-forget: the filter bar keeps its page-derived fallback
+      // until the endpoint answers.
+      const pid = state.selectedProjectId;
+      api.results
+        .getFilterOptions(pid)
+        .then((opts) => {
+          if (!disposed && state.selectedProjectId === pid) state.filterOptions = opts;
+        })
+        .catch(() => {
+          // Keep the page-derived fallback.
+        });
     } catch (e) {
       if (seq === resultsRequestSeq) console.error('[Crawler] Failed to load results:', e);
     } finally {

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   CrawlResult,
+  FilterOptions,
   IssueCount,
   PageDetail,
   PaginatedResults,
@@ -40,6 +41,10 @@ export function getResults(args: GetResultsArgs): Promise<PaginatedResults> {
     noindexOnly: args.noindexOnly ?? null,
     is404: args.is404 ?? null,
   });
+}
+
+export function getFilterOptions(projectId: string): Promise<FilterOptions> {
+  return invoke<FilterOptions>('get_filter_options', { projectId });
 }
 
 export function getPageDetail(pageId: string): Promise<PageDetail> {

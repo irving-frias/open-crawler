@@ -2,7 +2,7 @@ use rusqlite::params;
 use rusqlite::OptionalExtension;
 
 use crate::error::AppError;
-use crate::models::{CrawlResult, PageDetail, PageLink};
+use crate::models::{CrawlResult, FilterOptions, PageDetail, PageLink};
 use crate::ResultsCacheKey;
 
 use super::crawl::deserialize_rel_tokens;
@@ -336,6 +336,51 @@ impl<'a> CrawlRepo<'a> {
             blocked: row.get::<_, i32>(28)? != 0,
             redirect_from_url: row.get(29)?,
             response_headers_json: row.get(30)?,
+        })
+    }
+
+    /// Distinct filter values across the whole project (not just the
+    /// current page): status codes from `crawled_pages`, severities and
+    /// issue types from `page_issues`. The filter bar used to derive these
+    /// from the 50 rows on screen, so options from other pages never
+    /// appeared.
+    pub fn get_filter_options(&self, project_id: &str) -> Result<FilterOptions, AppError> {
+        let status_codes: Vec<u32> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT status_code FROM crawled_pages
+                 WHERE project_id = ?1 AND status_code IS NOT NULL ORDER BY status_code",
+            )?;
+            let rows = stmt
+                .query_map(params![project_id], |row| row.get::<_, i32>(0))?
+                .collect::<Result<Vec<i32>, _>>()?;
+            rows.into_iter().map(|s| s as u32).collect()
+        };
+        let severities: Vec<String> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT severity FROM page_issues
+                 WHERE project_id = ?1 AND severity IS NOT NULL AND trim(severity) <> ''
+                 ORDER BY severity",
+            )?;
+            let rows = stmt
+                .query_map(params![project_id], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+            rows
+        };
+        let issue_types: Vec<String> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT issue_type FROM page_issues
+                 WHERE project_id = ?1 AND issue_type IS NOT NULL AND trim(issue_type) <> ''
+                 ORDER BY issue_type",
+            )?;
+            let rows = stmt
+                .query_map(params![project_id], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+            rows
+        };
+        Ok(FilterOptions {
+            status_codes,
+            severities,
+            issue_types,
         })
     }
 

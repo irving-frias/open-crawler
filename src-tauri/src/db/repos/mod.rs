@@ -1853,4 +1853,31 @@ mod tests {
         assert!(repo.get_interrupted_session("p1").unwrap().is_none());
         assert!(repo.load_queue(&session_id).unwrap().is_empty());
     }
+
+    #[test]
+    fn test_get_filter_options_covers_whole_project() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.semantic_issues_json = Some(
+            r#"[{"issue_type":"img_no_alt","severity":"error","element":"img","message":"m"}]"#
+                .to_string(),
+        );
+        let mut b = page("pg2", "https://x.com/b", Some("B"), 404, true);
+        b.semantic_issues_json = Some(
+            r#"[{"issue_type":"missing_title","severity":"warning","element":"title","message":"m"}]"#
+                .to_string(),
+        );
+        repo.save_results_batch(&[a, b]).unwrap();
+
+        let opts = repo.get_filter_options("p1").unwrap();
+        assert_eq!(opts.status_codes, vec![200, 404]);
+        assert_eq!(
+            opts.severities,
+            vec!["error".to_string(), "warning".to_string()]
+        );
+        assert_eq!(
+            opts.issue_types,
+            vec!["img_no_alt".to_string(), "missing_title".to_string()]
+        );
+    }
 }

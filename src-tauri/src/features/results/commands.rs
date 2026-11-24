@@ -8,7 +8,8 @@ use crate::crawler::fetcher::HtmlFetcher;
 use crate::error::AppError;
 use crate::features::with_repo;
 use crate::models::{
-    CrawlResult, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode, SiteTreeNode,
+    CrawlResult, FilterOptions, IssueCount, PageDetail, PaginatedResults, SiteTreeFullNode,
+    SiteTreeNode,
 };
 use crate::AppState;
 
@@ -114,6 +115,14 @@ pub async fn get_site_tree_stream(
             return Ok(count);
         }
     }
+}
+
+#[tauri::command]
+pub async fn get_filter_options(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+) -> Result<FilterOptions, AppError> {
+    with_repo(&state, move |repo| repo.get_filter_options(&project_id)).await
 }
 
 #[tauri::command]
