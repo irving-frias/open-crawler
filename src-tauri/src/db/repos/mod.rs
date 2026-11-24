@@ -10,8 +10,10 @@ pub mod seo;
 pub mod settings;
 pub mod snapshots;
 
+use rusqlite::types::ToSql;
 use rusqlite::Connection;
 
+use crate::error::AppError;
 use crate::{ResultsCacheArc, ResultsCacheKey};
 
 pub fn compress_gzip(data: &[u8]) -> Vec<u8> {
@@ -55,6 +57,97 @@ pub(crate) fn compress_png(png: &Option<Vec<u8>>) -> Option<Vec<u8>> {
 pub(crate) fn decompress_png(data: &Option<Vec<u8>>) -> Option<Vec<u8>> {
     data.as_ref().map(|bytes| decompress_gzip(bytes))
 }
+
+/// Boxes one bind value for a multi-row insert row.
+pub(crate) fn sql_box<T: ToSql + 'static>(value: T) -> Box<dyn ToSql> {
+    Box::new(value)
+}
+
+/// Max bind parameters per statement. SQLite's default
+/// `SQLITE_MAX_VARIABLE_NUMBER` is 999 on some builds (32766 on newer ones),
+/// so chunked multi-row writes stay under 900 to be safe on either.
+const MAX_SQL_PARAMS_PER_STATEMENT: usize = 900;
+
+/// One `?` placeholder group per row, e.g. `(?,?)` for a 2-column row.
+fn row_placeholders(columns: usize) -> String {
+    let marks = std::iter::repeat_n("?", columns)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("({marks})")
+}
+
+/// Executes `INSERT <prefix> VALUES (...),(...),...` for all `rows`, split
+/// into chunks that stay under [`MAX_SQL_PARAMS_PER_STATEMENT`] bind
+/// parameters. Each inner vec holds one row's values in column order; a row
+/// with a different length than the first is a programming error and fails
+/// the whole call instead of writing a partial batch.
+pub(crate) fn execute_multi_row_insert(
+    conn: &Connection,
+    prefix: &str,
+    rows: &[Vec<Box<dyn ToSql>>],
+) -> Result<(), AppError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let columns = rows[0].len();
+    if columns == 0 || rows.iter().any(|r| r.len() != columns) {
+        return Err(AppError::Crawl(
+            "multi-row insert: all rows must have the same non-zero column count".to_string(),
+        ));
+    }
+    let rows_per_chunk = (MAX_SQL_PARAMS_PER_STATEMENT / columns).max(1);
+    let group = row_placeholders(columns);
+    for chunk in rows.chunks(rows_per_chunk) {
+        let sql = format!(
+            "{prefix} {}",
+            std::iter::repeat_n(group.as_str(), chunk.len())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let params: Vec<&dyn ToSql> = chunk
+            .iter()
+            .flat_map(|r| r.iter().map(|v| v.as_ref()))
+            .collect();
+        conn.execute(&sql, rusqlite::params_from_iter(params))?;
+    }
+    Ok(())
+}
+
+/// `DELETE FROM <table> WHERE <column> IN (?, ?, ...)` as a single
+/// statement, chunked like [`execute_multi_row_insert`]. No-op on an empty
+/// id list. `table`/`column` are internal identifiers, never user input.
+pub(crate) fn delete_where_id_in(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    ids: &[String],
+) -> Result<(), AppError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    for chunk in ids.chunks(MAX_SQL_PARAMS_PER_STATEMENT) {
+        let marks = std::iter::repeat_n("?", chunk.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!("DELETE FROM {table} WHERE {column} IN ({marks})");
+        let params: Vec<&dyn ToSql> = chunk.iter().map(|id| id as &dyn ToSql).collect();
+        conn.execute(&sql, rusqlite::params_from_iter(params))?;
+    }
+    Ok(())
+}
+
+/// `(?,?),(?,?),...` row-value groups for `WHERE (a, b) IN (...)`, one
+/// group per `(project_id, url)` pair. Callers chunk the pairs so the
+/// statement stays under [`MAX_SQL_PARAMS_PER_STATEMENT`] parameters.
+pub(crate) fn row_value_in_groups(pairs: usize) -> String {
+    std::iter::repeat_n("(?,?)", pairs)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Max `(project_id, url)` pairs per batched `IN (...)` statement (2
+/// parameters per pair, under [`MAX_SQL_PARAMS_PER_STATEMENT`]).
+pub(crate) const MAX_IN_PAIRS_PER_STATEMENT: usize = 400;
 
 pub struct CrawlRepo<'a> {
     conn: &'a Connection,
@@ -654,6 +747,420 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    /// Dumps a table as sorted `value | value | ...` lines (one per row) so
+    /// two databases can be compared cell by cell. `sql` must ORDER BY a
+    /// deterministic key; autoincrement ids are excluded by the caller where
+    /// insertion order may legitimately differ between write paths.
+    fn snapshot(conn: &Connection, sql: &str) -> Vec<String> {
+        let mut stmt = conn.prepare(sql).unwrap();
+        let width = stmt.column_count();
+        stmt.query_map([], |row| {
+            let mut parts = Vec::with_capacity(width);
+            for i in 0..width {
+                parts.push(format!(
+                    "{:?}",
+                    row.get::<_, rusqlite::types::Value>(i).unwrap()
+                ));
+            }
+            Ok(parts.join(" | "))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+    }
+
+    fn snapshot_all(repo: &CrawlRepo) -> Vec<(String, Vec<String>)> {
+        vec![
+            (
+                "crawled_pages".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT * FROM crawled_pages ORDER BY project_id, url",
+                ),
+            ),
+            (
+                "page_issues".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position \
+                     FROM page_issues ORDER BY project_id, page_id, position, issue_type",
+                ),
+            ),
+            (
+                "page_keywords".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT * FROM page_keywords ORDER BY project_id, page_id, keyword",
+                ),
+            ),
+            (
+                "seo_category_scores".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT * FROM seo_category_scores ORDER BY page_id, category",
+                ),
+            ),
+            (
+                "seo_check_issues".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT * FROM seo_check_issues ORDER BY page_id, check_id",
+                ),
+            ),
+            (
+                // Only the 7 columns `save_result` writes: `save_links_batch`
+                // additionally fills rel_tokens/is_sponsored/is_ugc/is_internal,
+                // which the dedicated links test below covers.
+                "page_links".to_string(),
+                snapshot(
+                    repo.conn,
+                    "SELECT from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow \
+                     FROM page_links ORDER BY from_url, to_url, link_type, anchor_text",
+                ),
+            ),
+        ]
+    }
+
+    fn audit_json_v1() -> String {
+        serde_json::json!({
+            "score": 72.0,
+            "grade": "C",
+            "categories": [
+                {"category": "meta", "score": 50.0, "weight": 0.25, "passed_weight": 10.0, "total_weight": 20.0, "passed_checks": 1, "total_checks": 2},
+                {"category": "technical", "score": 90.0, "weight": 0.20, "passed_weight": 18.0, "total_weight": 20.0, "passed_checks": 2, "total_checks": 2},
+                {"category": "social", "score": null, "weight": 0.07, "passed_weight": 0.0, "total_weight": 0.0, "passed_checks": 0, "total_checks": 0}
+            ],
+            "checks": [
+                {"id": "title_present", "category": "meta", "severity": "error", "passed": false,
+                 "weight": 1.0, "message": "Missing title", "guidance": "Add a title",
+                 "examples": [{"issue_type": "missing_title", "severity": "error", "element": "head", "message": "x"}]},
+                {"id": "meta_desc_present", "category": "meta", "severity": "warning", "passed": false,
+                 "weight": 1.0, "message": "Short desc", "guidance": "Lengthen it"},
+                {"id": "canonical_ok", "category": "technical", "severity": "info", "passed": true,
+                 "weight": 1.0, "message": "ok", "guidance": "ok"}
+            ],
+            "priority_fixes": [
+                {"id": "title_present", "priority": "critical", "message": "m", "guidance": "g", "category": "meta"},
+                {"id": "meta_desc_present", "priority": "important", "message": "m2", "guidance": "g2", "category": "meta"}
+            ]
+        })
+        .to_string()
+    }
+
+    fn audit_json_v2() -> String {
+        serde_json::json!({
+            "score": 88.0,
+            "grade": "B",
+            "categories": [
+                {"category": "meta", "score": 88.0, "weight": 0.25, "passed_weight": 17.0, "total_weight": 20.0, "passed_checks": 2, "total_checks": 2}
+            ],
+            "checks": [
+                {"id": "title_present", "category": "meta", "severity": "error", "passed": true,
+                 "weight": 1.0, "message": "ok", "guidance": "ok"}
+            ],
+            "priority_fixes": []
+        })
+        .to_string()
+    }
+
+    fn rich_page(
+        id: &str,
+        url: &str,
+        title: &str,
+        issues_json: Option<&str>,
+        keywords_json: Option<&str>,
+        audit_json: Option<String>,
+        seo_score: Option<f64>,
+    ) -> CrawlResult {
+        let mut p = page(id, url, Some(title), 200, true);
+        p.semantic_issues_json = issues_json.map(|s| s.to_string());
+        p.keywords_json = keywords_json.map(|s| s.to_string());
+        p.seo_audit_json = audit_json;
+        p.seo_score = seo_score;
+        p.html_body = Some("<html><body>hello</body></html>".to_string());
+        p
+    }
+
+    #[test]
+    fn test_save_results_batch_matches_single_save_content() {
+        // Same writes through two paths must leave identical contents in
+        // every table: repo A saves page-by-page with `save_result` (the
+        // pre-1.4 reference behavior), repo B with `save_results_batch` +
+        // `save_links_batch` (the production flush path). Then both are
+        // re-crawled with changed data, which must replace — not duplicate —
+        // rows in both.
+        let issues_v1 = r#"[
+            {"issue_type":"missing_title","severity":"error","element":"head","message":"Missing title","css_selector":"head > title","xpath":"/html/head/title"},
+            {"issue_type":"img_no_alt","severity":"warning","element":"img","message":"Image without alt"}
+        ]"#;
+        let issues_v2 = r#"[{"issue_type":"img_no_alt","severity":"warning","element":"img","message":"Image without alt"}]"#;
+        let keywords_v1 = r#"[{"keyword":"seo","count":3},{"keyword":"crawler","count":1}]"#;
+        let keywords_v2 = r#"[{"keyword":"seo","count":5}]"#;
+
+        let batch1 = vec![
+            rich_page(
+                "a1",
+                "https://x.com/a",
+                "A v1",
+                Some(issues_v1),
+                Some(keywords_v1),
+                Some(audit_json_v1()),
+                Some(72.0),
+            ),
+            rich_page(
+                "b1",
+                "https://x.com/b",
+                "B v1",
+                Some(issues_v1),
+                Some(keywords_v1),
+                Some(audit_json_v1()),
+                Some(72.0),
+            ),
+            // Unparseable payloads: both paths must store the page and
+            // contribute no normalized rows.
+            rich_page(
+                "c1",
+                "https://x.com/c",
+                "C v1",
+                Some("[broken"),
+                Some("{not json"),
+                Some("{not json".to_string()),
+                None,
+            ),
+            // Duplicate URL inside the batch: the last row wins in both
+            // paths. No links here: the single-save path deletes the URL's
+            // links on the second save while the batch path deletes them
+            // once, so link comparison for this URL would be path noise.
+            rich_page(
+                "a2",
+                "https://x.com/a",
+                "A v1 dup",
+                Some(issues_v2),
+                Some(keywords_v2),
+                Some(audit_json_v2()),
+                Some(88.0),
+            ),
+            // Same URL in another project is a different row.
+            {
+                let mut p = rich_page("a-p2", "https://x.com/a", "A p2", None, None, None, None);
+                p.project_id = "p2".to_string();
+                p
+            },
+        ];
+        // Links for the non-duplicated URLs only (see above).
+        let mut links1: Vec<PageLink> = vec![
+            link("https://x.com/b", "https://x.com/a"),
+            link("https://x.com/b", "https://x.com/c"),
+        ];
+        links1[0].anchor_text = Some("to A".to_string());
+        // Attach the links to the /b page so `save_result` persists them.
+        let mut batch1 = batch1;
+        for p in batch1.iter_mut() {
+            if p.id == "b1" {
+                p.links = links1.clone();
+            }
+        }
+
+        let batch2 = vec![
+            rich_page(
+                "a3",
+                "https://x.com/a",
+                "A v2",
+                Some(issues_v2),
+                Some(keywords_v2),
+                Some(audit_json_v2()),
+                Some(88.0),
+            ),
+            // Re-crawl with no issues/keywords/audit: stale rows must vanish.
+            rich_page("b2", "https://x.com/b", "B v2", None, None, None, None),
+            rich_page(
+                "d1",
+                "https://x.com/d",
+                "D new",
+                Some(issues_v1),
+                Some(keywords_v1),
+                Some(audit_json_v1()),
+                Some(72.0),
+            ),
+        ];
+        let links2 = vec![link("https://x.com/b", "https://x.com/d")];
+        let mut batch2 = batch2;
+        for p in batch2.iter_mut() {
+            if p.id == "b2" {
+                p.links = links2.clone();
+            }
+        }
+
+        // Repo A: one `save_result` per page, in input order.
+        let repo_a = test_repo();
+        // Repo B: batched writes, links via `save_links_batch` as the
+        // production flush does (results first, then links).
+        let repo_b = test_repo();
+        // The p2 page references the p2 project (FK enforced on these
+        // connections), so seed it in both databases.
+        for repo in [&repo_a, &repo_b] {
+            repo.conn
+                .execute_batch(
+                    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p2', 'P2', datetime('now'), datetime('now'));",
+                )
+                .unwrap();
+        }
+        for p in batch1.iter().chain(batch2.iter()) {
+            repo_a.save_result(p).unwrap();
+        }
+
+        repo_b.save_results_batch(&batch1).unwrap();
+        repo_b.save_links_batch(&links1).unwrap();
+        repo_b.save_results_batch(&batch2).unwrap();
+        repo_b.save_links_batch(&links2).unwrap();
+
+        let snap_a = snapshot_all(&repo_a);
+        let snap_b = snapshot_all(&repo_b);
+        for ((table_a, rows_a), (table_b, rows_b)) in snap_a.iter().zip(snap_b.iter()) {
+            assert_eq!(table_a, table_b);
+            assert_eq!(
+                rows_a, rows_b,
+                "table {table_a} differs between save_result and save_results_batch"
+            );
+        }
+
+        // The re-crawl really replaced instead of duplicating.
+        let count: i64 = repo_b
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM crawled_pages WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4, "p1 must hold /a, /b, /c, /d exactly once each");
+    }
+
+    #[test]
+    fn test_save_results_batch_chunks_large_batches() {
+        // 65 pages forces several multi-row chunks (30 pages per statement
+        // for crawled_pages, 100 issue rows per statement, 200 keyword /
+        // category rows per statement) — every row must still land.
+        let repo = test_repo();
+        let issues = r#"[
+            {"issue_type":"missing_title","severity":"error","element":"head","message":"Missing title"},
+            {"issue_type":"img_no_alt","severity":"warning","element":"img","message":"Image without alt"},
+            {"issue_type":"empty_link_text","severity":"warning","element":"a","message":"Empty link"}
+        ]"#;
+        let keywords = r#"[{"keyword":"seo","count":2},{"keyword":"rust","count":1}]"#;
+        let pages: Vec<CrawlResult> = (0..65)
+            .map(|i| {
+                rich_page(
+                    &format!("pg{i:03}"),
+                    &format!("https://x.com/p{i:03}"),
+                    &format!("Page {i}"),
+                    Some(issues),
+                    Some(keywords),
+                    Some(audit_json_v1()),
+                    Some(72.0),
+                )
+            })
+            .collect();
+        repo.save_results_batch(&pages).unwrap();
+
+        let counts: Vec<(String, i64)> = [
+            ("crawled_pages", "SELECT COUNT(*) FROM crawled_pages"),
+            ("page_issues", "SELECT COUNT(*) FROM page_issues"),
+            ("page_keywords", "SELECT COUNT(*) FROM page_keywords"),
+            (
+                "seo_category_scores",
+                "SELECT COUNT(*) FROM seo_category_scores",
+            ),
+            ("seo_check_issues", "SELECT COUNT(*) FROM seo_check_issues"),
+        ]
+        .iter()
+        .map(|(name, sql)| {
+            (
+                name.to_string(),
+                repo.conn
+                    .query_row(sql, [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+            )
+        })
+        .collect();
+        assert_eq!(
+            counts,
+            vec![
+                ("crawled_pages".to_string(), 65),
+                ("page_issues".to_string(), 65 * 3),
+                ("page_keywords".to_string(), 65 * 2),
+                ("seo_category_scores".to_string(), 65 * 3),
+                ("seo_check_issues".to_string(), 65 * 2),
+            ]
+        );
+        // Fix counts land via the CASE update (2 priority fixes per audit).
+        let fix_sum: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COALESCE(SUM(seo_priority_fix_count), 0) FROM crawled_pages",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(fix_sum, 65 * 2);
+    }
+
+    #[test]
+    fn test_save_links_batch_chunks_and_preserves_rel_tokens() {
+        // 250 links forces several multi-row chunks (80 rows per statement
+        // at 11 columns); rel tokens and flags must round-trip exactly.
+        let repo = test_repo();
+        let links: Vec<PageLink> = (0..250)
+            .map(|i| PageLink {
+                from_url: "https://x.com/a".to_string(),
+                to_url: format!("https://x.com/t{i:03}"),
+                config_id: "cfg".to_string(),
+                project_id: "p1".to_string(),
+                link_type: "href".to_string(),
+                anchor_text: if i % 2 == 0 {
+                    Some(format!("anchor {i}"))
+                } else {
+                    None
+                },
+                is_follow: i % 3 != 0,
+                rel_tokens: match i % 3 {
+                    0 => vec!["nofollow".to_string()],
+                    1 => vec!["sponsored".to_string(), "ugc".to_string()],
+                    _ => Vec::new(),
+                },
+                is_sponsored: i % 3 == 1,
+                is_ugc: i % 3 == 1,
+                is_internal: i % 2 == 0,
+            })
+            .collect();
+        repo.save_links_batch(&links).unwrap();
+
+        let count: i64 = repo
+            .conn
+            .query_row("SELECT COUNT(*) FROM page_links", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 250);
+
+        let (rel, sponsored, ugc, internal): (
+            Option<String>,
+            i64,
+            i64,
+            i64,
+        ) = repo
+            .conn
+            .query_row(
+                "SELECT rel_tokens, is_sponsored, is_ugc, is_internal FROM page_links WHERE to_url = 'https://x.com/t001'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            crate::db::repos::crawl::deserialize_rel_tokens(rel.as_deref()),
+            vec!["sponsored".to_string(), "ugc".to_string()]
+        );
+        assert_eq!((sponsored, ugc, internal), (1, 1, 0));
     }
 
     #[test]

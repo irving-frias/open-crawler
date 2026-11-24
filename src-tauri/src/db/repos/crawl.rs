@@ -7,8 +7,11 @@ use crate::db::CrawlSessionInfo;
 use crate::error::AppError;
 use crate::models::{CrawlConfig, CrawlResult, PageLink, RedirectRecord};
 
-use super::seo::{delete_seo_normalized, save_seo_normalized};
-use super::{compress_html_body, CrawlRepo};
+use super::seo::{delete_seo_normalized, save_seo_normalized, save_seo_normalized_batch};
+use super::{
+    compress_html_body, delete_where_id_in, execute_multi_row_insert, row_value_in_groups, sql_box,
+    CrawlRepo, MAX_IN_PAIRS_PER_STATEMENT,
+};
 
 /// Serializes rel tokens to a compact JSON array string (NULL when empty).
 fn serialize_rel_tokens(tokens: &[String]) -> Option<String> {
@@ -25,96 +28,176 @@ pub fn deserialize_rel_tokens(raw: Option<&str>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Deletes the normalized `page_issues` rows belonging to the given page ids.
-/// Re-crawls replace page rows per URL, and the replaced rows' ids differ from
-/// the new ones, so stale issue rows must be removed explicitly.
+/// Deletes the normalized `page_issues` rows belonging to the given page ids
+/// in a single statement. Re-crawls replace page rows per URL, and the
+/// replaced rows' ids differ from the new ones, so stale issue rows must be
+/// removed explicitly.
 fn delete_page_issues(tx: &Transaction<'_>, page_ids: &[String]) -> Result<(), AppError> {
-    if page_ids.is_empty() {
-        return Ok(());
-    }
-    let mut stmt = tx.prepare("DELETE FROM page_issues WHERE page_id = ?1")?;
-    for id in page_ids {
-        stmt.execute(params![id])?;
-    }
-    Ok(())
+    delete_where_id_in(tx, "page_issues", "page_id", page_ids)
 }
 
-/// Deletes the materialized `page_keywords` rows for the given page ids.
+/// Deletes the materialized `page_keywords` rows for the given page ids in a
+/// single statement.
 fn delete_page_keywords(tx: &Transaction<'_>, page_ids: &[String]) -> Result<(), AppError> {
-    if page_ids.is_empty() {
-        return Ok(());
-    }
-    let mut stmt = tx.prepare("DELETE FROM page_keywords WHERE page_id = ?1")?;
-    for id in page_ids {
-        stmt.execute(params![id])?;
-    }
-    Ok(())
+    delete_where_id_in(tx, "page_keywords", "page_id", page_ids)
 }
 
-/// Re-inserts the materialized keyword rows for the given results from their
+/// Collects the `page_issues` rows for one page from its
+/// `semantic_issues_json`, preserving the array position for stable ordering.
+/// Invalid JSON yields no rows, matching the old per-row writer.
+fn page_issue_rows(
+    project_id: &str,
+    page_id: &str,
+    semantic_issues_json: &Option<String>,
+) -> Vec<Vec<Box<dyn rusqlite::types::ToSql>>> {
+    let Some(json) = semantic_issues_json else {
+        return Vec::new();
+    };
+    let issues: Vec<SemanticIssue> = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    issues
+        .iter()
+        .enumerate()
+        .map(|(i, issue)| {
+            vec![
+                sql_box(project_id.to_string()),
+                sql_box(page_id.to_string()),
+                sql_box(issue.issue_type.clone()),
+                sql_box(issue.severity.clone()),
+                sql_box(issue.message.clone()),
+                sql_box(issue.element.clone()),
+                sql_box(issue.css_selector.clone()),
+                sql_box(issue.xpath.clone()),
+                sql_box(i as i64),
+            ]
+        })
+        .collect()
+}
+
+/// Collects the materialized `page_keywords` rows for one page from its
 /// `keywords_json` payload. Kept in sync with what the parser stored per page
 /// so the project-wide keyword report is a plain GROUP BY.
-fn save_page_keywords(
-    tx: &Transaction<'_>,
+fn page_keyword_rows(
     project_id: &str,
     page_id: &str,
     keywords_json: Option<&str>,
-) -> Result<(), AppError> {
+) -> Vec<Vec<Box<dyn rusqlite::types::ToSql>>> {
     let items: Vec<serde_json::Value> = match keywords_json {
         Some(json) => serde_json::from_str(json).unwrap_or_default(),
         None => Vec::new(),
     };
-    if items.is_empty() {
-        return Ok(());
-    }
-    let mut stmt = tx.prepare(
-        "INSERT OR REPLACE INTO page_keywords (project_id, page_id, keyword, count)
-         VALUES (?1, ?2, ?3, ?4)",
-    )?;
-    for item in items {
-        let Some(keyword) = item.get("keyword").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let count = item.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as i64;
-        stmt.execute(params![project_id, page_id, keyword, count])?;
-    }
-    Ok(())
+    items
+        .iter()
+        .filter_map(|item| {
+            let keyword = item.get("keyword")?.as_str()?;
+            let count = item.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as i64;
+            Some(vec![
+                sql_box(project_id.to_string()),
+                sql_box(page_id.to_string()),
+                sql_box(keyword.to_string()),
+                sql_box(count),
+            ])
+        })
+        .collect()
 }
 
 /// Writes one `page_issues` row per issue occurrence parsed from the page's
-/// `semantic_issues_json`, preserving the array position for stable ordering.
+/// `semantic_issues_json`, as a single multi-row INSERT.
 fn save_page_issues(
     tx: &Transaction<'_>,
     project_id: &str,
     page_id: &str,
     semantic_issues_json: &Option<String>,
 ) -> Result<(), AppError> {
-    let Some(json) = semantic_issues_json else {
-        return Ok(());
-    };
-    let issues: Vec<SemanticIssue> = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => return Ok(()),
-    };
-    if issues.is_empty() {
-        return Ok(());
+    let rows = page_issue_rows(project_id, page_id, semantic_issues_json);
+    execute_multi_row_insert(
+        tx,
+        "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position) VALUES",
+        &rows,
+    )
+}
+
+/// Writes the `page_issues` rows for every page in the batch as chunked
+/// multi-row INSERTs instead of one statement per issue.
+fn save_page_issues_batch(tx: &Transaction<'_>, results: &[&CrawlResult]) -> Result<(), AppError> {
+    let mut rows = Vec::new();
+    for result in results {
+        rows.extend(page_issue_rows(
+            &result.project_id,
+            &result.id,
+            &result.semantic_issues_json,
+        ));
     }
-    let mut stmt = tx.prepare(
-        "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-    )?;
-    for (i, issue) in issues.iter().enumerate() {
-        stmt.execute(params![
-            project_id,
-            page_id,
-            issue.issue_type,
-            issue.severity,
-            issue.message,
-            issue.element,
-            issue.css_selector,
-            issue.xpath,
-            i as i64,
-        ])?;
+    execute_multi_row_insert(
+        tx,
+        "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position) VALUES",
+        &rows,
+    )
+}
+
+/// Re-inserts the materialized keyword rows for the given page from its
+/// `keywords_json` payload, as a single multi-row INSERT.
+fn save_page_keywords(
+    tx: &Transaction<'_>,
+    project_id: &str,
+    page_id: &str,
+    keywords_json: Option<&str>,
+) -> Result<(), AppError> {
+    let rows = page_keyword_rows(project_id, page_id, keywords_json);
+    execute_multi_row_insert(
+        tx,
+        "INSERT OR REPLACE INTO page_keywords (project_id, page_id, keyword, count) VALUES",
+        &rows,
+    )
+}
+
+/// Writes the materialized keyword rows for every page in the batch as
+/// chunked multi-row INSERTs instead of one statement per keyword.
+fn save_page_keywords_batch(
+    tx: &Transaction<'_>,
+    results: &[&CrawlResult],
+) -> Result<(), AppError> {
+    let mut rows = Vec::new();
+    for result in results {
+        rows.extend(page_keyword_rows(
+            &result.project_id,
+            &result.id,
+            result.keywords_json.as_deref(),
+        ));
+    }
+    execute_multi_row_insert(
+        tx,
+        "INSERT OR REPLACE INTO page_keywords (project_id, page_id, keyword, count) VALUES",
+        &rows,
+    )
+}
+
+/// Deletes rows for the given `(project_id, url)` pairs from `table` with one
+/// statement per chunk, matching on `url_column` (e.g. `url` on
+/// `crawled_pages`, `from_url` on `page_links`).
+fn delete_by_project_url_pairs(
+    tx: &Transaction<'_>,
+    table: &str,
+    url_column: &str,
+    pairs: &[(&str, &str)],
+) -> Result<(), AppError> {
+    for chunk in pairs.chunks(MAX_IN_PAIRS_PER_STATEMENT) {
+        let sql = format!(
+            "DELETE FROM {table} WHERE (project_id, {url_column}) IN ({})",
+            row_value_in_groups(chunk.len())
+        );
+        let params: Vec<Box<dyn rusqlite::types::ToSql>> = chunk
+            .iter()
+            .flat_map(|(project_id, url)| {
+                [sql_box(project_id.to_string()), sql_box(url.to_string())]
+            })
+            .collect();
+        tx.execute(
+            &sql,
+            rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+        )?;
     }
     Ok(())
 }
@@ -207,19 +290,26 @@ impl<'a> CrawlRepo<'a> {
             ],
         )?;
 
-        for link in &result.links {
-            tx.execute(
-                "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    link.from_url,
-                    link.to_url,
-                    link.config_id,
-                    project_id,
-                    link.link_type,
-                    link.anchor_text,
-                    link.is_follow as i32,
-                ],
+        if !result.links.is_empty() {
+            let rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = result
+                .links
+                .iter()
+                .map(|link| {
+                    vec![
+                        sql_box(link.from_url.clone()),
+                        sql_box(link.to_url.clone()),
+                        sql_box(link.config_id.clone()),
+                        sql_box(project_id.clone()),
+                        sql_box(link.link_type.clone()),
+                        sql_box(link.anchor_text.clone()),
+                        sql_box(link.is_follow as i32),
+                    ]
+                })
+                .collect();
+            execute_multi_row_insert(
+                &tx,
+                "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow) VALUES",
+                &rows,
             )?;
         }
 
@@ -237,6 +327,18 @@ impl<'a> CrawlRepo<'a> {
         Ok(())
     }
 
+    /// Persists a whole flush in **one** transaction with batched SQL: a
+    /// single `SELECT ... WHERE (project_id, url) IN (...)` for the ids being
+    /// replaced, single `DELETE ... IN (...)` statements for the replaced
+    /// pages and their stale outbound links, and chunked multi-row INSERTs
+    /// for the pages themselves plus their normalized rows (issues, SEO,
+    /// keywords). Final table contents are identical to saving each page
+    /// with [`CrawlRepo::save_result`].
+    ///
+    /// Note: `result.links` is deliberately *not* persisted here — the
+    /// crawler sends links separately (`CrawlResultMsg::Links`) and they go
+    /// through [`CrawlRepo::save_links_batch`]; inserting them here too
+    /// would duplicate every link.
     pub fn save_results_batch(&self, results: &[CrawlResult]) -> Result<(), AppError> {
         if results.is_empty() {
             return Ok(());
@@ -244,132 +346,121 @@ impl<'a> CrawlRepo<'a> {
 
         let tx = self.conn.unchecked_transaction()?;
 
-        // Deduplicate within the batch keeping the last row per (project_id, url),
-        // then remove existing rows for those URLs so re-crawls replace instead
-        // of accumulating duplicates (unique index idx_pages_project_url).
-        let mut unique: std::collections::HashMap<(String, String), &CrawlResult> =
+        // Deduplicate within the batch keeping the last row per (project_id,
+        // url), then work in deterministic (project_id, url) order. The old
+        // code iterated a HashMap, so insertion order was arbitrary; final
+        // table contents don't depend on it.
+        let mut by_key: std::collections::HashMap<(String, String), &CrawlResult> =
             std::collections::HashMap::new();
         for result in results {
-            unique.insert((result.project_id.clone(), result.url.clone()), result);
+            by_key.insert((result.project_id.clone(), result.url.clone()), result);
         }
+        let mut unique: Vec<&CrawlResult> = by_key.into_values().collect();
+        unique.sort_by(|a, b| {
+            (a.project_id.as_str(), a.url.as_str()).cmp(&(b.project_id.as_str(), b.url.as_str()))
+        });
+        let pairs: Vec<(&str, &str)> = unique
+            .iter()
+            .map(|r| (r.project_id.as_str(), r.url.as_str()))
+            .collect();
 
         // Capture the ids of the rows being replaced so their normalized
-        // page_issues rows can be removed alongside them.
+        // rows can be removed alongside them, in one SELECT per chunk.
         let mut old_ids: Vec<String> = Vec::new();
-        {
-            let mut q =
-                tx.prepare("SELECT id FROM crawled_pages WHERE project_id = ?1 AND url = ?2")?;
-            for (project_id, url) in unique.keys() {
-                let ids: Vec<String> = q
-                    .query_map(params![project_id, url], |row| row.get(0))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                old_ids.extend(ids);
-            }
-        }
-        delete_page_issues(&tx, &old_ids)?;
-        delete_seo_normalized(&tx, &old_ids)?;
-        delete_page_keywords(&tx, &old_ids)?;
-
-        {
-            let mut del =
-                tx.prepare("DELETE FROM crawled_pages WHERE project_id = ?1 AND url = ?2")?;
-            for (project_id, url) in unique.keys() {
-                del.execute(params![project_id, url])?;
-            }
-        }
-
-        // Drop stale outbound links for replaced URLs; each result re-inserts its own.
-        {
-            let mut del =
-                tx.prepare("DELETE FROM page_links WHERE project_id = ?1 AND from_url = ?2")?;
-            for (project_id, url) in unique.keys() {
-                del.execute(params![project_id, url])?;
-            }
+        for chunk in pairs.chunks(MAX_IN_PAIRS_PER_STATEMENT) {
+            let sql = format!(
+                "SELECT id FROM crawled_pages WHERE (project_id, url) IN ({})",
+                row_value_in_groups(chunk.len())
+            );
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = chunk
+                .iter()
+                .flat_map(|(project_id, url)| {
+                    [sql_box(project_id.to_string()), sql_box(url.to_string())]
+                })
+                .collect();
+            let mut stmt = tx.prepare(&sql)?;
+            let ids: Vec<String> = stmt
+                .query_map(
+                    rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+                    |row| row.get(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            old_ids.extend(ids);
         }
 
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO crawled_pages
-                 (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
-            )?;
+        // Drop the normalized rows of the replaced pages — and of the new
+        // ids too, mirroring `save_result`, which deletes for both: a
+        // re-crawl that reuses an id must not leave rows from the old page
+        // behind. All of this happens before the new rows are inserted.
+        let mut stale_ids: Vec<String> = old_ids;
+        stale_ids.extend(unique.iter().map(|r| r.id.clone()));
+        stale_ids.sort();
+        stale_ids.dedup();
+        delete_page_issues(&tx, &stale_ids)?;
+        delete_seo_normalized(&tx, &stale_ids)?;
+        delete_page_keywords(&tx, &stale_ids)?;
 
-            for result in unique.values() {
-                stmt.execute(params![
-                    result.id,
-                    result.config_id,
-                    result.project_id,
-                    result.url,
-                    result.status_code.map(|s| s as i32),
-                    result.title,
-                    result.meta_description,
-                    result.h1,
-                    result.canonical,
-                    result.size_bytes.map(|s| s as i64),
-                    result.load_time_ms,
-                    result.is_indexable.map(|i| i as i32),
-                    result.depth as i32,
-                    result.parent_url,
-                    result.crawl_timestamp,
-                    result.html_lang,
-                    result.hreflang_json,
-                    result.semantic_issues_json,
-                    compress_html_body(&result.html_body),
-                    result.readability_score,
-                    result.content_hash,
-                    result.duplicate_group_id,
-                    result.keywords_json,
-                    result.og_json,
-                    result.pagespeed_score,
-                    result.pagespeed_json,
-                    result.seo_score,
-                    result.seo_audit_json,
-                    result.blocked as i32,
-                    result.response_headers_json,
-                ])?;
-            }
-        }
+        // Remove the replaced page rows and their stale outbound links so
+        // re-crawls replace instead of accumulating duplicates (unique index
+        // idx_pages_project_url). One DELETE per chunk each.
+        delete_by_project_url_pairs(&tx, "crawled_pages", "url", &pairs)?;
+        delete_by_project_url_pairs(&tx, "page_links", "from_url", &pairs)?;
 
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO page_issues (project_id, page_id, issue_type, severity, message, element, css_selector, xpath, position)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            )?;
-            for result in unique.values() {
-                let issues: Vec<SemanticIssue> = match result.semantic_issues_json.as_deref() {
-                    Some(json) => serde_json::from_str(json).unwrap_or_default(),
-                    None => Vec::new(),
-                };
-                for (i, issue) in issues.iter().enumerate() {
-                    stmt.execute(params![
-                        result.project_id,
-                        result.id,
-                        issue.issue_type,
-                        issue.severity,
-                        issue.message,
-                        issue.element,
-                        issue.css_selector,
-                        issue.xpath,
-                        i as i64,
-                    ])?;
-                }
-            }
-        }
+        // Multi-row INSERT of the pages themselves (30 columns, chunked so
+        // each statement stays under the SQLite bind-parameter limit).
+        let rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = unique
+            .iter()
+            .map(|result| {
+                vec![
+                    sql_box(result.id.clone()),
+                    sql_box(result.config_id.clone()),
+                    sql_box(result.project_id.clone()),
+                    sql_box(result.url.clone()),
+                    sql_box(result.status_code.map(|s| s as i32)),
+                    sql_box(result.title.clone()),
+                    sql_box(result.meta_description.clone()),
+                    sql_box(result.h1.clone()),
+                    sql_box(result.canonical.clone()),
+                    sql_box(result.size_bytes.map(|s| s as i64)),
+                    sql_box(result.load_time_ms),
+                    sql_box(result.is_indexable.map(|i| i as i32)),
+                    sql_box(result.depth as i32),
+                    sql_box(result.parent_url.clone()),
+                    sql_box(result.crawl_timestamp.clone()),
+                    sql_box(result.html_lang.clone()),
+                    sql_box(result.hreflang_json.clone()),
+                    sql_box(result.semantic_issues_json.clone()),
+                    sql_box(compress_html_body(&result.html_body)),
+                    sql_box(result.readability_score),
+                    sql_box(result.content_hash.clone()),
+                    sql_box(result.duplicate_group_id),
+                    sql_box(result.keywords_json.clone()),
+                    sql_box(result.og_json.clone()),
+                    sql_box(result.pagespeed_score),
+                    sql_box(result.pagespeed_json.clone()),
+                    sql_box(result.seo_score),
+                    sql_box(result.seo_audit_json.clone()),
+                    sql_box(result.blocked as i32),
+                    sql_box(result.response_headers_json.clone()),
+                ]
+            })
+            .collect();
+        execute_multi_row_insert(
+            &tx,
+            "INSERT INTO crawled_pages
+             (id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, hreflang_json, semantic_issues_json, html_body, readability_score, content_hash, duplicate_group_id, keywords_json, og_json, pagespeed_score, pagespeed_json, seo_score, seo_audit_json, blocked, response_headers_json)
+             VALUES",
+            &rows,
+        )?;
 
-        // Normalized SEO rows for the freshly written pages.
-        for result in unique.values() {
-            save_seo_normalized(&tx, &result.project_id, &result.id, &result.seo_audit_json)?;
-        }
-
-        // Materialized keyword rows for the freshly written pages.
-        for result in unique.values() {
-            save_page_keywords(
-                &tx,
-                &result.project_id,
-                &result.id,
-                result.keywords_json.as_deref(),
-            )?;
-        }
+        // Normalized rows for the freshly written pages, all multi-row.
+        save_page_issues_batch(&tx, &unique)?;
+        let seo_pages: Vec<(&str, &str, &Option<String>)> = unique
+            .iter()
+            .map(|r| (r.project_id.as_str(), r.id.as_str(), &r.seo_audit_json))
+            .collect();
+        save_seo_normalized_batch(&tx, &seo_pages)?;
+        save_page_keywords_batch(&tx, &unique)?;
 
         tx.commit()?;
         info!("Batch saved {} results", results.len());
@@ -383,6 +474,8 @@ impl<'a> CrawlRepo<'a> {
         Ok(())
     }
 
+    /// Persists links as chunked multi-row INSERTs instead of one statement
+    /// per link. Same rows, same column values as the old per-link loop.
     pub fn save_links_batch(&self, links: &[PageLink]) -> Result<(), AppError> {
         if links.is_empty() {
             return Ok(());
@@ -390,28 +483,29 @@ impl<'a> CrawlRepo<'a> {
 
         let tx = self.conn.unchecked_transaction()?;
 
-        {
-            let mut stmt = tx.prepare(
-                "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            )?;
-
-            for link in links {
-                stmt.execute(params![
-                    link.from_url,
-                    link.to_url,
-                    link.config_id,
-                    link.project_id,
-                    link.link_type,
-                    link.anchor_text,
-                    link.is_follow as i32,
-                    serialize_rel_tokens(&link.rel_tokens),
-                    link.is_sponsored as i32,
-                    link.is_ugc as i32,
-                    link.is_internal as i32,
-                ])?;
-            }
-        }
+        let rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = links
+            .iter()
+            .map(|link| {
+                vec![
+                    sql_box(link.from_url.clone()),
+                    sql_box(link.to_url.clone()),
+                    sql_box(link.config_id.clone()),
+                    sql_box(link.project_id.clone()),
+                    sql_box(link.link_type.clone()),
+                    sql_box(link.anchor_text.clone()),
+                    sql_box(link.is_follow as i32),
+                    sql_box(serialize_rel_tokens(&link.rel_tokens)),
+                    sql_box(link.is_sponsored as i32),
+                    sql_box(link.is_ugc as i32),
+                    sql_box(link.is_internal as i32),
+                ]
+            })
+            .collect();
+        execute_multi_row_insert(
+            &tx,
+            "INSERT INTO page_links (from_url, to_url, config_id, project_id, link_type, anchor_text, is_follow, rel_tokens, is_sponsored, is_ugc, is_internal) VALUES",
+            &rows,
+        )?;
 
         tx.commit()?;
         info!("Batch saved {} links", links.len());

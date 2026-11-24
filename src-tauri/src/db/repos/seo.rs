@@ -5,7 +5,7 @@ use crate::error::AppError;
 use crate::models::{GradeCount, SeoCategoryAvg, SeoIssueCount, SeoOverview};
 use crate::seo::SeoAuditResult;
 
-use super::CrawlRepo;
+use super::{delete_where_id_in, execute_multi_row_insert, sql_box, CrawlRepo};
 
 /// Stored per-page SEO columns.
 #[derive(Debug, Clone)]
@@ -15,83 +15,122 @@ pub struct StoredSeoAudit {
 }
 
 /// Deletes the normalized `seo_category_scores` / `seo_check_issues` rows for
-/// the given page ids. Re-crawls replace page rows per URL and the replaced
-/// ids differ from the new ones, so stale normalized rows must be removed.
+/// the given page ids, one statement per table. Re-crawls replace page rows
+/// per URL and the replaced ids differ from the new ones, so stale normalized
+/// rows must be removed.
 pub(crate) fn delete_seo_normalized(tx: &Connection, page_ids: &[String]) -> Result<(), AppError> {
     if page_ids.is_empty() {
         return Ok(());
     }
     for table in ["seo_category_scores", "seo_check_issues"] {
-        let mut stmt = tx.prepare(&format!("DELETE FROM {table} WHERE page_id = ?1"))?;
-        for id in page_ids {
-            stmt.execute(params![id])?;
-        }
+        delete_where_id_in(tx, table, "page_id", page_ids)?;
     }
     Ok(())
 }
 
-/// Writes the normalized SEO rows (per-category scores, failing checks and the
-/// priority-fix count) for a single page from its stored audit JSON. Called
-/// from within the page save transaction so the normalized data is always in
-/// sync with `crawled_pages`.
+/// Writes the normalized SEO rows (per-category scores, failing checks and
+/// the priority-fix count) for a single page from its stored audit JSON.
+/// Called from within the page save transaction so the normalized data is
+/// always in sync with `crawled_pages`.
 pub(crate) fn save_seo_normalized(
     tx: &Connection,
     project_id: &str,
     page_id: &str,
     seo_audit_json: &Option<String>,
 ) -> Result<(), AppError> {
-    let Some(json) = seo_audit_json else {
-        return Ok(());
-    };
-    let Ok(audit) = serde_json::from_str::<SeoAuditResult>(json) else {
-        return Ok(());
-    };
+    save_seo_normalized_batch(tx, &[(project_id, page_id, seo_audit_json)])
+}
 
-    {
-        let mut cat_stmt = tx.prepare(
-            "INSERT INTO seo_category_scores (page_id, project_id, category, score)
-             VALUES (?1, ?2, ?3, ?4)",
-        )?;
+/// Batch variant of [`save_seo_normalized`]: one multi-row INSERT per table
+/// for the whole batch (chunked under the SQLite bind-parameter limit) plus
+/// a single `UPDATE ... CASE` per chunk for the `seo_priority_fix_count`
+/// column. Pages with no audit JSON or unparseable JSON contribute no rows,
+/// exactly like the single-page writer. Callers must have inserted the
+/// `crawled_pages` rows first, since the fix-count UPDATE targets them.
+pub(crate) fn save_seo_normalized_batch(
+    tx: &Connection,
+    pages: &[(&str, &str, &Option<String>)],
+) -> Result<(), AppError> {
+    let mut cat_rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = Vec::new();
+    let mut check_rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = Vec::new();
+    let mut fix_counts: Vec<(String, i64)> = Vec::new();
+    for (project_id, page_id, seo_audit_json) in pages {
+        let Some(json) = seo_audit_json else {
+            continue;
+        };
+        let Ok(audit) = serde_json::from_str::<SeoAuditResult>(json) else {
+            continue;
+        };
         // Every category is persisted, including skipped ones (score None ->
         // NULL): the XLSX "SEO Audit" sheet writes one row per category and
         // `count_seo_rows` counts them from this table, so omitting skipped
         // categories would undercount. `get_seo_overview` filters NULL
         // scores out of its averages, so aggregation is unaffected.
         for cat in &audit.categories {
-            cat_stmt.execute(params![page_id, project_id, cat.category, cat.score])?;
+            cat_rows.push(vec![
+                sql_box(page_id.to_string()),
+                sql_box(project_id.to_string()),
+                sql_box(cat.category.clone()),
+                sql_box(cat.score),
+            ]);
         }
-    }
-
-    {
-        let mut chk_stmt = tx.prepare(
-            "INSERT INTO seo_check_issues
-                (page_id, project_id, category, severity, check_id, message, guidance, evidence, examples_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        )?;
         for check in audit.checks.iter().filter(|c| !c.passed) {
             let examples_json = if check.examples.is_empty() {
                 None
             } else {
                 serde_json::to_string(&check.examples).ok()
             };
-            chk_stmt.execute(params![
-                page_id,
-                project_id,
-                check.category,
-                check.severity,
-                check.id,
-                check.message,
-                check.guidance,
-                check.evidence,
-                examples_json,
-            ])?;
+            check_rows.push(vec![
+                sql_box(page_id.to_string()),
+                sql_box(project_id.to_string()),
+                sql_box(check.category.clone()),
+                sql_box(check.severity.clone()),
+                sql_box(check.id.clone()),
+                sql_box(check.message.clone()),
+                sql_box(check.guidance.clone()),
+                sql_box(check.evidence.clone()),
+                sql_box(examples_json),
+            ]);
         }
+        fix_counts.push((page_id.to_string(), audit.priority_fixes.len() as i64));
     }
 
-    tx.execute(
-        "UPDATE crawled_pages SET seo_priority_fix_count = ?1 WHERE id = ?2",
-        params![audit.priority_fixes.len() as i64, page_id],
+    execute_multi_row_insert(
+        tx,
+        "INSERT INTO seo_category_scores (page_id, project_id, category, score) VALUES",
+        &cat_rows,
     )?;
+    execute_multi_row_insert(
+        tx,
+        "INSERT INTO seo_check_issues
+            (page_id, project_id, category, severity, check_id, message, guidance, evidence, examples_json) VALUES",
+        &check_rows,
+    )?;
+
+    // One UPDATE per chunk: CASE maps each page id to its fix count.
+    for chunk in fix_counts.chunks(200) {
+        let mut sql = String::from("UPDATE crawled_pages SET seo_priority_fix_count = CASE id");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        for (page_id, count) in chunk {
+            sql.push_str(" WHEN ? THEN ?");
+            params.push(sql_box(page_id.clone()));
+            params.push(sql_box(*count));
+        }
+        sql.push_str(" END WHERE id IN (");
+        sql.push_str(
+            &std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        sql.push(')');
+        for (page_id, _) in chunk {
+            params.push(sql_box(page_id.clone()));
+        }
+        tx.execute(
+            &sql,
+            rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+        )?;
+    }
     Ok(())
 }
 
