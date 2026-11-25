@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use rusqlite::{params, Connection, OptionalExtension};
 use tracing::info;
 
@@ -153,6 +155,30 @@ fn update_seo_audit_in_tx(
     delete_seo_normalized(tx, std::slice::from_ref(&page_id.to_string()))?;
     save_seo_normalized(tx, project_id, page_id, &json.map(|s| s.to_string()))?;
     Ok(())
+}
+
+/// Max pages per keyword bucket in `compute_seo_clusters`. A keyword shared
+/// by more pages is generic noise with no clustering signal; comparing all
+/// its pairs is what made the function quadratic (T13: 247 s at 10k worst
+/// case, ~7 h extrapolated at 100k).
+const MAX_CLUSTER_BUCKET_PAGES: usize = 400;
+
+/// Shared-keyword count of two *sorted, deduplicated* keyword lists
+/// (two-pointer intersection, O(|a| + |b|)).
+fn count_shared_sorted(a: &[String], b: &[String]) -> usize {
+    let (mut i, mut j, mut shared) = (0, 0, 0);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            Ordering::Equal => {
+                shared += 1;
+                i += 1;
+                j += 1;
+            }
+            Ordering::Less => i += 1,
+            Ordering::Greater => j += 1,
+        }
+    }
+    shared
 }
 
 impl<'a> CrawlRepo<'a> {
@@ -428,6 +454,12 @@ impl<'a> CrawlRepo<'a> {
                     .unwrap_or_default();
             keyword_sets.push(keywords);
         }
+        // Sorted + deduplicated: the pair loop and the canonical similarity
+        // below both intersect with a two-pointer walk (T13).
+        for keywords in keyword_sets.iter_mut() {
+            keywords.sort();
+            keywords.dedup();
+        }
 
         let n = rows.len();
         let mut parent: Vec<usize> = (0..n).collect();
@@ -456,6 +488,12 @@ impl<'a> CrawlRepo<'a> {
         let mut compared: std::collections::HashSet<(usize, usize)> =
             std::collections::HashSet::new();
         for indices in buckets.values() {
+            // A keyword shared by more pages is generic noise with no
+            // clustering signal; comparing all its pairs is what made this
+            // function quadratic (T13: 247 s at 10k worst case).
+            if indices.len() > MAX_CLUSTER_BUCKET_PAGES {
+                continue;
+            }
             for a in 0..indices.len() {
                 for b in (a + 1)..indices.len() {
                     let (ia, ib) = (indices[a], indices[b]);
@@ -465,21 +503,43 @@ impl<'a> CrawlRepo<'a> {
                     }
                     let sa = &keyword_sets[ia];
                     let sb = &keyword_sets[ib];
-                    let mut shared = 0usize;
-                    for kw in sa {
-                        if sb.contains(kw) {
-                            shared += 1;
+                    // Upper bound on Jaccard: shared <= min(|a|, |b|) and
+                    // union >= max(|a|, |b|). Skip pairs that cannot reach 0.6.
+                    let (min_len, max_len) = if sa.len() < sb.len() {
+                        (sa.len(), sb.len())
+                    } else {
+                        (sb.len(), sa.len())
+                    };
+                    if 5 * min_len < 3 * max_len {
+                        continue;
+                    }
+                    // Minimum shared for Jaccard >= 0.6 (shared/(|a|+|b|-shared)
+                    // >= 0.6  <=>  shared >= 3*(|a|+|b|)/8), keeping the
+                    // shared >= 2 rule. Two-pointer intersection with early
+                    // exit: once the remaining keywords cannot reach the
+                    // minimum, the pair is settled.
+                    let min_shared = (3 * (sa.len() + sb.len())).div_ceil(8).max(2);
+                    let (mut i, mut j, mut shared) = (0, 0, 0);
+                    let mut reaches = false;
+                    while i < sa.len() && j < sb.len() {
+                        match sa[i].cmp(&sb[j]) {
+                            Ordering::Equal => {
+                                shared += 1;
+                                i += 1;
+                                j += 1;
+                                if shared >= min_shared {
+                                    reaches = true;
+                                    break;
+                                }
+                            }
+                            Ordering::Less => i += 1,
+                            Ordering::Greater => j += 1,
+                        }
+                        if shared + (sa.len() - i).min(sb.len() - j) < min_shared {
+                            break;
                         }
                     }
-                    if shared < 2 {
-                        continue;
-                    }
-                    let union_size = sa.len() + sb.len() - shared;
-                    if union_size == 0 {
-                        continue;
-                    }
-                    let jaccard = shared as f64 / union_size as f64;
-                    if jaccard >= 0.6 {
+                    if reaches {
                         union(&mut parent, ia, ib);
                     }
                 }
@@ -525,10 +585,7 @@ impl<'a> CrawlRepo<'a> {
                 let avg_sim: f64 = {
                     let mut sum = 0.0;
                     for &i in members {
-                        let shared = keyword_sets[i]
-                            .iter()
-                            .filter(|kw| canonical_keywords.contains(kw))
-                            .count();
+                        let shared = count_shared_sorted(&keyword_sets[i], canonical_keywords);
                         let union_size = keyword_sets[i].len() + canonical_keywords.len() - shared;
                         if union_size > 0 {
                             sum += shared as f64 / union_size as f64;

@@ -1567,6 +1567,67 @@ mod tests {
         assert_eq!(detail.page.seo_score, Some(75.0));
     }
 
+    fn kw_json(keywords: &[&str]) -> String {
+        let items: Vec<serde_json::Value> = keywords
+            .iter()
+            .map(|k| serde_json::json!({"keyword": k, "count": 3}))
+            .collect();
+        serde_json::to_string(&items).unwrap()
+    }
+
+    #[test]
+    fn test_compute_seo_clusters_groups_similar_pages() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.keywords_json = Some(kw_json(&["seo", "auditoria", "herramienta"]));
+        let mut b = page("pg2", "https://x.com/b", Some("B"), 200, true);
+        b.keywords_json = Some(kw_json(&["seo", "auditoria", "herramienta"]));
+        // e shares 3 of 4 keywords with a (Jaccard 0.75) -> same cluster.
+        let mut e = page("pg5", "https://x.com/e", Some("E"), 200, true);
+        e.keywords_json = Some(kw_json(&["seo", "auditoria", "herramienta", "extra"]));
+        // c shares 2 of 4 with a (Jaccard 0.5) -> stays alone.
+        let mut c = page("pg3", "https://x.com/c", Some("C"), 200, true);
+        c.keywords_json = Some(kw_json(&["seo", "auditoria", "otra"]));
+        // d shares nothing -> stays alone.
+        let mut d = page("pg4", "https://x.com/d", Some("D"), 200, true);
+        d.keywords_json = Some(kw_json(&["cocina", "recetas"]));
+        repo.save_results_batch(&[a, b, c, d, e]).unwrap();
+
+        let count = repo.compute_seo_clusters("p1").unwrap();
+        assert_eq!(count, 1);
+        let members: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_cluster_members WHERE cluster_id IN (SELECT id FROM seo_clusters WHERE project_id = 'p1')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(members, 3);
+    }
+
+    #[test]
+    fn test_compute_seo_clusters_skips_generic_buckets() {
+        // 500 pages sharing only the generic keyword "generico": the bucket
+        // exceeds MAX_CLUSTER_BUCKET_PAGES (400) and is skipped (T13), so
+        // no cluster forms and the call stays fast.
+        let repo = test_repo();
+        let mut pages = Vec::with_capacity(500);
+        for i in 0..500 {
+            let mut p = page(
+                &format!("pg{i}"),
+                &format!("https://x.com/p{i}"),
+                Some("P"),
+                200,
+                true,
+            );
+            p.keywords_json = Some(kw_json(&["generico", &format!("unico{i}")]));
+            pages.push(p);
+        }
+        repo.save_results_batch(&pages).unwrap();
+        assert_eq!(repo.compute_seo_clusters("p1").unwrap(), 0);
+    }
+
     #[test]
     fn test_compare_crawl_snapshots_page_sections() {
         let repo = test_repo();
