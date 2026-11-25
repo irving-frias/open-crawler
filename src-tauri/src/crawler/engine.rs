@@ -14,18 +14,142 @@ use uuid::Uuid;
 use crate::crawler::db_writer::{create_db_writer_channel, CrawlResultMsg, DbWriter};
 use crate::crawler::dedup::Deduplicator;
 use crate::crawler::extraction::CustomExtraction;
-use crate::crawler::fetcher::{ChromiumFetcher, HtmlFetcher, HttpFetcher};
+use crate::crawler::fetcher::{ChromiumFetcher, FetchResponse, HtmlFetcher, HttpFetcher};
 use crate::crawler::frontier::Frontier;
 use crate::crawler::parser::SeoParser;
 use crate::crawler::robots::RobotsChecker;
 use crate::crawler::sitemap::SitemapParser;
 use crate::db::CrawlRepo;
 use crate::error::AppError;
-use crate::models::{CrawlConfig, CrawlProgress, CrawlResult, PageLink, RedirectRecord};
+use crate::models::{
+    CrawlConfig, CrawlProgress, CrawlResult, FetchErrorInfo, FetchErrorKind, PageLink,
+    RedirectRecord, RetryInfo,
+};
 use crate::AppState;
 
 const LRU_CAPACITY: usize = 500_000;
 const QUEUE_FLUSH_URLS: u32 = 100;
+
+/// Shared fetch-failure state for the progress bar (T11): the last fetch
+/// that failed for good and the retry currently in flight, if any.
+/// Concurrent tasks overwrite it; the bar shows the most recent activity.
+#[derive(Default)]
+struct FetchStatus {
+    last_error: Option<FetchErrorInfo>,
+    retrying: Option<RetryInfo>,
+}
+
+/// What the retry loop needs: the configured retry budget, the shared
+/// visible state, and the total retry counter.
+#[derive(Clone)]
+struct RetryCtx {
+    max_retries: u32,
+    status: Arc<RwLock<FetchStatus>>,
+    retries_total: Arc<AtomicU32>,
+}
+
+/// Classify a fetch failure for the retry policy and the progress bar.
+/// One source of truth (T11): the retry loop, the timeout counter and the
+/// visible "last error" all use this.
+fn fetch_error_kind(e: &AppError) -> FetchErrorKind {
+    match e {
+        AppError::Http(err) if err.is_timeout() => FetchErrorKind::Timeout,
+        AppError::Http(err) if err.is_connect() => FetchErrorKind::Connection,
+        // Chrome render failures that are transient: the render timed out
+        // or the browser process could not start. A non-zero Chrome exit
+        // ("Chrome failed to render") or an empty DOM is a page problem,
+        // not a network one, so it does not retry.
+        AppError::Crawl(msg)
+            if msg.contains("Timed out") || msg.contains("Failed to run Chrome") =>
+        {
+            FetchErrorKind::Timeout
+        }
+        _ => FetchErrorKind::Other,
+    }
+}
+
+/// Whether a failed fetch is worth retrying: transient network failures
+/// (timeout, connection) and the Chrome render timeouts above. 4xx,
+/// blocks and parse errors are not.
+fn is_retryable_fetch_error(e: &AppError) -> bool {
+    matches!(
+        fetch_error_kind(e),
+        FetchErrorKind::Timeout | FetchErrorKind::Connection
+    )
+}
+
+/// Fetch one URL, retrying transient failures (T11). A 5xx response is
+/// also retried — the server may recover — but after the retries are
+/// spent the 5xx response is returned as the page, as before. The
+/// shared status always shows the most recent retry/failure so the
+/// progress bar can display the cause and the retry in progress.
+async fn fetch_with_retries(
+    fetcher: &(dyn HtmlFetcher + 'static),
+    url: &Url,
+    ctx: &RetryCtx,
+) -> Result<FetchResponse, AppError> {
+    let url_str = url.to_string();
+    let mut attempt: u32 = 0;
+    loop {
+        match fetcher.fetch(url).await {
+            Ok(response) => {
+                if (500..600).contains(&response.status) && attempt < ctx.max_retries {
+                    attempt += 1;
+                    ctx.retries_total.fetch_add(1, Ordering::Relaxed);
+                    {
+                        let mut status = ctx.status.write().await;
+                        status.retrying = Some(RetryInfo {
+                            url: url_str.clone(),
+                            attempt,
+                            max_attempts: ctx.max_retries + 1,
+                            kind: FetchErrorKind::Server5xx,
+                            cause: format!("HTTP {}", response.status),
+                        });
+                    }
+                    tokio::time::sleep(Duration::from_millis(1000 * attempt as u64)).await;
+                    continue;
+                }
+                {
+                    let mut status = ctx.status.write().await;
+                    if status.retrying.as_ref().is_some_and(|r| r.url == url_str) {
+                        status.retrying = None;
+                    }
+                }
+                return Ok(response);
+            }
+            Err(e) => {
+                if is_retryable_fetch_error(&e) && attempt < ctx.max_retries {
+                    attempt += 1;
+                    ctx.retries_total.fetch_add(1, Ordering::Relaxed);
+                    {
+                        let mut status = ctx.status.write().await;
+                        status.retrying = Some(RetryInfo {
+                            url: url_str.clone(),
+                            attempt,
+                            max_attempts: ctx.max_retries + 1,
+                            kind: fetch_error_kind(&e),
+                            cause: e.to_string(),
+                        });
+                    }
+                    tokio::time::sleep(Duration::from_millis(1000 * attempt as u64)).await;
+                    continue;
+                }
+                {
+                    let mut status = ctx.status.write().await;
+                    status.last_error = Some(FetchErrorInfo {
+                        url: url_str.clone(),
+                        kind: fetch_error_kind(&e),
+                        cause: e.to_string(),
+                    });
+                    if status.retrying.as_ref().is_some_and(|r| r.url == url_str) {
+                        status.retrying = None;
+                    }
+                }
+                return Err(e);
+            }
+        }
+    }
+}
 
 /// Where crawl progress events go. The desktop app forwards them to the
 /// frontend as Tauri events; headless runs (MCP server, CLI) only log them.
@@ -373,6 +497,15 @@ impl CrawlEngine {
         let errors_4xx = Arc::new(AtomicU32::new(0));
         let errors_5xx = Arc::new(AtomicU32::new(0));
         let errors_timeout = Arc::new(AtomicU32::new(0));
+        // Retry state for the progress bar (T11): total retries spent and
+        // the shared last-error / retrying-in-flight state.
+        let retries_total = Arc::new(AtomicU32::new(0));
+        let fetch_status = Arc::new(RwLock::new(FetchStatus::default()));
+        let retry_ctx = RetryCtx {
+            max_retries: config.max_retries,
+            status: fetch_status.clone(),
+            retries_total: retries_total.clone(),
+        };
         let start_time = Instant::now();
 
         // Get config ID
@@ -529,6 +662,10 @@ impl CrawlEngine {
                         let state_read = state.read().await;
                         let mut crawls = state_read.crawls.write().await;
                         if let Some(crawl_state) = crawls.get_mut(&project_id) {
+                            let (last_error, retrying) = {
+                                let s = fetch_status.read().await;
+                                (s.last_error.clone(), s.retrying.clone())
+                            };
                             crawl_state.progress = CrawlProgress {
                                 project_id: project_id.clone(),
                                 urls_crawled: pages_crawled,
@@ -540,6 +677,9 @@ impl CrawlEngine {
                                 errors_5xx: errors_5xx.load(Ordering::Relaxed),
                                 errors_timeout: errors_timeout.load(Ordering::Relaxed),
                                 current_depth: entry.depth,
+                                last_error,
+                                retrying,
+                                retries_total: retries_total.load(Ordering::Relaxed),
                             };
                         }
                     }
@@ -547,6 +687,10 @@ impl CrawlEngine {
                     // Emit progress to the UI at most every ~100ms.
                     if last_progress_emit.elapsed() >= PROGRESS_EMIT_INTERVAL {
                         last_progress_emit = Instant::now();
+                        let (last_error, retrying) = {
+                            let s = fetch_status.read().await;
+                            (s.last_error.clone(), s.retrying.clone())
+                        };
                         let progress = CrawlProgress {
                             project_id: project_id.clone(),
                             urls_crawled: pages_crawled,
@@ -558,6 +702,9 @@ impl CrawlEngine {
                             errors_5xx: errors_5xx.load(Ordering::Relaxed),
                             errors_timeout: errors_timeout.load(Ordering::Relaxed),
                             current_depth: entry.depth,
+                            last_error,
+                            retrying,
+                            retries_total: retries_total.load(Ordering::Relaxed),
                         };
                         sink.emit("crawl-progress", &progress);
                     }
@@ -591,6 +738,7 @@ impl CrawlEngine {
                     let errors_4xx_task = errors_4xx.clone();
                     let errors_5xx_task = errors_5xx.clone();
                     let errors_timeout_task = errors_timeout.clone();
+                    let retry_ctx_task = retry_ctx.clone();
 
                     tokio::spawn(async move {
                         let result = Self::fetch_and_parse(
@@ -610,6 +758,7 @@ impl CrawlEngine {
                             site_client.as_ref(),
                             &extractions_clone,
                             list_mode,
+                            &retry_ctx_task,
                         )
                         .await;
 
@@ -626,7 +775,7 @@ impl CrawlEngine {
                             }
                             Err(e) => {
                                 warn!("  -> FAILED to fetch {}: {}", url_clone, e);
-                                if matches!(&e, AppError::Http(err) if err.is_timeout()) {
+                                if fetch_error_kind(&e) == FetchErrorKind::Timeout {
                                     errors_timeout_task.fetch_add(1, Ordering::Relaxed);
                                 }
 
@@ -739,6 +888,10 @@ impl CrawlEngine {
         let _ = db_writer_handle.await;
 
         // Emit final progress
+        let (last_error, retrying) = {
+            let s = fetch_status.read().await;
+            (s.last_error.clone(), s.retrying.clone())
+        };
         let progress = CrawlProgress {
             project_id: project_id.clone(),
             urls_crawled: pages_crawled,
@@ -750,6 +903,9 @@ impl CrawlEngine {
             errors_5xx: errors_5xx.load(Ordering::Relaxed),
             errors_timeout: errors_timeout.load(Ordering::Relaxed),
             current_depth: 0,
+            last_error,
+            retrying,
+            retries_total: retries_total.load(Ordering::Relaxed),
         };
         sink.emit("crawl-progress", &progress);
 
@@ -914,8 +1070,9 @@ impl CrawlEngine {
         site_client: Option<&reqwest::Client>,
         extractions: &[CustomExtraction],
         list_mode: bool,
+        retry_ctx: &RetryCtx,
     ) -> Result<(u32, u32, u16), AppError> {
-        let response = fetcher.fetch(url).await?;
+        let response = fetch_with_retries(fetcher, url, retry_ctx).await?;
 
         info!(
             "  -> Status: {}, Size: {} bytes, Time: {}ms",
@@ -1210,6 +1367,16 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    /// Fresh retry context for `fetch_and_parse` tests (2 retries, as in
+    /// production). The caller keeps the handle when it must assert on it.
+    fn test_retry_ctx() -> RetryCtx {
+        RetryCtx {
+            max_retries: 2,
+            status: Arc::new(RwLock::new(FetchStatus::default())),
+            retries_total: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
     /// Spawns a tiny local site WITHOUT robots.txt or sitemap.xml that exposes
     /// two internal links (/a, /b) and one external link. Returns the origin.
     async fn spawn_no_sitemap_site() -> String {
@@ -1308,6 +1475,7 @@ mod tests {
             None,
             &[],
             false,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();
@@ -1385,6 +1553,7 @@ mod tests {
             None,
             &rules,
             false,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();
@@ -1436,6 +1605,7 @@ mod tests {
             None,
             &[],
             true,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();
@@ -1468,6 +1638,7 @@ mod tests {
             None,
             &[],
             false,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();
@@ -1515,6 +1686,7 @@ mod tests {
             None,
             &[],
             false,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();
@@ -1579,6 +1751,192 @@ mod tests {
     /// only exists in the rendered DOM — proving the rendered HTML flows
     /// through the normal parse/check pipeline. Skipped when no system
     /// Chrome is installed.
+    /// Spawns a server that fails the first `fail_times` requests to any
+    /// path with 500, then answers 200 with a minimal page. Returns the
+    /// origin and the hit counter.
+    async fn spawn_flaky_site(fail_times: u32) -> (String, Arc<AtomicU32>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let origin = format!("http://{}", addr);
+        let hits = Arc::new(AtomicU32::new(0));
+
+        let hits_clone = hits.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = match listener.accept().await {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let n = hits_clone.fetch_add(1, Ordering::Relaxed) + 1;
+                let response = if n <= fail_times {
+                    "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else {
+                    let body =
+                        "<html><head><title>Flaky</title></head><body><p>ok</p></body></html>";
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                };
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        (origin, hits)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_retries_5xx_then_succeeds() {
+        let (origin, hits) = spawn_flaky_site(2).await;
+        let seed = format!("{}/", origin);
+
+        let fetcher =
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let parser = SeoParser::new();
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+        let retry_ctx = test_retry_ctx();
+
+        let (pages, _, status) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &[],
+            false,
+            &retry_ctx,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(pages, 1);
+        assert_eq!(status, 200);
+        // Two failed attempts + the successful one.
+        assert_eq!(hits.load(Ordering::Relaxed), 3);
+        assert_eq!(retry_ctx.retries_total.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_does_not_retry_404() {
+        let origin = spawn_no_sitemap_site().await;
+        let seed = format!("{}/missing", origin);
+
+        let fetcher =
+            HttpFetcher::new(None, "OpenCrawler/test", 10_000, vec![], vec![], None, None).unwrap();
+        let parser = SeoParser::new();
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+        let retry_ctx = test_retry_ctx();
+
+        let (pages, _, status) = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &[],
+            false,
+            &retry_ctx,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(pages, 1);
+        assert_eq!(status, 404);
+        assert_eq!(retry_ctx.retries_total.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_timeout_retries_then_records_last_error() {
+        // Server that accepts the connection and never answers.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let origin = format!("http://{}", addr);
+        tokio::spawn(async move {
+            loop {
+                let (socket, _) = match listener.accept().await {
+                    Ok(s) => s,
+                    Err(_) => break,
+                };
+                // Hold the socket open without answering, forever.
+                std::mem::forget(socket);
+            }
+        });
+        let seed = format!("{}/", origin);
+
+        // 200 ms client timeout, 1 retry: ~0.2 + 1 s backoff + 0.2 s.
+        let fetcher =
+            HttpFetcher::new(None, "OpenCrawler/test", 200, vec![], vec![], None, None).unwrap();
+        let parser = SeoParser::new();
+        let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
+        let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
+        let (db_tx, _db_rx) = create_db_writer_channel(1000);
+        let allowed = vec!["http://127.0.0.1".to_string()];
+        let retry_ctx = RetryCtx {
+            max_retries: 1,
+            status: Arc::new(RwLock::new(FetchStatus::default())),
+            retries_total: Arc::new(AtomicU32::new(0)),
+        };
+
+        let result = CrawlEngine::fetch_and_parse(
+            &fetcher,
+            &Url::parse(&seed).unwrap(),
+            &parser,
+            "test-config",
+            "test-project",
+            &visited,
+            &frontier,
+            &allowed,
+            true,
+            &[],
+            &[],
+            0,
+            db_tx,
+            None,
+            &[],
+            false,
+            &retry_ctx,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "expected a timeout error, got {:?}",
+            result
+        );
+        assert_eq!(retry_ctx.retries_total.load(Ordering::Relaxed), 1);
+        let status = retry_ctx.status.read().await;
+        let last = status.last_error.as_ref().expect("last_error set");
+        assert_eq!(last.kind, FetchErrorKind::Timeout);
+        assert!(last.url.contains(&origin));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn link_discovery_finds_js_injected_links() {
         use crate::crawler::fetcher::{check_js_availability, ChromiumFetcher};
@@ -1616,6 +1974,7 @@ mod tests {
             None,
             &[],
             false,
+            &test_retry_ctx(),
         )
         .await
         .unwrap();

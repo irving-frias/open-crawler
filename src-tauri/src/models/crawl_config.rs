@@ -73,6 +73,10 @@ pub struct CrawlConfig {
     pub site_auth: Option<SiteAuth>,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
+    /// Extra fetch attempts per URL after a transient failure (timeout,
+    /// connection error, 5xx). 0 disables retries. Backoff is 1 s × attempt.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
     /// Id of the `scheduled_jobs` row that launched this crawl, set only
@@ -109,6 +113,10 @@ fn default_render_wait_ms() -> u64 {
     5000 // 5 seconds of virtual time for the headless Chrome render
 }
 
+fn default_max_retries() -> u32 {
+    2 // extra attempts per URL after a transient fetch failure (T11)
+}
+
 impl CrawlConfig {
     pub fn user_agent(&self) -> &str {
         IMPLICIT_USER_AGENT
@@ -139,6 +147,7 @@ impl Default for CrawlConfig {
             cookies: Vec::new(),
             site_auth: None,
             request_timeout_ms: default_request_timeout_ms(),
+            max_retries: default_max_retries(),
             proxy: None,
             scheduled_job_id: None,
         }

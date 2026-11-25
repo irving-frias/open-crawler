@@ -5,7 +5,7 @@
   import { Button } from '#lib/components/ui/button/index.js';
   import SeverityBadge from '#lib/components/SeverityBadge.svelte';
   import type { CrawlProgressState } from '#lib/app.svelte.ts';
-  import type { CrawlProgress } from '#lib/api/types.ts';
+  import type { CrawlProgress, FetchErrorKind } from '#lib/api/types.ts';
 
   let {
     progress,
@@ -33,6 +33,11 @@
   let elapsedSecs = $state(0);
   let prevQueued = $state(0);
   let discovering = $state(false);
+  // Last failed fetch and the retry in flight (T11), same local listener
+  // as the T16 fields (app.svelte.ts belongs to the pending T9 push).
+  let lastError = $state<CrawlProgress['last_error']>(undefined);
+  let retrying = $state<CrawlProgress['retrying']>(undefined);
+  let retriesTotal = $state(0);
 
   $effect(() => {
     let unlisten: (() => void) | null = null;
@@ -45,6 +50,9 @@
       errorsTimeout = p.errors_timeout ?? 0;
       currentDepth = p.current_depth ?? 0;
       elapsedSecs = p.elapsed_secs ?? 0;
+      lastError = p.last_error;
+      retrying = p.retrying;
+      retriesTotal = p.retries_total ?? 0;
       // The total is unknown while the crawler keeps discovering URLs:
       // the queue grows instead of shrinking. Show "discovering…" and
       // the pace instead of a false percentage (UI_UX_PLAN §1.3).
@@ -78,6 +86,22 @@
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /** Localized label for a fetch-error kind (the raw cause stays English). */
+  function errorKindLabel(kind: FetchErrorKind): string {
+    switch (kind) {
+      case 'timeout':
+        return m['progress.error_timeout']();
+      case 'connection':
+        return m['progress.error_connection']();
+      case 'server_5xx':
+        return m['progress.error_server_5xx']();
+      case 'blocked':
+        return m['progress.error_blocked']();
+      default:
+        return m['progress.error_other']();
+    }
   }
 </script>
 
@@ -114,7 +138,7 @@
       <span>{m['progress.depth']({ depth: currentDepth.toString() })}</span>
       <span class="current-url">{progress.current || '...'}</span>
     </div>
-    {#if progress.errors > 0 || errors4xx > 0 || errors5xx > 0 || errorsTimeout > 0}
+    {#if progress.errors > 0 || errors4xx > 0 || errors5xx > 0 || errorsTimeout > 0 || retriesTotal > 0}
       <div class="progress-errors">
         <SeverityBadge
           severity="error"
@@ -134,6 +158,25 @@
             label={m['progress.errors_timeout']()}
           />
         {/if}
+        {#if retriesTotal > 0}
+          <SeverityBadge severity="info" count={retriesTotal} label={m['progress.retries']()} />
+        {/if}
+      </div>
+    {/if}
+    {#if retrying}
+      <div class="progress-retry" title={retrying.cause}>
+        {m['progress.retrying']({
+          attempt: retrying.attempt.toString(),
+          max: retrying.max_attempts.toString(),
+        })}
+        <span class="retry-url">{retrying.url}</span>
+        <span class="retry-cause">— {errorKindLabel(retrying.kind)}</span>
+      </div>
+    {:else if lastError}
+      <div class="progress-last-error" title={lastError.cause}>
+        {m['progress.last_error']()}
+        <span class="retry-url">{lastError.url}</span>
+        <span class="retry-cause">— {errorKindLabel(lastError.kind)}</span>
       </div>
     {/if}
     {#if streamedCount > 0}
@@ -206,6 +249,24 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
+  }
+
+  .progress-retry,
+  .progress-last-error {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .retry-url {
+    direction: rtl;
+    unicode-bidi: plaintext;
+  }
+
+  .retry-cause {
+    color: var(--text-muted);
   }
 
   .streamed-info {

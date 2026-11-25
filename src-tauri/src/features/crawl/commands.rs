@@ -101,6 +101,9 @@ pub(crate) async fn start_crawl_internal(
         errors_5xx: 0,
         errors_timeout: 0,
         current_depth: 0,
+        last_error: None,
+        retrying: None,
+        retries_total: 0,
     };
 
     // Store crawl state
@@ -195,6 +198,9 @@ async fn register_crawl(
         errors_5xx: 0,
         errors_timeout: 0,
         current_depth: 0,
+        last_error: None,
+        retrying: None,
+        retries_total: 0,
     };
     {
         let state_write = state.write().await;

@@ -93,6 +93,28 @@ export interface CrawlProgress {
   errors_timeout?: number;
   /** Depth of the URL currently being dispatched (T16). */
   current_depth?: number;
+  /** Last fetch that failed for good (T11). */
+  last_error?: FetchErrorInfo;
+  /** Retry currently in flight (T11). */
+  retrying?: RetryInfo;
+  /** Retry attempts spent since the crawl started (T11). */
+  retries_total?: number;
+}
+
+export type FetchErrorKind = 'timeout' | 'connection' | 'server_5xx' | 'blocked' | 'other';
+
+export interface FetchErrorInfo {
+  url: string;
+  kind: FetchErrorKind;
+  cause: string;
+}
+
+export interface RetryInfo {
+  url: string;
+  attempt: number;
+  max_attempts: number;
+  kind: FetchErrorKind;
+  cause: string;
 }
 
 export interface PaginatedResults {

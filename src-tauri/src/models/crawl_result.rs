@@ -89,6 +89,36 @@ pub struct RedirectRecord {
     pub chain: Vec<RedirectHop>,
 }
 
+/// Kind of a fetch failure, for the retry policy and the progress bar (T11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FetchErrorKind {
+    Timeout,
+    Connection,
+    Server5xx,
+    Blocked,
+    Other,
+}
+
+/// The last fetch that failed for good (after retries), for the progress bar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FetchErrorInfo {
+    pub url: String,
+    pub kind: FetchErrorKind,
+    /// Raw error text (reqwest/Chrome, usually English) for the tooltip.
+    pub cause: String,
+}
+
+/// A retry currently in flight, for the progress bar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryInfo {
+    pub url: String,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub kind: FetchErrorKind,
+    pub cause: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlProgress {
     pub project_id: String,
@@ -109,6 +139,15 @@ pub struct CrawlProgress {
     /// Depth of the URL currently being dispatched (T16).
     #[serde(default)]
     pub current_depth: u32,
+    /// Last fetch that failed for good (T11).
+    #[serde(default)]
+    pub last_error: Option<FetchErrorInfo>,
+    /// Retry currently in flight, if any (T11).
+    #[serde(default)]
+    pub retrying: Option<RetryInfo>,
+    /// Retry attempts spent since the crawl started (T11).
+    #[serde(default)]
+    pub retries_total: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
