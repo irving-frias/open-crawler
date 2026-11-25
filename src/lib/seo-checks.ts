@@ -1603,6 +1603,49 @@ const WHY: Record<string, { en: string; es: string }> = {
   },
 };
 
+/**
+ * Official documentation per check (T19, 1.7). Google Search Central pages
+ * for the main topics; checks without a specific page get no link. Shown in
+ * the expanded issue detail as "Documentación oficial".
+ */
+const DOCS: Record<string, string> = {
+  title_present: 'https://developers.google.com/search/docs/appearance/title-link',
+  title_length: 'https://developers.google.com/search/docs/appearance/title-link',
+  meta_description_present: 'https://developers.google.com/search/docs/appearance/snippet',
+  meta_description_length: 'https://developers.google.com/search/docs/appearance/snippet',
+  canonical_present:
+    'https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls',
+  https_used: 'https://developers.google.com/search/docs/crawling-indexing/https',
+  structured_data: 'https://developers.google.com/search/docs/appearance/structured-data/intro',
+  faq_schema: 'https://developers.google.com/search/docs/appearance/structured-data/intro',
+  howto_schema: 'https://developers.google.com/search/docs/appearance/structured-data/intro',
+  breadcrumb_schema: 'https://developers.google.com/search/docs/appearance/structured-data/intro',
+  article_schema: 'https://developers.google.com/search/docs/appearance/structured-data/intro',
+  img_alt: 'https://developers.google.com/search/docs/appearance/google-images',
+  img_dimensions: 'https://developers.google.com/search/docs/appearance/google-images',
+  image_optimization: 'https://developers.google.com/search/docs/appearance/google-images',
+  pagespeed: 'https://developers.google.com/search/docs/appearance/page-experience',
+  page_weight: 'https://developers.google.com/search/docs/appearance/page-experience',
+  load_time: 'https://developers.google.com/search/docs/appearance/page-experience',
+  viewport: 'https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites',
+  h1_present: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  h1_count: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  heading_hierarchy: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  semantic_html: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  word_count: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  content_present: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  readability_score: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  flesch_kincaid_grade: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  sentence_length: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  paragraph_structure: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  internal_links: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  outbound_links: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  url_length: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  url_underscores: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  indexable: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  status_ok: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+};
+
 interface CheckFixEntry {
   en: { fix: string; expected: string };
   es: { fix: string; expected: string };
@@ -2708,6 +2751,7 @@ export interface LocalizedCheck {
   why?: string;
   fix?: string;
   expected?: string;
+  docs?: string;
 }
 
 function applyParams(template: string, params: string[]): string {
@@ -2734,22 +2778,26 @@ export function localizeSeoCheck(
     const tr = getLocale().startsWith('es') ? noText.es : noText.en;
     const fixEntry = CHECK_FIXES[id];
     const fixTr = fixEntry ? (getLocale().startsWith('es') ? fixEntry.es : fixEntry.en) : null;
+    const docs = DOCS[id];
     return {
       message: tr.message,
       guidance: tr.guidance,
       ...(why ? { why } : {}),
       ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
+      ...(docs ? { docs } : {}),
     };
   }
-  if (!entry) return { message, guidance };
+  if (!entry) return { message, guidance, ...(DOCS[id] ? { docs: DOCS[id] } : {}) };
   const tr = getLocale().startsWith('es') ? entry.es : entry.en;
   const params = extractParams(message, evidence);
   const fixEntry = CHECK_FIXES[id];
   const fixTr = fixEntry ? (getLocale().startsWith('es') ? fixEntry.es : fixEntry.en) : null;
+  const docs = DOCS[id];
   return {
     message: applyParams(tr.message, params),
     guidance: applyParams(tr.guidance, params),
     ...(why ? { why } : {}),
     ...(fixTr ? { fix: fixTr.fix, expected: fixTr.expected } : {}),
+    ...(docs ? { docs } : {}),
   };
 }

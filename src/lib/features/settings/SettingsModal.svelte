@@ -6,7 +6,7 @@
   import type { SettingsMap } from '#lib/api/types.ts';
   import { setLocale, getLocale, type Locale } from '#lib/paraglide/runtime.js';
   import { m } from '#lib/paraglide/messages.js';
-  import { applyTheme as applyAppTheme } from '#lib/theme.js';
+  import { applyTheme as applyAppTheme, applyDensity as applyAppDensity } from '#lib/theme.js';
   import * as Dialog from '#lib/components/ui/dialog/index.js';
   import * as Select from '#lib/components/ui/select/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
@@ -27,6 +27,7 @@
 
   let language = $state(getLocale());
   let theme = $state('system');
+  let density = $state('comfortable');
   let pageSize = $state('50');
   let maxDepth = $state('10');
   let respectRobots = $state(true);
@@ -85,6 +86,7 @@
       const settings = await getSettings();
       if (settings.language) language = settings.language as Locale;
       if (settings.theme) theme = settings.theme;
+      if (settings.density) density = settings.density;
       if (settings.page_size) pageSize = settings.page_size;
       if (settings.max_depth) maxDepth = settings.max_depth;
       if (settings.respect_robots) respectRobots = settings.respect_robots === 'true';
@@ -116,6 +118,7 @@
       const settings: SettingsMap = {
         language,
         theme,
+        density,
         page_size: pageSize,
         max_depth: maxDepth,
         respect_robots: respectRobots.toString(),
@@ -138,6 +141,7 @@
       await saveSettings(settings);
       setLocale(language as Locale);
       applyAppTheme(theme);
+      applyAppDensity(density);
       onsave?.(settings);
       open = false;
     } catch (e) {
@@ -246,6 +250,21 @@
             <Select.Item value="system" label={m['theme.system']()} />
             <Select.Item value="light" label={m['theme.light']()} />
             <Select.Item value="dark" label={m['theme.dark']()} />
+          </Select.Content>
+        </Select.Root>
+      </div>
+
+      <div class="grid gap-1.5">
+        <Label for="density">{m['settings.density']()}</Label>
+        <Select.Root type="single" bind:value={density}>
+          <Select.Trigger id="density" class="w-full">
+            <span data-slot="select-value">
+              {density === 'compact' ? m['density.compact']() : m['density.comfortable']()}
+            </span>
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="comfortable" label={m['density.comfortable']()} />
+            <Select.Item value="compact" label={m['density.compact']()} />
           </Select.Content>
         </Select.Root>
       </div>

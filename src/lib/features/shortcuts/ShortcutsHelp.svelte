@@ -40,6 +40,24 @@
       ],
     },
     {
+      title: () => m['shortcuts.group_table'](),
+      items: [
+        { keys: ['↑', '↓'], label: () => m['shortcuts.table_move']() },
+        { keys: ['Enter'], label: () => m['shortcuts.table_open']() },
+        { keys: ['Space'], label: () => m['shortcuts.table_toggle']() },
+        { keys: ['e'], label: () => m['shortcuts.table_export']() },
+        { keys: ['f'], label: () => m['shortcuts.table_focus_filter']() },
+        { keys: ['1', '2', '3', '4'], label: () => m['shortcuts.table_page_size']() },
+      ],
+    },
+    {
+      title: () => m['shortcuts.group_crawl'](),
+      items: [
+        { keys: ['Ctrl', 'Enter'], label: () => m['shortcuts.crawl_start']() },
+        { keys: ['Ctrl', '.'], label: () => m['shortcuts.crawl_stop']() },
+      ],
+    },
+    {
       title: () => m['shortcuts.group_dialogs'](),
       items: [
         { keys: ['Esc'], label: () => m['shortcuts.esc_close']() },

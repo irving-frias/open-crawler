@@ -354,6 +354,45 @@
     selectedPage = page;
   }
 
+  /** Folder tint per depth level (T19, 1.5): cycles 4 accent mixes so the
+   * level is visible at a glance. Color is never the only signal — the
+   * indentation and the page count stay. */
+  function depthTint(depth: number): string {
+    const mix = [88, 68, 48, 32][depth % 4];
+    return `color-mix(in srgb, var(--accent) ${mix}%, var(--text-muted))`;
+  }
+
+  /** Size bucket for a branch's page count (T19, 1.5): bigger branches
+   * read bigger. 0: <10, 1: <100, 2: <1000, 3: 1000+. */
+  function countBucket(count: number): number {
+    if (count >= 1000) return 3;
+    if (count >= 100) return 2;
+    if (count >= 10) return 1;
+    return 0;
+  }
+
+  /** Split a label on the current search query for highlighting (T19, 1.5).
+   * Returns text parts flagged as matches; rendered without {@html}. */
+  function highlightParts(text: string): { text: string; match: boolean }[] {
+    const q = siteMapFilters.search.trim();
+    if (!q) return [{ text, match: false }];
+    const lower = text.toLowerCase();
+    const needle = q.toLowerCase();
+    const parts: { text: string; match: boolean }[] = [];
+    let i = 0;
+    while (true) {
+      const at = lower.indexOf(needle, i);
+      if (at < 0) {
+        if (i < text.length) parts.push({ text: text.slice(i), match: false });
+        break;
+      }
+      if (at > i) parts.push({ text: text.slice(i, at), match: false });
+      parts.push({ text: text.slice(at, at + needle.length), match: true });
+      i = at + needle.length;
+    }
+    return parts;
+  }
+
   /** First page with issues in a branch (T17 §4.1: error badge → detail). */
   function firstErrorPage(d: DirState): TreeNode | null {
     for (const p of d.pages) {
@@ -540,16 +579,25 @@
                 {#if row.dir.isLang}
                   <Languages class="tree-lang size-4" />
                 {:else}
-                  <Folder class="tree-folder size-4" />
+                  <Folder
+                    class="tree-folder {aggOf(row.dir).count >= 100 ? 'size-5' : 'size-4'}"
+                    style="color: {depthTint(row.depth)}"
+                  />
                 {/if}
-                <span class="tree-title">{row.dir.name}</span>
+                <span class="tree-title">
+                  {#each highlightParts(row.dir.name) as part, i (i)}<span class:tree-mark={part.match}>
+                      {part.text}
+                    </span>{/each}
+                </span>
                 <button
                   type="button"
                   class="tree-url tree-url-link"
                   title={`${row.dir.key} — ${m['nav.view_in_results']()}`}
                   onclick={() => navigation.goToResults({ search: row.dir.key })}
                 >
-                  {row.dir.key}
+                  {#each highlightParts(row.dir.key) as part, i (i)}<span class:tree-mark={part.match}>
+                      {part.text}
+                    </span>{/each}
                 </button>
                 <span
                   class="tree-status-dot"
@@ -577,7 +625,10 @@
                   <span class="tree-clean"></span>
                 {/if}
                 {#if aggOf(row.dir).count > 0}
-                  <span class="tree-agg" title={`${aggOf(row.dir).count} pages`}>
+                  <span
+                    class="tree-agg tree-agg-b{countBucket(aggOf(row.dir).count)}"
+                    title={`${aggOf(row.dir).count} pages`}
+                  >
                     {aggOf(row.dir).count}
                   </span>
                 {/if}
@@ -610,8 +661,18 @@
                   </Badge>
                 {/if}
 
-                <span class="tree-title">{row.page.title || row.page.url}</span>
-                <span class="tree-url" title={row.page.url}>{row.page.url}</span>
+                <span class="tree-title">
+                  {#each highlightParts(row.page.title || row.page.url) as part, i (i)}<span
+                      class:tree-mark={part.match}
+                    >
+                      {part.text}
+                    </span>{/each}
+                </span>
+                <span class="tree-url" title={row.page.url}>
+                  {#each highlightParts(row.page.url) as part, i (i)}<span class:tree-mark={part.match}>
+                      {part.text}
+                    </span>{/each}
+                </span>
 
                 {#if row.page.issue_count > 0}
                   <Badge
@@ -828,6 +889,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 32ch;
+  }
+
+  .tree-mark {
+    background: color-mix(in srgb, var(--warning) 35%, transparent);
+    border-radius: 2px;
+  }
+
+  .tree-agg-b1 {
+    font-size: 0.85rem;
+  }
+  .tree-agg-b2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .tree-agg-b3 {
+    font-size: 1.05rem;
+    font-weight: 700;
   }
 
   .tree-url {

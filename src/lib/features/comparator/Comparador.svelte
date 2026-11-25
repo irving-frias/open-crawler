@@ -72,6 +72,37 @@
   let after = $state<SnapshotStats | null>(null);
   let snapshotsSeq = 0;
 
+  // Visual diff filters (T19, 1.6): which section cards show, and which
+  // changed URLs show inside the changed card.
+  let sectionFilter = $state<'all' | 'new' | 'removed' | 'changed'>('all');
+  let changedFilter = $state<'all' | 'new-errors' | 'resolved' | 'other'>('all');
+
+  /** Kind of a changed URL from its status_code diff (T19, 1.6). */
+  function changeKind(change: ChangedUrl): 'new-errors' | 'resolved' | 'other' {
+    const status = change.diffs.find((d) => d.field === 'status_code');
+    if (!status) return 'other';
+    const beforeCode = Number(status.before);
+    const afterCode = Number(status.after);
+    if (Number.isNaN(beforeCode) || Number.isNaN(afterCode)) return 'other';
+    const wasError = beforeCode >= 400;
+    const isError = afterCode >= 400;
+    if (!wasError && isError) return 'new-errors';
+    if (wasError && !isError) return 'resolved';
+    return 'other';
+  }
+
+  const visibleChanged = $derived(
+    changedFilter === 'all'
+      ? changedState.items
+      : changedState.items.filter((c) => changeKind(c) === changedFilter)
+  );
+  const newErrorsCount = $derived(
+    changedState.items.filter((c) => changeKind(c) === 'new-errors').length
+  );
+  const resolvedCount = $derived(
+    changedState.items.filter((c) => changeKind(c) === 'resolved').length
+  );
+
   $effect(() => {
     if (projectId) {
       loadSnapshots();
@@ -317,9 +348,82 @@
                 <span class="comp-summary-value">{unchangedCount.toLocaleString()}</span>
                 <span class="comp-summary-label">{m['comparator.unchanged']()}</span>
               </div>
+              <div class="comp-summary-item comp-new-errors">
+                <span class="comp-summary-value">{newErrorsCount.toLocaleString()}</span>
+                <span class="comp-summary-label">{m['comparator.new_errors']()}</span>
+              </div>
+              <div class="comp-summary-item comp-resolved">
+                <span class="comp-summary-value">{resolvedCount.toLocaleString()}</span>
+                <span class="comp-summary-label">{m['comparator.resolved_errors']()}</span>
+              </div>
             </div>
+            {#if hasMore(changedState)}
+              <p class="comp-summary-note">{m['comparator.errors_page_note']()}</p>
+            {/if}
           </CardContent>
         </Card>
+      </div>
+
+      <div class="comp-filters" role="group" aria-label={m['comparator.filter_label']()}>
+        <Button
+          variant={sectionFilter === 'all' ? 'default' : 'outline'}
+          size="sm"
+          onclick={() => (sectionFilter = 'all')}
+        >
+          {m['comparator.filter_all']()}
+        </Button>
+        <Button
+          variant={sectionFilter === 'new' ? 'default' : 'outline'}
+          size="sm"
+          onclick={() => (sectionFilter = 'new')}
+        >
+          {m['comparator.new']()} ({newState.total})
+        </Button>
+        <Button
+          variant={sectionFilter === 'removed' ? 'default' : 'outline'}
+          size="sm"
+          onclick={() => (sectionFilter = 'removed')}
+        >
+          {m['comparator.removed']()} ({removedState.total})
+        </Button>
+        <Button
+          variant={sectionFilter === 'changed' ? 'default' : 'outline'}
+          size="sm"
+          onclick={() => (sectionFilter = 'changed')}
+        >
+          {m['comparator.changed']()} ({changedState.total})
+        </Button>
+        {#if sectionFilter === 'changed'}
+          <span class="comp-filter-sep"></span>
+          <Button
+            variant={changedFilter === 'all' ? 'secondary' : 'ghost'}
+            size="sm"
+            onclick={() => (changedFilter = 'all')}
+          >
+            {m['comparator.changed_all']()}
+          </Button>
+          <Button
+            variant={changedFilter === 'new-errors' ? 'secondary' : 'ghost'}
+            size="sm"
+            onclick={() => (changedFilter = 'new-errors')}
+          >
+            {m['comparator.changed_new_errors']()} ({newErrorsCount})
+          </Button>
+          <Button
+            variant={changedFilter === 'resolved' ? 'secondary' : 'ghost'}
+            size="sm"
+            onclick={() => (changedFilter = 'resolved')}
+          >
+            {m['comparator.changed_resolved']()} ({resolvedCount})
+          </Button>
+          <Button
+            variant={changedFilter === 'other' ? 'secondary' : 'ghost'}
+            size="sm"
+            onclick={() => (changedFilter = 'other')}
+          >
+            {m['comparator.changed_other']()}
+          </Button>
+        {/if}
       </div>
 
       <div class="comp-stats">
@@ -358,8 +462,8 @@
       </div>
 
       <div class="comp-lists">
-        {#if newState.total > 0}
-          <Card>
+        {#if newState.total > 0 && (sectionFilter === 'all' || sectionFilter === 'new')}
+          <Card class="comp-card comp-card-new">
             <CardHeader>
               <CardTitle>{m['comparator.new']()} ({newState.total})</CardTitle>
             </CardHeader>
@@ -393,8 +497,8 @@
           </Card>
         {/if}
 
-        {#if removedState.total > 0}
-          <Card>
+        {#if removedState.total > 0 && (sectionFilter === 'all' || sectionFilter === 'removed')}
+          <Card class="comp-card comp-card-removed">
             <CardHeader>
               <CardTitle>{m['comparator.removed']()} ({removedState.total})</CardTitle>
             </CardHeader>
@@ -428,46 +532,60 @@
           </Card>
         {/if}
 
-        {#if changedState.total > 0}
-          <Card>
+        {#if changedState.total > 0 && (sectionFilter === 'all' || sectionFilter === 'changed')}
+          <Card class="comp-card comp-card-changed">
             <CardHeader>
               <CardTitle>{m['comparator.changed']()} ({changedState.total})</CardTitle>
             </CardHeader>
             <CardContent>
-              <ul class="comp-change-list">
-                {#each changedState.items as change (change.url)}
-                  <li>
-                    <button
-                      type="button"
-                      class="comp-change-url comp-url-link"
-                      title={m['nav.view_detail']()}
-                      onclick={() => navigation.goToDetailByUrl(change.url)}
-                    >
-                      {change.url}
-                    </button>
-                    <ul class="comp-diff-list">
-                      {#each change.diffs as diff (diff.field)}
-                        <li class="comp-diff-item">
-                          <span class="comp-diff-field">{fieldName(diff.field)}</span>
-                          <span class="comp-diff-before">{diffValue(diff.before)}</span>
-                          <span class="comp-diff-arrow">→</span>
-                          <span class="comp-diff-after">{diffValue(diff.after)}</span>
-                        </li>
-                      {/each}
-                    </ul>
-                  </li>
-                {/each}
-              </ul>
-              {#if hasMore(changedState)}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="mt-2"
-                  onclick={() => showMore('changed')}
-                  disabled={changedState.loading}
-                >
-                  {changedState.loading ? '…' : m['comparator.show_more']()}
-                </Button>
+              {#if visibleChanged.length === 0}
+                <p class="comp-empty-filter">{m['comparator.changed_empty_filter']()}</p>
+              {:else}
+                <ul class="comp-change-list">
+                  {#each visibleChanged as change (change.url)}
+                    {@const kind = changeKind(change)}
+                    <li class="comp-change-item comp-change-{kind}">
+                      <button
+                        type="button"
+                        class="comp-change-url comp-url-link"
+                        title={m['nav.view_detail']()}
+                        onclick={() => navigation.goToDetailByUrl(change.url)}
+                      >
+                        {change.url}
+                      </button>
+                      {#if kind === 'new-errors'}
+                        <span class="comp-kind-badge comp-kind-new-errors">
+                          {m['comparator.changed_new_errors']()}
+                        </span>
+                      {:else if kind === 'resolved'}
+                        <span class="comp-kind-badge comp-kind-resolved">
+                          {m['comparator.changed_resolved']()}
+                        </span>
+                      {/if}
+                      <ul class="comp-diff-list">
+                        {#each change.diffs as diff (diff.field)}
+                          <li class="comp-diff-item">
+                            <span class="comp-diff-field">{fieldName(diff.field)}</span>
+                            <span class="comp-diff-before">{diffValue(diff.before)}</span>
+                            <span class="comp-diff-arrow">→</span>
+                            <span class="comp-diff-after">{diffValue(diff.after)}</span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </li>
+                  {/each}
+                </ul>
+                {#if hasMore(changedState)}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="mt-2"
+                    onclick={() => showMore('changed')}
+                    disabled={changedState.loading}
+                  >
+                    {changedState.loading ? '…' : m['comparator.show_more']()}
+                  </Button>
+                {/if}
               {/if}
             </CardContent>
           </Card>
@@ -551,6 +669,79 @@
   }
   .comp-changed .comp-summary-value {
     color: var(--warning);
+  }
+  .comp-new-errors .comp-summary-value {
+    color: var(--danger);
+  }
+  .comp-resolved .comp-summary-value {
+    color: var(--success);
+  }
+
+  .comp-summary-note {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .comp-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .comp-filter-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  .comp-card {
+    border-left: 3px solid transparent;
+  }
+  .comp-card-new {
+    border-left-color: var(--success);
+  }
+  .comp-card-removed {
+    border-left-color: var(--danger);
+  }
+  .comp-card-changed {
+    border-left-color: var(--warning);
+  }
+
+  .comp-change-item {
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+  }
+  .comp-change-new-errors {
+    border-left-color: var(--danger);
+  }
+  .comp-change-resolved {
+    border-left-color: var(--success);
+  }
+
+  .comp-kind-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .comp-kind-new-errors {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+  .comp-kind-resolved {
+    color: var(--success);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+  }
+
+  .comp-empty-filter {
+    font-size: 0.85rem;
+    color: var(--text-muted);
   }
 
   .comp-stats {

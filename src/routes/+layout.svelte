@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { getLocale } from '#lib/paraglide/runtime.js';
-  import { resolveTheme } from '#lib/theme.js';
+  import { resolveTheme, resolveDensity } from '#lib/theme.js';
   import { Toaster } from '#lib/components/ui/sonner/index.js';
   import '../lib/tokens.css';
   import '../app.css';
@@ -15,6 +15,10 @@
       document.documentElement.setAttribute(
         'data-theme',
         resolveTheme(localStorage.getItem('theme') || 'system')
+      );
+      document.documentElement.setAttribute(
+        'data-density',
+        resolveDensity(localStorage.getItem('density') || 'comfortable')
       );
     }
 

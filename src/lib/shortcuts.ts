@@ -44,6 +44,15 @@ export function getActions(app: AppShell): ShortcutAction[] {
     run: () => app.handleStartCrawl(),
   });
 
+  actions.push({
+    id: 'crawl:stop',
+    label: () => m['palette.stop_crawl'](),
+    hint: 'Ctrl .',
+    keywords: 'crawl rastreo detener stop',
+    group: 'crawl',
+    run: () => void app.stopCrawl(),
+  });
+
   for (const view of VIEW_TABS) {
     actions.push({
       id: `view:${view.tab}`,
@@ -127,6 +136,28 @@ export function focusResultsSearch(): boolean {
   return true;
 }
 
+export function focusFilterBar(): boolean {
+  const input = document.querySelector<HTMLInputElement>('.filter-bar input');
+  if (input) {
+    input.focus();
+    input.select();
+    return true;
+  }
+  return focusResultsSearch();
+}
+
+/** Visible result rows (T19, 2.3). The table renders div rows, not <tr>. */
+function resultRows(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.rows-body .table-row.main-row'));
+}
+
+const PAGE_SIZE_KEYS: Record<string, number> = {
+  '1': 25,
+  '2': 50,
+  '3': 100,
+  '4': 200,
+};
+
 export interface GlobalShortcutHandlers {
   openPalette: () => void;
   closePalette: () => boolean;
@@ -156,6 +187,9 @@ export function installGlobalShortcuts(
 ): () => void {
   let pendingG = false;
   let gTimer: ReturnType<typeof setTimeout> | null = null;
+  // Index of the keyboard-focused result row (T19, 2.3). Rows re-render on
+  // pagination, so the element is re-queried on every keypress.
+  let focusedRow = -1;
 
   function clearG() {
     pendingG = false;
@@ -165,6 +199,24 @@ export function installGlobalShortcuts(
     }
   }
 
+  function clearRowFocus() {
+    focusedRow = -1;
+    document
+      .querySelectorAll('.rows-body .table-row.row-focused')
+      .forEach((el) => el.classList.remove('row-focused'));
+  }
+
+  function focusRow(index: number): boolean {
+    const rows = resultRows();
+    if (rows.length === 0) return false;
+    focusedRow = Math.max(0, Math.min(index, rows.length - 1));
+    rows.forEach((r) => r.classList.remove('row-focused'));
+    const el = rows[focusedRow];
+    el.classList.add('row-focused');
+    el.scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+
   function onKeydown(e: KeyboardEvent) {
     const mod = e.ctrlKey || e.metaKey;
     const typing = isTypingTarget(e);
@@ -172,6 +224,23 @@ export function installGlobalShortcuts(
     if (mod && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
       handlers.openPalette();
+      return;
+    }
+
+    // Crawl controls (T19, 2.4): Ctrl/Cmd+Enter starts, Ctrl/Cmd+. stops.
+    // Skipped inside textareas (list-mode URL input) so the keys keep
+    // their text meaning there.
+    if (mod && e.key === 'Enter') {
+      const t = e.target as HTMLElement | null;
+      if (t?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        app.handleStartCrawl();
+      }
+      return;
+    }
+    if (mod && e.key === '.') {
+      e.preventDefault();
+      void app.stopCrawl();
       return;
     }
 
@@ -230,6 +299,55 @@ export function installGlobalShortcuts(
 
     if (e.key === '?') {
       handlers.openHelp();
+      return;
+    }
+
+    // Table shortcuts (T19, 2.3): only on the results tab, never while
+    // typing. Rows handle Enter/Space themselves when focused (they
+    // toggle the issue list), so the global handler skips those keys
+    // when the event target is a row.
+    if (app.activeTab === 'results') {
+      const inRow = (e.target as HTMLElement | null)?.closest?.('.table-row');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const next = e.key === 'ArrowDown' ? focusedRow + 1 : focusedRow - 1;
+        if (!focusRow(next < 0 ? 0 : next)) clearRowFocus();
+        return;
+      }
+      if (e.key === 'Enter' && !inRow && focusedRow >= 0) {
+        const rows = resultRows();
+        const link = rows[focusedRow]?.querySelector<HTMLAnchorElement>('.url-link');
+        if (link) {
+          e.preventDefault();
+          link.click();
+        }
+        return;
+      }
+      if (e.key === ' ' && !inRow && focusedRow >= 0) {
+        const rows = resultRows();
+        const row = rows[focusedRow];
+        if (row) {
+          e.preventDefault();
+          row.click();
+        }
+        return;
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        void app.exportFull('xlsx');
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        focusFilterBar();
+        return;
+      }
+      const size = PAGE_SIZE_KEYS[e.key];
+      if (size !== undefined) {
+        e.preventDefault();
+        app.changePageSize(size);
+        return;
+      }
     }
   }
 
@@ -237,5 +355,6 @@ export function installGlobalShortcuts(
   return () => {
     window.removeEventListener('keydown', onKeydown);
     clearG();
+    clearRowFocus();
   };
 }

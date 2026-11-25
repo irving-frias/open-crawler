@@ -424,6 +424,19 @@
                                 {/if}
                               </div>
                             {/if}
+                            {#if localized.docs}
+                              <div class="seo-fix-line">
+                                <span class="seo-fix-label">{m['seo.docs']()}</span>
+                                <a
+                                  href={localized.docs}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  class="seo-docs-link"
+                                >
+                                  {m['seo.docs_link']()}
+                                </a>
+                              </div>
+                            {/if}
                             {#if issue.examples?.length}
                               <div class="seo-examples">
                                 {#each issue.examples.slice(0, 3) as ex, i (i)}

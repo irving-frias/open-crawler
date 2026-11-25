@@ -23,6 +23,29 @@
   display: none;
 }
 
+/* Density (T19, 1.9): compact shrinks paddings and row heights app-wide.
+   The focused table row (keyboard navigation, 2.3) always keeps a visible
+   outline, in either density. */
+html[data-density='compact'] .tree-row {
+  height: 24px;
+  font-size: 0.8rem;
+}
+html[data-density='compact'] table th,
+html[data-density='compact'] table td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+html[data-density='compact'] .card,
+html[data-density='compact'] [data-slot='card-content'] {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.row-focused {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
