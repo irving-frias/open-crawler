@@ -11,6 +11,9 @@
   import CrawlProgress from '#lib/features/crawl-controls/CrawlProgress.svelte';
   import ResumeDialog from '#lib/features/crawl-controls/ResumeDialog.svelte';
   import ResultsView from '#lib/features/results/ResultsView.svelte';
+  import CommandPalette from '#lib/features/shortcuts/CommandPalette.svelte';
+  import ShortcutsHelp from '#lib/features/shortcuts/ShortcutsHelp.svelte';
+  import { installGlobalShortcuts } from '#lib/shortcuts.ts';
   import ExportProgressBar from '#lib/features/export/ExportProgressBar.svelte';
   import TransferDialog from '#lib/features/transfer/TransferDialog.svelte';
   import Splash from '#lib/features/splash/Splash.svelte';
@@ -40,6 +43,29 @@
   const splashMountTime = Date.now();
   let splashVisible = $state(true);
   let splashGone = $state(false);
+
+  // Command palette + shortcuts help (T18 §2).
+  let paletteOpen = $state(false);
+  let helpOpen = $state(false);
+
+  $effect(() => {
+    // Install once, after init, with cleanup on unmount.
+    if (!app.initialized) return;
+    return installGlobalShortcuts(app, {
+      openPalette: () => (paletteOpen = true),
+      closePalette: () => {
+        if (!paletteOpen) return false;
+        paletteOpen = false;
+        return true;
+      },
+      openHelp: () => (helpOpen = true),
+      closeHelp: () => {
+        if (!helpOpen) return false;
+        helpOpen = false;
+        return true;
+      },
+    });
+  });
 
   const resultsActive = $derived(
     app.results.items.length > 0 ||
@@ -306,6 +332,9 @@
 {#if SettingsModal}
   <SettingsModal bind:open={app.settingsModalOpen} />
 {/if}
+
+<CommandPalette {app} bind:open={paletteOpen} />
+<ShortcutsHelp bind:open={helpOpen} />
 
 <ExportProgressBar exportProgress={app.exportProgress} />
 

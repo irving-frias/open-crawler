@@ -47,6 +47,10 @@ const DEFAULT_FILTERS: FilterState = {
   issueType: '',
 };
 
+export function defaultFilters(): FilterState {
+  return cloneFilters(DEFAULT_FILTERS);
+}
+
 function cloneFilters(f: FilterState): FilterState {
   return {
     statusCodes: [...f.statusCodes],
@@ -312,6 +316,14 @@ export const navigation = {
   clearIssueFilter() {
     if (!app) return;
     app.handleFilterIssueType(null);
+    persist();
+  },
+
+  /** Clear every result filter and the search (Esc with nothing to close). */
+  clearAllFilters() {
+    if (!app) return;
+    app.handleFilterChange(cloneFilters(DEFAULT_FILTERS));
+    if (app.debouncedSearch) app.onSearchInput('');
     persist();
   },
 
