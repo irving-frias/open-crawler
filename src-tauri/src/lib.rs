@@ -225,6 +225,10 @@ pub fn run() {
             // snapshots
             crate::commands::list_crawl_snapshots,
             crate::commands::compare_crawls_page,
+            crate::commands::get_snapshot_retention,
+            crate::commands::set_snapshot_retention,
+            // maintenance
+            crate::commands::cleanup_orphans,
             // pagespeed
             crate::commands::get_pagespeed_score,
             crate::commands::get_pagespeed_scores_bulk,

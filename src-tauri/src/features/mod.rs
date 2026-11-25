@@ -5,6 +5,7 @@ pub mod crawl;
 pub mod export;
 pub mod extraction;
 pub mod links;
+pub mod maintenance;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;

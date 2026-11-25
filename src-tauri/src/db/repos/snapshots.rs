@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension, Transaction};
 
 use crate::error::AppError;
 use crate::models::{ChangedUrl, ComparePageResult, CrawlSnapshot, SnapshotStats, UrlFieldDiff};
@@ -7,6 +7,33 @@ use super::CrawlRepo;
 
 /// Keep at most this many snapshots per project; older ones are pruned.
 const MAX_SNAPSHOTS_PER_PROJECT: i64 = 12;
+
+/// Delete a project's snapshots beyond the `keep` most recent ones, and
+/// their rows. Shared by snapshot creation and retention changes (T15).
+/// `rowid` breaks snapshot_time ties (several snapshots in one second),
+/// so the prune always drops the oldest inserts.
+fn prune_snapshots(tx: &Transaction, project_id: &str, keep: i64) -> Result<(), AppError> {
+    tx.execute(
+        "DELETE FROM crawl_snapshot_data
+         WHERE snapshot_id IN (
+             SELECT id FROM crawl_snapshots
+             WHERE project_id = ?1
+             ORDER BY snapshot_time DESC, rowid DESC LIMIT -1 OFFSET ?2
+         )",
+        params![project_id, keep],
+    )?;
+    tx.execute(
+        "DELETE FROM crawl_snapshots
+         WHERE project_id = ?1
+           AND id NOT IN (
+               SELECT id FROM crawl_snapshots
+               WHERE project_id = ?1
+               ORDER BY snapshot_time DESC, rowid DESC LIMIT ?2
+           )",
+        params![project_id, keep],
+    )?;
+    Ok(())
+}
 
 struct SnapshotRow {
     url: String,
@@ -86,6 +113,41 @@ fn push_diff(
 }
 
 impl<'a> CrawlRepo<'a> {
+    /// How many snapshots to keep for a project (T15). 12 when the project
+    /// has no row yet (e.g. a snapshot taken while the project is gone).
+    pub fn get_snapshot_retention(&self, project_id: &str) -> Result<u32, AppError> {
+        let retention: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT snapshot_retention FROM projects WHERE id = ?1",
+                params![project_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(retention
+            .map(|v| v.clamp(1, 100) as u32)
+            .unwrap_or(MAX_SNAPSHOTS_PER_PROJECT as u32))
+    }
+
+    /// Set the per-project retention (clamped 1..=100) and prune right
+    /// away, so lowering the limit deletes the old snapshots now instead
+    /// of waiting for the next crawl.
+    pub fn set_snapshot_retention(
+        &self,
+        project_id: &str,
+        retention: u32,
+    ) -> Result<u32, AppError> {
+        let retention = retention.clamp(1, 100);
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "UPDATE projects SET snapshot_retention = ?1 WHERE id = ?2",
+            params![retention, project_id],
+        )?;
+        prune_snapshots(&tx, project_id, retention as i64)?;
+        tx.commit()?;
+        Ok(retention)
+    }
+
     /// Snapshot the latest crawl for a project so it can be compared later.
     pub fn create_crawl_snapshot(
         &self,
@@ -268,26 +330,9 @@ impl<'a> CrawlRepo<'a> {
             }
         }
 
-        // Prune snapshots beyond the per-project retention limit.
-        tx.execute(
-            "DELETE FROM crawl_snapshot_data
-             WHERE snapshot_id IN (
-                 SELECT id FROM crawl_snapshots
-                 WHERE project_id = ?1
-                 ORDER BY snapshot_time DESC LIMIT -1 OFFSET ?2
-             )",
-            params![project_id, MAX_SNAPSHOTS_PER_PROJECT],
-        )?;
-        tx.execute(
-            "DELETE FROM crawl_snapshots
-             WHERE project_id = ?1
-               AND id NOT IN (
-                   SELECT id FROM crawl_snapshots
-                   WHERE project_id = ?1
-                   ORDER BY snapshot_time DESC LIMIT ?2
-               )",
-            params![project_id, MAX_SNAPSHOTS_PER_PROJECT],
-        )?;
+        // Prune snapshots beyond the per-project retention limit (T15).
+        let retention = self.get_snapshot_retention(project_id)? as i64;
+        prune_snapshots(&tx, project_id, retention)?;
 
         tx.commit()?;
 

@@ -12,6 +12,7 @@ pub use crate::features::crawl::commands::*;
 pub use crate::features::export::commands::*;
 pub use crate::features::extraction::commands::*;
 pub use crate::features::links::commands::*;
+pub use crate::features::maintenance::commands::*;
 pub use crate::features::pagespeed::commands::*;
 pub use crate::features::projects::commands::*;
 pub use crate::features::results::commands::*;

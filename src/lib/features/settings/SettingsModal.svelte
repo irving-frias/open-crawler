@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getSettings, saveSettings } from '#lib/api/settings.ts';
   import { testAlertNotification } from '#lib/api/alerts.ts';
+  import { cleanupOrphans } from '#lib/api/snapshots.ts';
   import { toast } from 'svelte-sonner';
   import type { SettingsMap } from '#lib/api/types.ts';
   import { setLocale, getLocale, type Locale } from '#lib/paraglide/runtime.js';
@@ -51,6 +52,25 @@
   let testingAlert = $state(false);
   let testAlertMessage = $state<string | null>(null);
   let saving = $state(false);
+  let cleaningOrphans = $state(false);
+  let cleanupResult = $state<string | null>(null);
+
+  async function runCleanupOrphans() {
+    cleaningOrphans = true;
+    cleanupResult = null;
+    try {
+      const report = await cleanupOrphans();
+      const total = Object.values(report).reduce((a, b) => a + b, 0);
+      cleanupResult =
+        total === 0
+          ? m['settings.maintenance_clean_none']()
+          : m['settings.maintenance_cleaned']({ count: total.toString() });
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      cleaningOrphans = false;
+    }
+  }
   let updaterStatus: UpdaterStatus = $state('idle');
   let updaterVersion: string | null = $state(null);
   let updaterError: string | null = $state(null);
@@ -512,6 +532,25 @@
         >
           {m['settings.sponsors_paypal']()}
         </a>
+      </div>
+    </div>
+
+    <Separator />
+
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {m['settings.maintenance_title']()}
+    </h3>
+    <div class="flex flex-col gap-2">
+      <p class="text-sm text-muted-foreground">{m['settings.maintenance_text']()}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button variant="outline" onclick={runCleanupOrphans} disabled={cleaningOrphans}>
+          {cleaningOrphans
+            ? m['settings.maintenance_cleaning']()
+            : m['settings.maintenance_clean']()}
+        </Button>
+        {#if cleanupResult}
+          <span class="text-sm text-muted-foreground">{cleanupResult}</span>
+        {/if}
       </div>
     </div>
 

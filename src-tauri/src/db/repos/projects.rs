@@ -152,6 +152,22 @@ impl<'a> CrawlRepo<'a> {
             params![id],
         )?;
 
+        // 8b. Delete the scheduled jobs, custom extraction rules and alert
+        // settings of the project (T15): none of them has ON DELETE
+        // CASCADE, so without this they would orphan on every delete.
+        tx.execute(
+            "DELETE FROM scheduled_jobs WHERE project_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM custom_extractions WHERE project_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM project_alert_settings WHERE project_id = ?1",
+            params![id],
+        )?;
+
         // 9. Delete project
         tx.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
 

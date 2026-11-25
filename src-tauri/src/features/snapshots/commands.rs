@@ -16,6 +16,28 @@ pub async fn list_crawl_snapshots(
     with_repo(&state, move |repo| repo.list_crawl_snapshots(&project_id)).await
 }
 
+/// Per-project snapshot retention (T15): how many snapshots to keep.
+#[tauri::command]
+pub async fn get_snapshot_retention(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+) -> Result<u32, AppError> {
+    with_repo(&state, move |repo| repo.get_snapshot_retention(&project_id)).await
+}
+
+/// Set the retention (clamped 1..=100) and prune the old snapshots now.
+#[tauri::command]
+pub async fn set_snapshot_retention(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    retention: u32,
+) -> Result<u32, AppError> {
+    with_repo(&state, move |repo| {
+        repo.set_snapshot_retention(&project_id, retention)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn compare_crawls_page(
     state: State<'_, Arc<RwLock<AppState>>>,

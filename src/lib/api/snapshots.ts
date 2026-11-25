@@ -5,6 +5,18 @@ export function listCrawlSnapshots(projectId: string): Promise<CrawlSnapshot[]> 
   return invoke<CrawlSnapshot[]>('list_crawl_snapshots', { projectId });
 }
 
+export function getSnapshotRetention(projectId: string): Promise<number> {
+  return invoke<number>('get_snapshot_retention', { projectId });
+}
+
+export function setSnapshotRetention(projectId: string, retention: number): Promise<number> {
+  return invoke<number>('set_snapshot_retention', { projectId, retention });
+}
+
+export function cleanupOrphans(): Promise<Record<string, number>> {
+  return invoke<Record<string, number>>('cleanup_orphans', {});
+}
+
 export function compareCrawlsPage(
   snapshotA: string,
   snapshotB: string,

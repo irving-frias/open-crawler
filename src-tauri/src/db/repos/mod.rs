@@ -4,6 +4,7 @@ pub mod crawl;
 pub mod export;
 pub mod extraction;
 pub mod links;
+pub mod maintenance;
 pub mod pagespeed;
 pub mod projects;
 pub mod results;
@@ -1850,6 +1851,108 @@ mod tests {
         assert_eq!(p1.total, 1);
         assert_eq!(p1.new_urls.len(), 1);
         assert_eq!(p2.new_urls.len(), 0);
+    }
+
+    #[test]
+    fn test_snapshot_retention_prunes_on_create() {
+        let repo = test_repo();
+        repo.save_results_batch(&[page("pg1", "https://x.com/a", Some("A"), 200, true)])
+            .unwrap();
+        assert_eq!(repo.set_snapshot_retention("p1", 2).unwrap(), 2);
+        assert_eq!(repo.get_snapshot_retention("p1").unwrap(), 2);
+
+        let s1 = repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        let s2 = repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        let _s3 = repo.create_crawl_snapshot("p1", "cfg").unwrap();
+
+        let kept = repo.list_crawl_snapshots("p1").unwrap();
+        assert_eq!(kept.len(), 2);
+        let ids: Vec<&str> = kept.iter().map(|s| s.id.as_str()).collect();
+        assert!(!ids.contains(&s1.id.as_str()), "oldest snapshot pruned");
+        assert!(ids.contains(&s2.id.as_str()));
+    }
+
+    #[test]
+    fn test_set_snapshot_retention_prunes_immediately() {
+        let repo = test_repo();
+        repo.save_results_batch(&[page("pg1", "https://x.com/a", Some("A"), 200, true)])
+            .unwrap();
+        repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        repo.create_crawl_snapshot("p1", "cfg").unwrap();
+        assert_eq!(repo.list_crawl_snapshots("p1").unwrap().len(), 3);
+
+        assert_eq!(repo.set_snapshot_retention("p1", 1).unwrap(), 1);
+        assert_eq!(repo.list_crawl_snapshots("p1").unwrap().len(), 1);
+        // Clamped to 1..=100.
+        assert_eq!(repo.set_snapshot_retention("p1", 0).unwrap(), 1);
+        assert_eq!(repo.set_snapshot_retention("p1", 500).unwrap(), 100);
+        // Unknown project keeps the default.
+        assert_eq!(repo.get_snapshot_retention("nope").unwrap(), 12);
+    }
+
+    #[test]
+    fn test_delete_project_removes_jobs_extractions_and_alerts() {
+        let repo = test_repo();
+        repo.conn
+            .execute_batch(
+                "INSERT INTO scheduled_jobs (id, project_id, cron_expression, config_json, created_at) VALUES ('job1', 'p1', '0 0 * * *', '{}', datetime('now'));
+                 INSERT INTO custom_extractions (id, project_id, name, selector_type, selector, mode) VALUES ('ex1', 'p1', 'price', 'css', '.price', 'text');
+                 INSERT INTO project_alert_settings (project_id) VALUES ('p1');",
+            )
+            .unwrap();
+        repo.delete_project("p1").unwrap();
+
+        let count = |table: &str| -> i64 {
+            repo.conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE project_id = 'p1'"),
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(count("scheduled_jobs"), 0);
+        assert_eq!(count("custom_extractions"), 0);
+        assert_eq!(count("project_alert_settings"), 0);
+    }
+
+    #[test]
+    fn test_cleanup_orphans() {
+        let repo = test_repo();
+        // Fabricate orphans with FK enforcement off, the way legacy
+        // writes, transfers and manual DB edits create them (the test
+        // connection enforces FKs, so a plain INSERT would fail).
+        repo.conn
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .unwrap();
+        repo.conn
+            .execute_batch(
+                "INSERT INTO crawl_snapshot_data (snapshot_id, page_id, url) VALUES ('ghost-snap', 'pg1', 'https://x.com/a');
+                 INSERT INTO scheduled_jobs (id, project_id, cron_expression, config_json, created_at) VALUES ('job-ghost', 'ghost-project', '0 0 * * *', '{}', datetime('now'));",
+            )
+            .unwrap();
+        repo.conn
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .unwrap();
+
+        let report = repo.cleanup_orphans().unwrap();
+        assert_eq!(report.get("crawl_snapshot_data"), Some(&1));
+        assert_eq!(report.get("scheduled_jobs"), Some(&1));
+
+        let remaining: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM crawl_snapshot_data WHERE snapshot_id = 'ghost-snap'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
+
+        // Second sweep: nothing left to clean.
+        let report2 = repo.cleanup_orphans().unwrap();
+        assert!(report2.values().all(|&v| v == 0));
     }
 
     #[test]

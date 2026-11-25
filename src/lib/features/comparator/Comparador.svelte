@@ -1,7 +1,13 @@
 <script lang="ts">
-  import { listCrawlSnapshots, compareCrawlsPage } from '#lib/api/snapshots.ts';
+  import {
+    listCrawlSnapshots,
+    compareCrawlsPage,
+    getSnapshotRetention,
+    setSnapshotRetention,
+  } from '#lib/api/snapshots.ts';
   import type { ChangedUrl, CrawlSnapshot, SnapshotStats } from '#lib/api/types.ts';
   import { m } from '#lib/paraglide/messages.js';
+  import { toast } from 'svelte-sonner';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
   import * as Select from '#lib/components/ui/select/index.js';
@@ -23,6 +29,32 @@
   let snapshotA = $state('');
   let snapshotB = $state('');
 
+  // Per-project snapshot retention (T15).
+  let retention = $state(12);
+  let retentionSaving = $state(false);
+
+  async function loadRetention() {
+    try {
+      retention = await getSnapshotRetention(projectId);
+    } catch {
+      // Keep the default; the control still works on save.
+    }
+  }
+
+  async function saveRetention() {
+    const value = Math.min(100, Math.max(1, Math.round(retention) || 12));
+    retentionSaving = true;
+    try {
+      retention = await setSnapshotRetention(projectId, value);
+      toast.success(m['snapshot.retention_saved']({ count: retention.toString() }));
+      await loadSnapshots();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      retentionSaving = false;
+    }
+  }
+
   const PAGE_SIZE = 100;
   type SectionState = { total: number; items: string[]; page: number; loading: boolean };
   let newState = $state<SectionState>({ total: 0, items: [], page: 0, loading: false });
@@ -43,6 +75,7 @@
   $effect(() => {
     if (projectId) {
       loadSnapshots();
+      loadRetention();
     } else {
       snapshots = [];
       resetComparison();
@@ -196,6 +229,19 @@
 </script>
 
 <div class="comparator">
+  <div class="comp-field comp-retention">
+    <Label for="snapshot-retention">{m['snapshot.retention']()}</Label>
+    <input
+      id="snapshot-retention"
+      type="number"
+      min="1"
+      max="100"
+      bind:value={retention}
+      disabled={retentionSaving}
+      onchange={saveRetention}
+    />
+    <span class="comp-retention-hint">{m['snapshot.retention_hint']()}</span>
+  </div>
   {#if loading}
     <div class="comp-loading">
       <Skeleton class="h-24 w-full" />
@@ -451,6 +497,26 @@
     gap: 6px;
     flex: 1;
     min-width: 220px;
+  }
+
+  .comp-retention {
+    flex: none;
+    max-width: 320px;
+  }
+
+  .comp-retention input {
+    width: 90px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .comp-retention-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
   }
 
   .comp-summary-grid {
