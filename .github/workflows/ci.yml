@@ -198,7 +198,7 @@ jobs:
           args: --target ${{ matrix.target }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.target }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle
