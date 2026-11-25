@@ -223,7 +223,6 @@ pub fn run() {
             crate::commands::get_external_domains_page,
             // snapshots
             crate::commands::list_crawl_snapshots,
-            crate::commands::compare_crawls,
             crate::commands::compare_crawls_page,
             // pagespeed
             crate::commands::get_pagespeed_score,

@@ -1,9 +1,7 @@
 use rusqlite::params;
 
 use crate::error::AppError;
-use crate::models::{
-    ChangedUrl, ComparePageResult, CompareResult, CrawlSnapshot, SnapshotStats, UrlFieldDiff,
-};
+use crate::models::{ChangedUrl, ComparePageResult, CrawlSnapshot, SnapshotStats, UrlFieldDiff};
 
 use super::CrawlRepo;
 
@@ -361,85 +359,7 @@ impl<'a> CrawlRepo<'a> {
         })
     }
 
-    fn snapshot_rows(
-        &self,
-        snapshot_id: &str,
-    ) -> Result<std::collections::HashMap<String, SnapshotRow>, AppError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT url, status_code, title, meta_description, size_bytes, load_time_ms, is_indexable, readability_score, seo_score
-             FROM crawl_snapshot_data WHERE snapshot_id = ?1",
-        )?;
-        let rows = stmt
-            .query_map(params![snapshot_id], |row| {
-                Ok(SnapshotRow {
-                    url: row.get(0)?,
-                    status_code: row.get(1)?,
-                    title: row.get(2)?,
-                    meta_description: row.get(3)?,
-                    size_bytes: row.get(4)?,
-                    load_time_ms: row.get(5)?,
-                    is_indexable: row.get(6)?,
-                    readability_score: row.get(7)?,
-                    seo_score: row.get(8)?,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(rows.into_iter().map(|r| (r.url.clone(), r)).collect())
-    }
-
-    /// Diff two snapshots by URL. `snapshot_a` is the older, `snapshot_b` the newer.
-    pub fn compare_crawl_snapshots(
-        &self,
-        snapshot_a: &str,
-        snapshot_b: &str,
-    ) -> Result<CompareResult, AppError> {
-        let map_a = self.snapshot_rows(snapshot_a)?;
-        let map_b = self.snapshot_rows(snapshot_b)?;
-
-        let mut new_urls: Vec<String> = map_b
-            .keys()
-            .filter(|url| !map_a.contains_key(*url))
-            .cloned()
-            .collect();
-        new_urls.sort();
-
-        let mut removed_urls: Vec<String> = map_a
-            .keys()
-            .filter(|url| !map_b.contains_key(*url))
-            .cloned()
-            .collect();
-        removed_urls.sort();
-
-        let mut changed_urls: Vec<ChangedUrl> = Vec::new();
-        let mut unchanged_count: u32 = 0;
-        for (url, row_b) in &map_b {
-            let Some(row_a) = map_a.get(url) else {
-                continue;
-            };
-            let diffs = row_a.diff(row_b);
-            if diffs.is_empty() {
-                unchanged_count += 1;
-            } else {
-                changed_urls.push(ChangedUrl {
-                    url: url.clone(),
-                    diffs,
-                });
-            }
-        }
-        changed_urls.sort_by(|a, b| a.url.cmp(&b.url));
-
-        Ok(CompareResult {
-            new_urls,
-            removed_urls,
-            changed_urls,
-            unchanged_count,
-            before: self.snapshot_stats(snapshot_a)?,
-            after: self.snapshot_stats(snapshot_b)?,
-        })
-    }
-
-    /// Paginated variant of [`compare_crawl_snapshots`]. The diff is computed
+    /// Paginated diff of two snapshots. The diff is computed
     /// in SQL (set difference / field comparison per page), so a large pair of
     /// snapshots never materializes two full URL maps in memory or over IPC.
     ///

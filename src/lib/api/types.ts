@@ -196,15 +196,6 @@ export interface ChangedUrl {
   diffs: UrlFieldDiff[];
 }
 
-export interface CompareResult {
-  new_urls: string[];
-  removed_urls: string[];
-  changed_urls: ChangedUrl[];
-  unchanged_count: number;
-  before: SnapshotStats;
-  after: SnapshotStats;
-}
-
 export interface ComparePageResult {
   section: 'new' | 'removed' | 'changed';
   total: number;

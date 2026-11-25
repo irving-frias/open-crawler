@@ -227,16 +227,6 @@ pub struct ChangedUrl {
     pub diffs: Vec<UrlFieldDiff>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompareResult {
-    pub new_urls: Vec<String>,
-    pub removed_urls: Vec<String>,
-    pub changed_urls: Vec<ChangedUrl>,
-    pub unchanged_count: u32,
-    pub before: SnapshotStats,
-    pub after: SnapshotStats,
-}
-
 /// One page of a single diff section (`new`, `removed` or `changed`). Only the
 /// list matching `section` is populated; the rest stay empty. Keeps the
 /// comparator from materializing two full snapshots over IPC.

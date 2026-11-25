@@ -11,10 +11,10 @@ pub use alerts::{
 };
 pub use crawl_config::{CrawlConfig, ProxyConfig, SiteAuth};
 pub use crawl_result::{
-    ChangedUrl, ComparePageResult, CompareResult, CrawlProgress, CrawlResult, CrawlSnapshot,
-    DashboardStats, DuplicateGroup, DuplicateGroupUrl, FilterOptions, IssueCount, KeywordAggregate,
-    PageDetail, PageLink, PaginatedResults, RedirectHop, RedirectRecord, ResultsFilter,
-    SiteTreeFullNode, SiteTreeNode, SiteTreeStreamNode, SnapshotStats, StatusBucket, UrlFieldDiff,
+    ChangedUrl, ComparePageResult, CrawlProgress, CrawlResult, CrawlSnapshot, DashboardStats,
+    DuplicateGroup, DuplicateGroupUrl, FilterOptions, IssueCount, KeywordAggregate, PageDetail,
+    PageLink, PaginatedResults, RedirectHop, RedirectRecord, ResultsFilter, SiteTreeFullNode,
+    SiteTreeNode, SiteTreeStreamNode, SnapshotStats, StatusBucket, UrlFieldDiff,
 };
 pub use link_analysis::{AnchorAgg, AnchorQuality, DomainAgg, LinkAnalysis};
 pub use project::{CreateProjectRequest, Project, RenameProjectRequest};
