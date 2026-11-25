@@ -94,14 +94,14 @@ jobs:
         run: bun run tauri android build -t aarch64
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: opencrawler-android-apk
           path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
           retention-days: 30
 
       - name: Upload AAB Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: opencrawler-android-aab
           path: src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab
