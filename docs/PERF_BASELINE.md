@@ -129,3 +129,22 @@ por interacción lo dominan las consultas del backend (B3) y el render DOM.
 El FPS de scroll en navegador real se mide con el profiler en la máquina
 objetivo (DevTools → Performance, scroll de 10 s en la tabla de resultados,
 anotar FPS medio y mínimo).
+
+## T14. Después de la auditoría + índices (100k, 1 corrida, en frío)
+
+Migración 021 (`project_seo_counts` materializado + 3 índices de cobertura)
+y `INDEXED BY idx_pages_search` en `get_results` con búsqueda. Medido sobre
+copia de la base 100k con la migración aplicada (la migración tarda 469 s
+en esta base: backfill de los contadores + 3 índices; coste único).
+
+| Consulta                        | Antes (100k) | Después (100k)                                                                                                                                           |
+| ------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `count_seo_rows`                | 151 973 ms   | **7 ms** (lectura de 1 fila; backfill verificado: 1 100 022 + 4 721 058 + 1 200 024 = 7 021 104)                                                         |
+| `get_results` búsqueda "pagina" | 145 255 ms   | **328 ms** (COUNT desde el índice; la página con `INDEXED BY`, antes 126 s solo la página)                                                               |
+| `get_filter_options`            | 29 288 ms    | 18 831 ms (el DISTINCT de estados ya es rápido; quedan los DISTINCT de severidad/tipo sobre el índice de 4,7 M de `page_issues`, ~10 s cada uno en frío) |
+| `get_results` p1 / p100         | 138 / 339 ms | 147 / 365 ms (sin cambio, dentro del ruido)                                                                                                              |
+
+Residual T14: `get_filter_options` sigue por encima del presupuesto en
+frío por los escaneos del índice de `page_issues`; hacerlos instantáneos
+exigiría materializar los valores distintos por proyecto (misma técnica
+que los contadores SEO). En caliente / SSD local son < 0,5 s.

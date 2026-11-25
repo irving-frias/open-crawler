@@ -1628,6 +1628,133 @@ mod tests {
         assert_eq!(repo.compute_seo_clusters("p1").unwrap(), 0);
     }
 
+    fn audit_json(cats: usize, failed: usize, fixes: usize) -> String {
+        let categories: Vec<serde_json::Value> = (0..cats)
+            .map(|i| {
+                serde_json::json!({
+                    "category": format!("cat{i}"),
+                    "score": 80.0,
+                    "weight": 0.1,
+                    "passed_weight": 0.08,
+                    "total_weight": 0.1,
+                    "passed_checks": 4,
+                    "total_checks": 5,
+                })
+            })
+            .collect();
+        let mut checks: Vec<serde_json::Value> = vec![serde_json::json!({
+            "id": "passed_check", "category": "cat0", "severity": "info",
+            "passed": true, "weight": 1.0, "message": "ok", "guidance": "g",
+        })];
+        for i in 0..failed {
+            checks.push(serde_json::json!({
+                "id": format!("failed_check{i}"), "category": "cat0",
+                "severity": "warning", "passed": false,
+                "weight": 1.0, "message": "m", "guidance": "g",
+            }));
+        }
+        let fixes: Vec<serde_json::Value> = (0..fixes)
+            .map(|i| {
+                serde_json::json!({
+                    "id": format!("fix{i}"), "priority": "critical",
+                    "message": "m", "guidance": "g", "category": "cat0",
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "score": 80.0, "grade": "B",
+            "categories": categories, "checks": checks, "priority_fixes": fixes,
+        })
+        .to_string()
+    }
+
+    fn seo_counts(repo: &CrawlRepo, project: &str) -> (i64, i64, i64) {
+        repo.conn
+            .query_row(
+                "SELECT category_count, check_issue_count, priority_fix_total
+                 FROM project_seo_counts WHERE project_id = ?1",
+                [project],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn test_project_seo_counts_maintained() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.seo_audit_json = Some(audit_json(2, 2, 1));
+        let mut b = page("pg2", "https://x.com/b", Some("B"), 200, true);
+        b.seo_audit_json = Some(audit_json(2, 2, 1));
+        repo.save_results_batch(&[a, b]).unwrap();
+        // 2 pages x (2 cats + 2 failed + 1 fix) = 10.
+        assert_eq!(seo_counts(&repo, "p1"), (4, 4, 2));
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 10);
+
+        // Re-crawl of /a with a smaller audit: old rows subtracted, new added.
+        let mut a2 = page("pg1b", "https://x.com/a", Some("A2"), 200, true);
+        a2.seo_audit_json = Some(audit_json(1, 0, 0));
+        repo.save_results_batch(&[a2]).unwrap();
+        assert_eq!(seo_counts(&repo, "p1"), (3, 2, 1));
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 6);
+
+        // Direct delete of the remaining page's normalized rows.
+        crate::db::repos::seo::delete_seo_normalized(repo.conn, &["pg2".to_string()]).unwrap();
+        assert_eq!(seo_counts(&repo, "p1"), (1, 0, 0));
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_count_seo_rows_falls_back_without_counter_row() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.seo_audit_json = Some(audit_json(2, 2, 1));
+        repo.save_results_batch(&[a]).unwrap();
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 5);
+        repo.conn
+            .execute("DELETE FROM project_seo_counts WHERE project_id = 'p1'", [])
+            .unwrap();
+        // Same total from the three aggregate queries.
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 5);
+    }
+
+    #[test]
+    fn test_delete_project_removes_seo_counters_and_normalized_rows() {
+        let repo = test_repo();
+        let mut a = page("pg1", "https://x.com/a", Some("A"), 200, true);
+        a.seo_audit_json = Some(audit_json(2, 2, 1));
+        repo.save_results_batch(&[a]).unwrap();
+        assert_eq!(repo.count_seo_rows("p1").unwrap(), 5);
+        repo.delete_project("p1").unwrap();
+        let n: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_seo_counts WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0);
+        let n: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_category_scores WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0);
+        let n: i64 = repo
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM seo_check_issues WHERE project_id = 'p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
     #[test]
     fn test_compare_crawl_snapshots_page_sections() {
         let repo = test_repo();

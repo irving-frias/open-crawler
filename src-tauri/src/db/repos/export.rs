@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 use crate::error::AppError;
 use crate::models::{CrawlResult, PageLink};
@@ -82,6 +82,22 @@ impl<'a> CrawlRepo<'a> {
     /// 017), so the category count still matches the JSON-based count
     /// exactly, including the per-page skipped categories.
     pub fn count_seo_rows(&self, project_id: &str) -> Result<u32, AppError> {
+        // Materialized per-project counters (T14, migration 021): one row
+        // read instead of three aggregates over millions of rows.
+        let counted: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT category_count + check_issue_count + priority_fix_total
+                 FROM project_seo_counts WHERE project_id = ?1",
+                params![project_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(n) = counted {
+            return Ok(n as u32);
+        }
+        // Fallback for projects whose counter row is missing (e.g. imported
+        // by transfer, which does not copy the normalized tables yet).
         let n: i64 = self.conn.query_row(
             "SELECT
                 (SELECT COUNT(*) FROM seo_category_scores WHERE project_id = ?1)

@@ -57,6 +57,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "020_custom_extractions",
         include_str!("020_custom_extractions.sql"),
     ),
+    ("021_perf_indexes_2", include_str!("021_perf_indexes_2.sql")),
 ];
 
 pub fn run(conn: &Connection) -> Result<(), AppError> {

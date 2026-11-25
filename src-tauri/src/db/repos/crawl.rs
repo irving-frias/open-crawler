@@ -242,6 +242,11 @@ impl<'a> CrawlRepo<'a> {
         };
         delete_page_issues(&tx, &old_ids)?;
         delete_page_issues(&tx, std::slice::from_ref(&result.id))?;
+        // Delete the normalized SEO rows before the page rows they count:
+        // delete_seo_normalized reads the old seo_priority_fix_count from
+        // crawled_pages to keep the per-project counters exact (T14).
+        delete_seo_normalized(&tx, &old_ids)?;
+        delete_seo_normalized(&tx, std::slice::from_ref(&result.id))?;
         tx.execute(
             "DELETE FROM crawled_pages WHERE project_id = ?1 AND url = ?2",
             params![project_id, result.url],
@@ -315,8 +320,6 @@ impl<'a> CrawlRepo<'a> {
         }
 
         save_page_issues(&tx, project_id, &result.id, &result.semantic_issues_json)?;
-        delete_seo_normalized(&tx, &old_ids)?;
-        delete_seo_normalized(&tx, std::slice::from_ref(&result.id))?;
         save_seo_normalized(&tx, project_id, &result.id, &result.seo_audit_json)?;
         delete_page_keywords(&tx, &old_ids)?;
         delete_page_keywords(&tx, std::slice::from_ref(&result.id))?;

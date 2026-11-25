@@ -20,9 +20,58 @@ pub struct StoredSeoAudit {
 /// the given page ids, one statement per table. Re-crawls replace page rows
 /// per URL and the replaced ids differ from the new ones, so stale normalized
 /// rows must be removed.
+/// Deletes the normalized SEO rows of the given pages, keeping the
+/// per-project counters (`project_seo_counts`, T14) in sync: the pages'
+/// current counts are subtracted before the rows are removed. Callers must
+/// call this while the `crawled_pages` rows still exist (their
+/// `seo_priority_fix_count` is the old fix count); `save_result` orders its
+/// deletes accordingly. If a page row is already gone, its project is read
+/// from the normalized rows and only the category/check counts are
+/// subtracted.
 pub(crate) fn delete_seo_normalized(tx: &Connection, page_ids: &[String]) -> Result<(), AppError> {
     if page_ids.is_empty() {
         return Ok(());
+    }
+    for page_id in page_ids {
+        let (project_id, fix_count): (String, i64) = match tx.query_row(
+            "SELECT project_id, seo_priority_fix_count FROM crawled_pages WHERE id = ?1",
+            params![page_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ) {
+            Ok(v) => v,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                // Page row already gone (should not happen in the current
+                // call order): fall back to the normalized rows' project and
+                // no fix count, so the other two counters stay exact.
+                match tx.query_row(
+                    "SELECT DISTINCT project_id FROM seo_category_scores WHERE page_id = ?1",
+                    params![page_id],
+                    |row| row.get::<_, String>(0),
+                ) {
+                    Ok(p) => (p, 0),
+                    Err(_) => continue,
+                }
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let cat: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM seo_category_scores WHERE page_id = ?1",
+            params![page_id],
+            |row| row.get(0),
+        )?;
+        let chk: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM seo_check_issues WHERE page_id = ?1",
+            params![page_id],
+            |row| row.get(0),
+        )?;
+        tx.execute(
+            "UPDATE project_seo_counts
+             SET category_count = MAX(0, category_count - ?2),
+                 check_issue_count = MAX(0, check_issue_count - ?3),
+                 priority_fix_total = MAX(0, priority_fix_total - ?4)
+             WHERE project_id = ?1",
+            params![project_id, cat, chk, fix_count],
+        )?;
     }
     for table in ["seo_category_scores", "seo_check_issues"] {
         delete_where_id_in(tx, table, "page_id", page_ids)?;
@@ -56,6 +105,9 @@ pub(crate) fn save_seo_normalized_batch(
     let mut cat_rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = Vec::new();
     let mut check_rows: Vec<Vec<Box<dyn rusqlite::types::ToSql>>> = Vec::new();
     let mut fix_counts: Vec<(String, i64)> = Vec::new();
+    // Per-project deltas for the materialized counters (T14).
+    let mut deltas: std::collections::HashMap<String, (i64, i64, i64)> =
+        std::collections::HashMap::new();
     for (project_id, page_id, seo_audit_json) in pages {
         let Some(json) = seo_audit_json else {
             continue;
@@ -63,6 +115,11 @@ pub(crate) fn save_seo_normalized_batch(
         let Ok(audit) = serde_json::from_str::<SeoAuditResult>(json) else {
             continue;
         };
+        let failed = audit.checks.iter().filter(|c| !c.passed).count() as i64;
+        let entry = deltas.entry(project_id.to_string()).or_default();
+        entry.0 += audit.categories.len() as i64;
+        entry.1 += failed;
+        entry.2 += audit.priority_fixes.len() as i64;
         // Every category is persisted, including skipped ones (score None ->
         // NULL): the XLSX "SEO Audit" sheet writes one row per category and
         // `count_seo_rows` counts them from this table, so omitting skipped
@@ -131,6 +188,22 @@ pub(crate) fn save_seo_normalized_batch(
         tx.execute(
             &sql,
             rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+        )?;
+    }
+
+    // Keep the per-project counters in sync (T14). The INSERTs above already
+    // succeeded, so a failure here fails the whole transaction like any
+    // other write in this function.
+    for (project_id, (cats, checks, fixes)) in &deltas {
+        tx.execute(
+            "INSERT INTO project_seo_counts
+                 (project_id, category_count, check_issue_count, priority_fix_total)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(project_id) DO UPDATE SET
+                 category_count = category_count + excluded.category_count,
+                 check_issue_count = check_issue_count + excluded.check_issue_count,
+                 priority_fix_total = priority_fix_total + excluded.priority_fix_total",
+            params![project_id, cats, checks, fixes],
         )?;
     }
     Ok(())

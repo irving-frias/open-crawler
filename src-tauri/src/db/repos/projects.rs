@@ -118,6 +118,22 @@ impl<'a> CrawlRepo<'a> {
             params![id],
         )?;
 
+        // 5d. Delete the materialized SEO counters (T14) and the normalized
+        // SEO rows, which have no FK to the project and would otherwise
+        // orphan when the project is deleted.
+        tx.execute(
+            "DELETE FROM project_seo_counts WHERE project_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM seo_category_scores WHERE project_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "DELETE FROM seo_check_issues WHERE project_id = ?1",
+            params![id],
+        )?;
+
         // 6. Delete crawl_snapshot_data (child of crawl_snapshots)
         tx.execute(
             "DELETE FROM crawl_snapshot_data WHERE snapshot_id IN (SELECT id FROM crawl_snapshots WHERE project_id = ?1)",

@@ -156,6 +156,17 @@ impl<'a> CrawlRepo<'a> {
 
         let where_sql = and_clauses.join(" AND ");
         let count_sql = format!("SELECT COUNT(*) FROM crawled_pages WHERE {}", where_sql);
+        // Con búsqueda de texto, forzar el índice de cobertura
+        // idx_pages_search: el planificador prefiere idx_pages_project_ts
+        // (sirve el ORDER BY sin sort) y acaba leyendo la tabla por fila
+        // para evaluar los LIKE, que en filas de ~66 KB con overflow son
+        // ~126 s a 100k. Con el índice forzado la página se resuelve desde
+        // el índice y solo se leen las 50 filas devueltas (T14).
+        let search_index_hint = if search.is_some_and(|s| !s.is_empty()) {
+            "INDEXED BY idx_pages_search"
+        } else {
+            ""
+        };
         // Note: html_body is intentionally excluded from the list projection. It
         // is only served by get_page_detail/get_page_html, so list queries stay
         // small (less IPC payload, no per-row gzip+base64 decompression) and the
@@ -169,10 +180,10 @@ impl<'a> CrawlRepo<'a> {
         // get_page_detail/get_seo_audit serve them on demand.
         let query_sql = format!(
             "SELECT id, config_id, project_id, url, status_code, title, meta_description, h1, canonical, size_bytes, load_time_ms, is_indexable, depth, parent_url, crawl_timestamp, html_lang, semantic_issues_json, readability_score, content_hash, duplicate_group_id, pagespeed_score, seo_score, blocked, redirect_from_url, custom_extractions_json
-             FROM crawled_pages WHERE {}
+             FROM crawled_pages {} WHERE {}
              ORDER BY crawl_timestamp DESC
              LIMIT ?{} OFFSET ?{}",
-            where_sql, param_index, param_index + 1
+            search_index_hint, where_sql, param_index, param_index + 1
         );
 
         // Build params for count query
