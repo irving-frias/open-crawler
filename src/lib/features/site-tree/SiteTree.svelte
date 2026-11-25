@@ -22,6 +22,7 @@
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
   import * as Select from '#lib/components/ui/select/index.js';
   import { cn } from '#lib/utils.js';
+  import { navigation } from '#lib/navigation.svelte.ts';
   import {
     LANGUAGE_CODES,
     legendColor,
@@ -353,6 +354,18 @@
     selectedPage = page;
   }
 
+  /** First page with issues in a branch (T17 §4.1: error badge → detail). */
+  function firstErrorPage(d: DirState): TreeNode | null {
+    for (const p of d.pages) {
+      if (p.issue_count > 0) return p;
+    }
+    for (const sub of d.dirs) {
+      const found = firstErrorPage(sub);
+      if (found) return found;
+    }
+    return null;
+  }
+
   $effect(() => {
     loadTree();
     return () => {
@@ -495,6 +508,7 @@
                     role: 'button',
                     tabindex: 0,
                     onclick: () => selectPage(row.page),
+                    ondblclick: () => navigation.goToDetailByUrl(row.page.url),
                     onkeydown: (e: KeyboardEvent) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
@@ -529,20 +543,36 @@
                   <Folder class="tree-folder size-4" />
                 {/if}
                 <span class="tree-title">{row.dir.name}</span>
-                <span class="tree-url" title={row.dir.key}>{row.dir.key}</span>
+                <button
+                  type="button"
+                  class="tree-url tree-url-link"
+                  title={`${row.dir.key} — ${m['nav.view_in_results']()}`}
+                  onclick={() => navigation.goToResults({ search: row.dir.key })}
+                >
+                  {row.dir.key}
+                </button>
                 <span
                   class="tree-status-dot"
                   style="background: {legendColor(aggOf(row.dir).worst)}"
                 ></span>
                 {#if aggOf(row.dir).issues > 0}
-                  <Badge
-                    variant="destructive"
-                    class="gap-1 shrink-0"
-                    title={`${aggOf(row.dir).issues} issues`}
+                  {@const firstError = firstErrorPage(row.dir)}
+                  <button
+                    type="button"
+                    class="tree-badge-btn"
+                    title={m['nav.view_first_error']()}
+                    disabled={!firstError}
+                    onclick={() => firstError && navigation.goToDetailByUrl(firstError.url)}
                   >
-                    <TriangleAlert class="size-3" />
-                    {aggOf(row.dir).issues}
-                  </Badge>
+                    <Badge
+                      variant="destructive"
+                      class="gap-1 shrink-0"
+                      title={`${aggOf(row.dir).issues} issues`}
+                    >
+                      <TriangleAlert class="size-3" />
+                      {aggOf(row.dir).issues}
+                    </Badge>
+                  </button>
                 {:else}
                   <span class="tree-clean"></span>
                 {/if}
@@ -638,6 +668,14 @@
             </dd>
           </dl>
           <div class="tree-panel-foot">
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 text-xs"
+              onclick={() => selectedPage && navigation.goToDetailByUrl(selectedPage.url)}
+            >
+              {m['nav.view_detail']()}
+            </Button>
             <a href={selectedPage.url} target="_blank" rel="noreferrer">
               <Button variant="default" size="sm" class="h-7 text-xs">
                 {m['graph.node.open']()}
@@ -799,6 +837,31 @@
     text-overflow: ellipsis;
     max-width: 40ch;
     flex: 1;
+  }
+
+  button.tree-url-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
+
+  button.tree-url-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+
+  .tree-badge-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .tree-badge-btn:disabled {
+    cursor: default;
   }
 
   .tree-clean {

@@ -133,6 +133,20 @@ pub async fn get_page_detail(
     with_repo(&state, move |repo| repo.get_page_detail(&page_id)).await
 }
 
+/// Most recent page id for a URL, so the site tree / comparator /
+/// duplicates can deep-link to the page detail (T17).
+#[tauri::command]
+pub async fn get_page_id_by_url(
+    state: State<'_, Arc<RwLock<AppState>>>,
+    project_id: String,
+    url: String,
+) -> Result<Option<String>, AppError> {
+    with_repo(&state, move |repo| {
+        repo.get_page_id_by_url(&project_id, &url)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn get_semantic_issue_counts(
     state: State<'_, Arc<RwLock<AppState>>>,

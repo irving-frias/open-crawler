@@ -14,6 +14,8 @@
   import { TAB_DEFS, loadTabComponent, type LazyTabId } from '#lib/tabs.ts';
   import type { ResultsState, TabValue } from '#lib/app.svelte.ts';
   import type { FilterOptions } from '#lib/api/types.ts';
+  import Breadcrumbs from '#lib/features/navigation/Breadcrumbs.svelte';
+  import { navigation } from '#lib/navigation.svelte.ts';
 
   let {
     activeTab = $bindable('results' as TabValue),
@@ -27,6 +29,7 @@
     debouncedSearch,
     expandedIssueUrl = $bindable(),
     selectedProjectId,
+    projectName,
     onPageSizeChange,
     onGoToPage,
     onOpenDetail,
@@ -46,6 +49,7 @@
     debouncedSearch: string;
     expandedIssueUrl: string;
     selectedProjectId: string;
+    projectName: string;
     onPageSizeChange: (size: number) => void;
     onGoToPage: (page: number) => void;
     onOpenDetail: (pageId: string) => void;
@@ -54,6 +58,33 @@
     onFilterIssueType: (issueType: string | null) => void;
     onClearFilter: () => void;
   } = $props();
+
+  // Record tab switches made from the tab UI in the navigation history
+  // (T17 §4.2); programmatic switches already record themselves.
+  let prevTab = $state<TabValue>(activeTab);
+  $effect(() => {
+    const t = activeTab;
+    if (t !== prevTab) {
+      navigation.noteTabChange(prevTab, t);
+      prevTab = t;
+    }
+  });
+
+  // Filter/search/page edits keep the persisted context current (T17 §4.2).
+  function handleFilterChangeWrapped(f: FilterState) {
+    onFilterChange(f);
+    navigation.noteContextChange();
+  }
+
+  function handleSearchWrapped(query: string) {
+    onSearch(query);
+    navigation.noteContextChange();
+  }
+
+  function handleGoToPageWrapped(page: number) {
+    onGoToPage(page);
+    navigation.noteContextChange();
+  }
 
   const totalPages = $derived(Math.ceil(results.total / pageSize));
 
@@ -95,6 +126,8 @@
 </script>
 
 <section class="results-section">
+  <Breadcrumbs {projectName} />
+
   <Tabs.Root bind:value={activeTab} class="mb-4">
     <Tabs.List>
       {#each TAB_DEFS as tab (tab.id)}
@@ -143,7 +176,12 @@
       {/if}
     </div>
 
-    <FilterBar items={results.items} {filters} options={filterOptions} onFilter={onFilterChange} />
+    <FilterBar
+      items={results.items}
+      {filters}
+      options={filterOptions}
+      onFilter={handleFilterChangeWrapped}
+    />
 
     {#if resultsLoading}
       <div class="results-skeleton">
@@ -159,11 +197,17 @@
         items={results.items}
         onDetail={onOpenDetail}
         searchQuery={debouncedSearch}
-        {onSearch}
+        onSearch={handleSearchWrapped}
       />
 
       {#if totalPages > 1}
-        <Pagination {currentPage} {totalPages} total={results.total} {pageSize} {onGoToPage} />
+        <Pagination
+          {currentPage}
+          {totalPages}
+          total={results.total}
+          {pageSize}
+          onGoToPage={handleGoToPageWrapped}
+        />
       {/if}
     {/if}
   {/if}

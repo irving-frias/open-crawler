@@ -9,6 +9,7 @@
   import { Button } from '#lib/components/ui/button/index.js';
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
   import { cn } from '#lib/utils.js';
+  import { navigation } from '#lib/navigation.svelte.ts';
 
   const PAGE_SIZE = 25;
 
@@ -151,7 +152,14 @@
                     </Badge>
                   {/if}
                   <div class="dup-meta">
-                    <span class="dup-title">{u.title || u.url}</span>
+                    <button
+                      type="button"
+                      class="dup-title dup-title-link"
+                      title={m['nav.view_detail']()}
+                      onclick={() => navigation.goToDetailByUrl(u.url)}
+                    >
+                      {u.title || u.url}
+                    </button>
                     <span class="dup-url" title={u.url}>{u.url}</span>
                   </div>
                   <Button
@@ -247,6 +255,20 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  button.dup-title-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
+
+  button.dup-title-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
   }
 
   .dup-url {

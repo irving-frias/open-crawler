@@ -2,6 +2,7 @@
   import { m } from '#lib/paraglide/messages.js';
   import { SearchX, Pencil, Trash2, Loader2 } from '@lucide/svelte';
   import { setAppShell } from '#lib/app.svelte.ts';
+  import { navigation } from '#lib/navigation.svelte.ts';
   import * as api from '#lib/api/index.ts';
   import AppHeader from '#lib/features/project/AppHeader.svelte';
   import ProjectLauncher from '#lib/features/project/ProjectLauncher.svelte';
@@ -55,6 +56,14 @@
       app.searchQuery !== '' ||
       app.debouncedSearch !== ''
   );
+
+  // Restore the persisted navigation context once the app is ready
+  // (T17 §4.2); re-runs when the user switches projects.
+  $effect(() => {
+    if (app.initialized && app.selectedProjectId) {
+      navigation.bind(app);
+    }
+  });
 
   $effect(() => {
     if (app.initialized && !splashGone) {
@@ -275,13 +284,14 @@
             debouncedSearch={app.debouncedSearch}
             bind:expandedIssueUrl={app.expandedIssueUrl}
             selectedProjectId={app.selectedProjectId}
+            projectName={app.getSelectedProject()?.name ?? ''}
             onPageSizeChange={app.changePageSize}
             onGoToPage={app.goToPage}
             onOpenDetail={app.openDetail}
             onSearch={app.onSearchInput}
             onFilterChange={app.handleFilterChange}
-            onFilterIssueType={app.handleFilterIssueType}
-            onClearFilter={() => app.handleFilterIssueType(null)}
+            onFilterIssueType={(t) => navigation.filterByIssueType(t)}
+            onClearFilter={() => navigation.clearIssueFilter()}
           />
         {/if}
       {/if}
@@ -289,7 +299,7 @@
   </div>
 
   {#if PageDetailPanel}
-    <PageDetailPanel bind:pageId={app.detailPageId} onClose={() => (app.detailPageId = '')} />
+    <PageDetailPanel bind:pageId={app.detailPageId} onClose={() => navigation.closeDetail()} />
   {/if}
 {/if}
 

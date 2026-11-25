@@ -204,6 +204,7 @@ pub fn run() {
             crate::commands::get_site_tree_full,
             crate::commands::get_site_tree_stream,
             crate::commands::get_page_detail,
+            crate::commands::get_page_id_by_url,
             crate::commands::get_semantic_issue_counts,
             crate::commands::get_page_html,
             crate::commands::inline_assets,

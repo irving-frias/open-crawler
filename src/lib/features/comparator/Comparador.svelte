@@ -7,6 +7,7 @@
   import * as Select from '#lib/components/ui/select/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import { navigation } from '#lib/navigation.svelte.ts';
 
   let {
     projectId,
@@ -319,7 +320,16 @@
             <CardContent>
               <ul class="comp-url-list">
                 {#each newState.items as url (url)}
-                  <li class="comp-url-new">{url}</li>
+                  <li class="comp-url-new">
+                    <button
+                      type="button"
+                      class="comp-url-link"
+                      title={m['nav.view_detail']()}
+                      onclick={() => navigation.goToDetailByUrl(url)}
+                    >
+                      {url}
+                    </button>
+                  </li>
                 {/each}
               </ul>
               {#if hasMore(newState)}
@@ -345,7 +355,16 @@
             <CardContent>
               <ul class="comp-url-list">
                 {#each removedState.items as url (url)}
-                  <li class="comp-url-removed">{url}</li>
+                  <li class="comp-url-removed">
+                    <button
+                      type="button"
+                      class="comp-url-link"
+                      title={m['nav.view_detail']()}
+                      onclick={() => navigation.goToDetailByUrl(url)}
+                    >
+                      {url}
+                    </button>
+                  </li>
                 {/each}
               </ul>
               {#if hasMore(removedState)}
@@ -372,7 +391,14 @@
               <ul class="comp-change-list">
                 {#each changedState.items as change (change.url)}
                   <li>
-                    <div class="comp-change-url">{change.url}</div>
+                    <button
+                      type="button"
+                      class="comp-change-url comp-url-link"
+                      title={m['nav.view_detail']()}
+                      onclick={() => navigation.goToDetailByUrl(change.url)}
+                    >
+                      {change.url}
+                    </button>
                     <ul class="comp-diff-list">
                       {#each change.diffs as diff (diff.field)}
                         <li class="comp-diff-item">
@@ -514,6 +540,22 @@
   .comp-url-removed {
     color: var(--danger);
     text-decoration: line-through;
+  }
+
+  .comp-url-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    word-break: break-all;
+  }
+
+  .comp-url-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
   }
 
   .comp-change-list {

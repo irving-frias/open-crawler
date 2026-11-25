@@ -51,6 +51,10 @@ export function getPageDetail(pageId: string): Promise<PageDetail> {
   return invoke<PageDetail>('get_page_detail', { pageId });
 }
 
+export function getPageIdByUrl(projectId: string, url: string): Promise<string | null> {
+  return invoke<string | null>('get_page_id_by_url', { projectId, url });
+}
+
 export function recrawlPage(pageId: string): Promise<CrawlResult> {
   return invoke<CrawlResult>('recrawl_page', { pageId });
 }

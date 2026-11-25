@@ -1567,6 +1567,32 @@ mod tests {
         assert_eq!(detail.page.seo_score, Some(75.0));
     }
 
+    #[test]
+    fn test_get_page_id_by_url_returns_most_recent() {
+        let repo = test_repo();
+        let mut old = page("pg-old", "https://x.com/a", Some("A"), 200, true);
+        old.crawl_timestamp = "2026-01-01T00:00:00Z".to_string();
+        let mut new = page("pg-new", "https://x.com/a", Some("A"), 200, true);
+        new.crawl_timestamp = "2026-01-02T00:00:00Z".to_string();
+        repo.save_results_batch(&[old, new]).unwrap();
+
+        assert_eq!(
+            repo.get_page_id_by_url("p1", "https://x.com/a").unwrap(),
+            Some("pg-new".to_string()),
+            "the most recent crawl of the URL wins"
+        );
+        assert_eq!(
+            repo.get_page_id_by_url("p1", "https://x.com/missing")
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            repo.get_page_id_by_url("other-project", "https://x.com/a")
+                .unwrap(),
+            None
+        );
+    }
+
     fn kw_json(keywords: &[&str]) -> String {
         let items: Vec<serde_json::Value> = keywords
             .iter()
