@@ -64,7 +64,7 @@ cron = "0.12"
 typos = "0.10"
 # 0.14.1+ exige rustc 1.95 (MSRV) y el canal fijado es 1.92.0
 # (src-tauri/rust-toolchain.toml); 0.14.0 va con 1.91+.
-typos-dict = "=0.14.0"
+typos-dict = "=0.14.5"
 unicase = "2"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service"] }
 dirs = "7.0.0"
