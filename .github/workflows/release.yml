@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           prerelease: false
@@ -224,7 +224,7 @@ jobs:
           cp src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab "android-dist/open-crawler-${TAG}-android.aab"
 
       - name: Upload APK and AAB to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: android-dist/*
@@ -276,7 +276,7 @@ jobs:
           cat release_body.md
 
       - name: Update release description
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           body_path: release_body.md
