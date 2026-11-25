@@ -236,10 +236,19 @@ pub async fn start_crawl_headless(
     let token = register_crawl(&state, &mut config, project_id).await?;
     let state_clone = state.clone();
     let project_id_clone = project_id.to_string();
+    let proxy = config.proxy.clone();
     tokio::spawn(async move {
         let mut engine = CrawlEngine::new();
         engine.set_config(config);
-        // No shared HTTP client headless: the engine builds its own.
+        // Headless crawls had no shared HTTP client, so the engine skipped
+        // the site-resource audit (robots.txt / sitemap.xml / llms.txt were
+        // silently absent from every MCP/CLI crawl). Build one here so
+        // `fetch_and_parse` runs `audit_page_with_site`.
+        if let Ok(builder) = crate::crawler::client_with_proxy(proxy.as_ref()) {
+            if let Ok(http_client) = builder.build() {
+                engine.set_http_client(http_client);
+            }
+        }
         let result = engine
             .start(
                 Arc::new(CrawlSink::Headless),
@@ -267,8 +276,16 @@ pub async fn run_crawl_blocking(
 ) -> Result<(u32, u64), AppError> {
     let token = register_crawl(&state, &mut config, project_id).await?;
     let started = std::time::Instant::now();
+    let proxy = config.proxy.clone();
     let mut engine = CrawlEngine::new();
     engine.set_config(config);
+    // Same as start_crawl_headless: without a shared client the engine
+    // skips the site-resource audit (see above).
+    if let Ok(builder) = crate::crawler::client_with_proxy(proxy.as_ref()) {
+        if let Ok(http_client) = builder.build() {
+            engine.set_http_client(http_client);
+        }
+    }
     let result = engine
         .start(
             Arc::new(CrawlSink::Headless),

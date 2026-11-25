@@ -264,6 +264,17 @@ const QUESTION_WORDS: &[&str] = &[
     "are", "should",
 ];
 
+/// AI search crawlers checked by `ai_crawlers_allowed` (T21). Google-Extended
+/// is deliberately absent: it only opts the site out of AI training and does
+/// not affect AI Overviews.
+const AI_SEARCH_BOTS: &[&str] = &[
+    "OAI-SearchBot",
+    "ChatGPT-User",
+    "PerplexityBot",
+    "Claude-SearchBot",
+    "ClaudeBot",
+];
+
 /// Substrings that typically identify a cookie-consent banner or a consent
 /// management platform (CMP) in the raw HTML.
 const CONSENT_MARKERS: &[&str] = &[
@@ -1368,6 +1379,117 @@ pub fn run_all(seo: &SeoData, extras: &PageExtras, ctx: &AuditContext) -> Vec<Ch
             },
             "Publish a valid /sitemap.xml (urlset or sitemapindex) so search engines can discover pages.",
             sitemap.map(|s| format!("HTTP {}", s.status)),
+        ));
+
+        // AI visibility (T21): robots.txt rules for AI search crawlers.
+        // Google-Extended is deliberately NOT in the list: it only opts
+        // the site out of AI training and does not affect AI Overviews.
+        let path = url::Url::parse(&ctx.url)
+            .map(|u| u.path().to_string())
+            .unwrap_or_else(|_| "/".to_string());
+        if let Some(robots_body) = robots.map(|r| r.body.as_str()) {
+            let blocked: Vec<&str> = AI_SEARCH_BOTS
+                .iter()
+                .copied()
+                .filter(|bot| !super::site::is_path_allowed_by_robots(robots_body, bot, &path))
+                .collect();
+            let passed = blocked.is_empty();
+            out.push(check(
+                "ai_crawlers_allowed",
+                "ai_visibility",
+                "warning",
+                passed,
+                2.0,
+                if passed {
+                    "AI search crawlers can fetch this page".to_string()
+                } else {
+                    format!("robots.txt blocks AI crawlers: {}", blocked.join(", "))
+                },
+                "Allow OAI-SearchBot, ChatGPT-User, PerplexityBot and Claude-SearchBot in robots.txt if the page should be citable by AI answers. Blocking Google-Extended only opts out of AI training and does not affect AI Overviews.",
+                if passed {
+                    None
+                } else {
+                    Some(format!("blocked: {}", blocked.join(", ")))
+                },
+            ));
+        }
+
+        // llms.txt (T21): presence is informational — Google states it is
+        // not required to appear in its AI features, so a missing file is
+        // preparation to consider, not an error.
+        if let Some(llms) = site.llms_txt.as_ref() {
+            let present = llms.status == 200 && !llms.body.trim().is_empty();
+            out.push(check(
+                "llms_txt_present",
+                "ai_visibility",
+                "info",
+                present,
+                1.0,
+                if present {
+                    "llms.txt is present".to_string()
+                } else {
+                    format!("llms.txt is missing (HTTP {})", llms.status)
+                },
+                "Publish an /llms.txt markdown index of the site so LLM crawlers can discover its key pages; it is preparation, not a guarantee of being cited.",
+                Some(format!("HTTP {}", llms.status)),
+            ));
+            if present {
+                let well_formed = super::site::is_well_formed_llms_txt(&llms.body);
+                out.push(check(
+                    "llms_txt_well_formed",
+                    "ai_visibility",
+                    "warning",
+                    well_formed,
+                    1.0,
+                    if well_formed {
+                        "llms.txt starts with an H1 and links pages".to_string()
+                    } else {
+                        "llms.txt does not start with an H1 or has no page links".to_string()
+                    },
+                    "Start llms.txt with a single '# Title' line and list the key pages as markdown links, one per line.",
+                    None,
+                ));
+            }
+        }
+    }
+
+    // AI Overview eligibility (T21): a page can surface in AI Overviews
+    // when it is reachable, indexable and has something to quote (a meta
+    // description or substantial text). Reuses the checks above.
+    {
+        let indexable_ok = out
+            .iter()
+            .find(|c| c.id == "indexable")
+            .map(|c| c.passed)
+            .unwrap_or(false);
+        let snippet_ok = desc_present || extras.word_count >= 300;
+        let eligible = ctx.status_code == 200 && indexable_ok && snippet_ok;
+        let missing: Vec<&str> = [
+            (ctx.status_code != 200, "non-200 status"),
+            (!indexable_ok, "noindex"),
+            (!snippet_ok, "no snippet source"),
+        ]
+        .into_iter()
+        .filter(|(bad, _)| *bad)
+        .map(|(_, why)| why)
+        .collect();
+        out.push(check(
+            "ai_overview_eligible",
+            "ai_visibility",
+            "warning",
+            eligible,
+            2.0,
+            if eligible {
+                "Page can appear in AI Overviews".to_string()
+            } else {
+                format!("Page cannot appear in AI Overviews ({})", missing.join(", "))
+            },
+            "AI Overviews cite pages that are reachable, indexable and have a description or substantial content to quote.",
+            if eligible {
+                None
+            } else {
+                Some(missing.join(", "))
+            },
         ));
     }
 
@@ -3146,6 +3268,7 @@ mod tests {
                 200,
                 r#"<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>"#,
             )),
+            llms_txt: None,
         }));
         let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
         let robots = check(&out, "robots_txt_exists");
@@ -3160,12 +3283,107 @@ mod tests {
         c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
             robots_txt: Some(resource(404, "")),
             sitemap_xml: Some(resource(200, "<html><body>oops</body></html>")),
+            llms_txt: None,
         }));
         let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
         let robots = check(&out, "robots_txt_exists");
         assert!(!robots.passed);
         let sitemap = check(&out, "sitemap_xml_valid");
         assert!(!sitemap.passed);
+    }
+
+    #[test]
+    fn test_ai_crawlers_blocked_by_specific_group() {
+        let mut c = ctx("https://example.com/private/page");
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(
+                200,
+                "User-agent: *\nAllow: /\n\nUser-agent: PerplexityBot\nDisallow: /private/\n",
+            )),
+            sitemap_xml: None,
+            llms_txt: None,
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        let ai = check(&out, "ai_crawlers_allowed");
+        assert!(!ai.passed);
+        assert!(ai
+            .evidence
+            .as_deref()
+            .unwrap_or("")
+            .contains("PerplexityBot"));
+    }
+
+    #[test]
+    fn test_ai_crawlers_google_extended_only_is_allowed() {
+        // Blocking Google-Extended (AI training opt-out) does not block AI
+        // search crawlers, so the check passes.
+        let mut c = ctx("https://example.com/page");
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(
+                200,
+                "User-agent: *\nAllow: /\n\nUser-agent: Google-Extended\nDisallow: /\n",
+            )),
+            sitemap_xml: None,
+            llms_txt: None,
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        assert!(check(&out, "ai_crawlers_allowed").passed);
+    }
+
+    #[test]
+    fn test_llms_txt_checks() {
+        let mut c = ctx("https://example.com/page");
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(200, "User-agent: *\nAllow: /")),
+            sitemap_xml: None,
+            llms_txt: Some(resource(
+                200,
+                "# Example\n\n- [Home](https://example.com/)\n",
+            )),
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        assert!(check(&out, "llms_txt_present").passed);
+        assert!(check(&out, "llms_txt_well_formed").passed);
+
+        // Missing llms.txt: the presence check fails (info) and the format
+        // check is skipped.
+        c.site_resources = Some(std::sync::Arc::new(crate::seo::site::SiteResources {
+            robots_txt: Some(resource(200, "User-agent: *\nAllow: /")),
+            sitemap_xml: None,
+            llms_txt: Some(resource(404, "")),
+        }));
+        let out = run_all(&SeoData::default(), &PageExtras::default(), &c);
+        let present = check(&out, "llms_txt_present");
+        assert!(!present.passed);
+        assert_eq!(present.severity, "info");
+        assert!(out.iter().all(|c| c.id != "llms_txt_well_formed"));
+    }
+
+    #[test]
+    fn test_ai_overview_eligible() {
+        // 200 + indexable + meta description present: eligible.
+        let seo = SeoData {
+            meta_description: Some("A useful description".to_string()),
+            ..SeoData::default()
+        };
+        let out = run_all(
+            &seo,
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(check(&out, "ai_overview_eligible").passed);
+        // Noindex: not eligible even with a description.
+        let seo_noindex = SeoData {
+            meta_description: Some("A useful description".to_string()),
+            meta_robots: Some("noindex".to_string()),
+            ..SeoData::default()
+        };
+        let out = run_all(
+            &seo_noindex,
+            &PageExtras::default(),
+            &ctx("https://example.com/page"),
+        );
+        assert!(!check(&out, "ai_overview_eligible").passed);
     }
 
     #[test]

@@ -1512,11 +1512,23 @@ mod tests {
         assert!(matches!(redirect, ExportValue::Str(s) if s == "https://old.example.com/page"));
 
         // Category columns follow CATEGORY_ORDER after the fixed prefix.
+        // The fixture has no ai_visibility category, so its column is an
+        // empty cell; compliance (score 0.0) is the last present one.
         let cat_start = 22;
         assert!(matches!(&values[cat_start], ExportValue::Num(n) if *n == 80.0));
-        assert!(
-            matches!(&values[cat_start + CATEGORY_ORDER.len() - 1], ExportValue::Num(n) if *n == 0.0)
-        );
+        let compliance_idx = CATEGORY_ORDER
+            .iter()
+            .position(|c| *c == "compliance")
+            .unwrap();
+        assert!(matches!(
+            &values[cat_start + compliance_idx],
+            ExportValue::Num(n) if *n == 0.0
+        ));
+        let ai_idx = CATEGORY_ORDER
+            .iter()
+            .position(|c| *c == "ai_visibility")
+            .unwrap();
+        assert!(matches!(&values[cat_start + ai_idx], ExportValue::Str(s) if s.is_empty()));
     }
 
     #[test]

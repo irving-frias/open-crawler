@@ -12,23 +12,25 @@ pub const CATEGORY_ORDER: &[&str] = &[
     "sxo",
     "security",
     "compliance",
+    "ai_visibility",
 ];
 
 /// Category weights, proportional to the number of checks in each category
 /// (94 per-page checks at the time of writing). Sums to exactly 1.0 — enforced
 /// by `test_weights_sum_to_one`.
 pub const CATEGORY_WEIGHTS: &[(&str, f64)] = &[
-    ("meta", 0.16),
-    ("technical", 0.13),
-    ("sxo", 0.13),
-    ("accessibility", 0.11),
-    ("performance", 0.09),
+    ("meta", 0.15),
+    ("technical", 0.12),
+    ("sxo", 0.12),
+    ("accessibility", 0.10),
+    ("performance", 0.08),
     ("security", 0.09),
     ("social", 0.08),
     ("semantic_html", 0.08),
     ("ai_readability", 0.06),
     ("compliance", 0.05),
     ("links", 0.02),
+    ("ai_visibility", 0.05),
 ];
 
 fn category_weight(category: &str) -> f64 {

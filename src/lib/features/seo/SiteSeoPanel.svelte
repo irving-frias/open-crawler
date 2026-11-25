@@ -41,6 +41,7 @@
     security: m['seo.category.security'],
     compliance: m['seo.category.compliance'],
     links: m['seo.category.links'],
+    ai_visibility: m['seo.category.ai_visibility'],
   };
 
   function categoryLabel(category: string): string {

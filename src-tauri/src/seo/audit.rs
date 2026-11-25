@@ -197,8 +197,9 @@ mod tests {
         assert!(by_id("img_alt").unwrap().passed);
 
         // All weighted categories should be reported (security + compliance
-        // added). "links" is included but skipped (score: None) on page audits.
-        assert_eq!(result.categories.len(), 11);
+        // added, then ai_visibility in T21). "links" is included but skipped
+        // (score: None) on page audits.
+        assert_eq!(result.categories.len(), 12);
         let links = result
             .categories
             .iter()

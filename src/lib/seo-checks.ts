@@ -1085,6 +1085,54 @@ const DICT: Record<string, CheckDictEntry> = {
         'Publica un /sitemap.xml válido (urlset o sitemapindex) para que los buscadores descubran las páginas.',
     },
   },
+  ai_crawlers_allowed: {
+    en: {
+      message: 'AI search crawlers can fetch this page',
+      guidance:
+        'Allow OAI-SearchBot, ChatGPT-User, PerplexityBot and Claude-SearchBot in robots.txt if the page should be citable by AI answers. Blocking Google-Extended only opts out of AI training and does not affect AI Overviews.',
+    },
+    es: {
+      message: 'Los crawlers de búsqueda por IA pueden visitar esta página',
+      guidance:
+        'Permite OAI-SearchBot, ChatGPT-User, PerplexityBot y Claude-SearchBot en robots.txt si la página debe poder citarse en respuestas de IA. Bloquear Google-Extended solo excluye del entrenamiento de IA y no afecta a AI Overviews.',
+    },
+  },
+  llms_txt_present: {
+    en: {
+      message: 'llms.txt is present',
+      guidance:
+        'Publish an /llms.txt markdown index of the site so LLM crawlers can discover its key pages; it is preparation, not a guarantee of being cited.',
+    },
+    es: {
+      message: 'llms.txt presente',
+      guidance:
+        'Publica un /llms.txt con un índice markdown del sitio para que los crawlers de LLM descubran sus páginas clave; es preparación, no una garantía de ser citado.',
+    },
+  },
+  llms_txt_well_formed: {
+    en: {
+      message: 'llms.txt starts with an H1 and links pages',
+      guidance:
+        "Start llms.txt with a single '# Title' line and list the key pages as markdown links, one per line.",
+    },
+    es: {
+      message: 'llms.txt empieza con un H1 y enlaza páginas',
+      guidance:
+        "Empieza llms.txt con una sola línea '# Título' y lista las páginas clave como enlaces markdown, una por línea.",
+    },
+  },
+  ai_overview_eligible: {
+    en: {
+      message: 'Page can appear in AI Overviews',
+      guidance:
+        'AI Overviews cite pages that are reachable, indexable and have a description or substantial content to quote.',
+    },
+    es: {
+      message: 'La página puede aparecer en AI Overviews',
+      guidance:
+        'AI Overviews cita páginas accesibles, indexables y con una descripción o contenido sustancial que citar.',
+    },
+  },
   hreflang_self_reference: {
     en: {
       message: 'hreflang set lacks a self-referencing alternate',
@@ -1577,6 +1625,22 @@ const WHY: Record<string, { en: string; es: string }> = {
     en: 'A valid sitemap makes every page discoverable and signals priority, so no content is left unindexed.',
     es: 'Un sitemap válido hace que cada página sea descubrible y señala su prioridad, para que ningún contenido quede sin indexar.',
   },
+  ai_crawlers_allowed: {
+    en: 'AI search bots fetch pages to quote them in answers; a robots.txt block keeps the page invisible to ChatGPT, Perplexity and Claude search.',
+    es: 'Los bots de búsqueda por IA visitan las páginas para citarlas en sus respuestas; un bloqueo en robots.txt deja la página invisible para la búsqueda de ChatGPT, Perplexity y Claude.',
+  },
+  llms_txt_present: {
+    en: 'llms.txt is a lightweight map of the site for LLM crawlers; it helps them find the key pages, though Google states it is not required to appear in its AI features.',
+    es: 'llms.txt es un mapa ligero del sitio para los crawlers de LLM; les ayuda a encontrar las páginas clave, aunque Google indica que no es necesario para aparecer en sus funciones de IA.',
+  },
+  llms_txt_well_formed: {
+    en: 'A malformed llms.txt (no title, no links) gives LLM crawlers nothing useful to follow.',
+    es: 'Un llms.txt mal formado (sin título ni enlaces) no le da a los crawlers de LLM nada útil que seguir.',
+  },
+  ai_overview_eligible: {
+    en: 'AI Overviews only quote pages Google can reach, index and summarize, so a blocked or thin page never gets cited.',
+    es: 'AI Overviews solo cita páginas que Google puede visitar, indexar y resumir, así que una página bloqueada o pobre en contenido nunca se cita.',
+  },
   hreflang_self_reference: {
     en: 'Without a self-referencing alternate, crawlers may fail to resolve the language group and ignore the hreflang annotations.',
     es: 'Sin una referencia a sí misma, los crawlers pueden no resolver el grupo de idiomas e ignorar las anotaciones hreflang.',
@@ -1644,6 +1708,10 @@ const DOCS: Record<string, string> = {
   url_underscores: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
   indexable: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
   status_ok: 'https://developers.google.com/search/docs/fundamentals/seo-starter-guide',
+  ai_crawlers_allowed: 'https://developers.google.com/search/docs/crawling-indexing/robots/intro',
+  llms_txt_present: 'https://llmstxt.org/',
+  llms_txt_well_formed: 'https://llmstxt.org/',
+  ai_overview_eligible: 'https://developers.google.com/search/docs/appearance/ai-features',
 };
 
 interface CheckFixEntry {
@@ -2681,6 +2749,47 @@ const CHECK_FIXES: Record<string, CheckFixEntry> = {
     es: {
       fix: 'Publica un sitemap.xml bien formado con raíz urlset o sitemapindex.',
       expected: '<urlset>\n  <url><loc>https://example.com/</loc></url>\n</urlset>',
+    },
+  },
+  ai_crawlers_allowed: {
+    en: {
+      fix: 'Add explicit Allow rules for the AI search bots in robots.txt.',
+      expected: 'User-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /',
+    },
+    es: {
+      fix: 'Añade reglas Allow explícitas para los bots de búsqueda por IA en robots.txt.',
+      expected: 'User-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /',
+    },
+  },
+  llms_txt_present: {
+    en: {
+      fix: 'Create /llms.txt with a title and links to the key pages.',
+      expected: '# My Site\n\n- [Home](https://example.com/)\n- [Guide](https://example.com/guide)',
+    },
+    es: {
+      fix: 'Crea /llms.txt con un título y enlaces a las páginas clave.',
+      expected:
+        '# Mi sitio\n\n- [Inicio](https://example.com/)\n- [Guía](https://example.com/guia)',
+    },
+  },
+  llms_txt_well_formed: {
+    en: {
+      fix: 'Start llms.txt with a single H1 and list pages as markdown links.',
+      expected: '# My Site\n\n- [Home](https://example.com/)',
+    },
+    es: {
+      fix: 'Empieza llms.txt con un solo H1 y lista las páginas como enlaces markdown.',
+      expected: '# Mi sitio\n\n- [Inicio](https://example.com/)',
+    },
+  },
+  ai_overview_eligible: {
+    en: {
+      fix: 'Make the page reachable (200), remove noindex and add a meta description or substantial content.',
+      expected: '<meta name="description" content="What the page covers in one sentence.">',
+    },
+    es: {
+      fix: 'Haz la página accesible (200), quita noindex y añade una meta description o contenido sustancial.',
+      expected: '<meta name="description" content="Lo que cubre la página en una frase.">',
     },
   },
   hreflang_self_reference: {
