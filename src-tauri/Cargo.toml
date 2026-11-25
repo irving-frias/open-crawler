@@ -2,6 +2,10 @@
 name = "open-crawler"
 version = "1.0.1"
 edition = "2021"
+# Binario principal de la app (Tauri lo necesita cuando hay varios [[bin]]:
+# la app, open-crawler-mcp (T6) y perf-baseline (T10). Sin esto, `tauri
+# build` falla con "failed to find main binary" en las 4 plataformas.
+default-run = "open-crawler"
 
 [lib]
 name = "open_crawler_lib"
