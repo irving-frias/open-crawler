@@ -11,7 +11,7 @@
   import { Label } from '#lib/components/ui/label/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Checkbox } from '#lib/components/ui/checkbox/index.js';
-  import { Button } from '#lib/components/ui/button/index.js';
+  import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
   import { Separator } from '#lib/components/ui/separator/index.js';
   import { checkForUpdates, downloadAndInstall, relaunchApp } from '#lib/updater.ts';
   import type { UpdaterStatus } from '#lib/updater.ts';
@@ -486,6 +486,33 @@
           {/if}
         </div>
       {/if}
+    </div>
+
+    <Separator />
+
+    <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      {m['settings.sponsors_title']()}
+    </h3>
+    <div class="flex flex-col gap-2">
+      <p class="text-sm text-muted-foreground">{m['settings.sponsors_text']()}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <a
+          href="https://github.com/sponsors/irving-frias"
+          target="_blank"
+          rel="noreferrer"
+          class={buttonVariants({ variant: 'outline' })}
+        >
+          {m['settings.sponsors_github']()}
+        </a>
+        <a
+          href="https://paypal.me/IrvingFriasMX"
+          target="_blank"
+          rel="noreferrer"
+          class={buttonVariants({ variant: 'outline' })}
+        >
+          {m['settings.sponsors_paypal']()}
+        </a>
+      </div>
     </div>
 
     <Dialog.Footer>
