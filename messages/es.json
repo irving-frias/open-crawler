@@ -638,5 +638,19 @@
   "issue.empty_paragraph.name": "Párrafo Vacío",
   "issue.empty_paragraph.message": "<p> no tiene contenido",
   "issue.empty_content_tag.name": "Etiqueta de Contenido Vacía",
-  "issue.empty_content_tag.message": "<{tag}> no tiene contenido"
+  "issue.empty_content_tag.message": "<{tag}> no tiene contenido",
+  "issue.multiple_main.name": "Múltiples Main",
+  "issue.multiple_main.message": "La página tiene {count} elementos <main>; solo se recomienda uno",
+  "issue.skip_link_missing.name": "Falta Enlace de Salto",
+  "issue.skip_link_missing.message": "La página no tiene un enlace para saltar al contenido principal",
+  "issue.section_no_accessible_name.name": "Sección Sin Nombre Accesible",
+  "issue.section_no_accessible_name.message": "La <section> no tiene nombre accesible",
+  "issue.form_no_accessible_name.name": "Formulario Sin Nombre Accesible",
+  "issue.form_no_accessible_name.message": "El <form> no tiene nombre accesible",
+  "issue.button_no_name.name": "Botón Sin Nombre Accesible",
+  "issue.button_no_name.message": "El <button> no tiene texto ni nombre accesible",
+  "issue.duplicate_id.name": "ID Duplicado",
+  "issue.duplicate_id.message": "Atributo id duplicado \"{id}\"",
+  "issue.aria_current_nav.name": "Falta aria-current en la Navegación",
+  "issue.aria_current_nav.message": "La navegación no indica la página activa con aria-current"
 }

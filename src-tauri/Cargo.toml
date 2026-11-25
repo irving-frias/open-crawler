@@ -2,6 +2,8 @@
 name = "open-crawler"
 version = "1.0.1"
 edition = "2021"
+# MSRV: fijado en src-tauri/rust-toolchain.toml.
+rust-version = "1.92"
 # Binario principal de la app (Tauri lo necesita cuando hay varios [[bin]]:
 # la app, open-crawler-mcp (T6) y perf-baseline (T10). Sin esto, `tauri
 # build` falla con "failed to find main binary" en las 4 plataformas.
@@ -60,7 +62,9 @@ tiny_http = "0.12.0"
 local-ip-address = "0.6.13"
 cron = "0.12"
 typos = "0.10"
-typos-dict = "0.14"
+# 0.14.1+ exige rustc 1.95 (MSRV) y el canal fijado es 1.92.0
+# (src-tauri/rust-toolchain.toml); 0.14.0 va con 1.91+.
+typos-dict = "=0.14.0"
 unicase = "2"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service"] }
 dirs = "7.0.0"

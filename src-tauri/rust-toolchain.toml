@@ -1,0 +1,17 @@
+# Toolchain fijado para builds reproducibles (local y CI).
+# Se eligió 1.92.0 porque es la versión con la que se resolvió Cargo.lock y
+# porque varias dependencias ya declaran MSRV (p. ej. typos-dict 0.14.1+ pide
+# 1.95, de ahí el pin de esa crate en Cargo.toml).
+#
+# Al subir este canal:
+#   1. Revisar `rust-version` en Cargo.toml.
+#   2. Quitar el pin `typos-dict = "=0.14.0"` si el nuevo canal soporta 1.95+.
+#   3. Correr `cargo update` y el suite completo antes de commitear.
+#
+# Los targets de cross-compilación no se listan aquí a propósito (rustup los
+# instalaría todos, ~1 GB): añadirlos cuando hagan falta con
+#   rustup target add aarch64-linux-android   # o el que toque
+[toolchain]
+channel = "1.92.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

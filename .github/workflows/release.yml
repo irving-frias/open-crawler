@@ -90,10 +90,12 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
 
       - name: Cache Rust build
         uses: actions/cache@v5
@@ -102,7 +104,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/rust-toolchain.toml') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
@@ -179,10 +181,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang lld libssl-dev
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          rustup show
+          rustup target add aarch64-linux-android
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2

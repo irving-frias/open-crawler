@@ -638,5 +638,19 @@
   "issue.empty_paragraph.name": "Empty Paragraph",
   "issue.empty_paragraph.message": "<p> has no content",
   "issue.empty_content_tag.name": "Empty Content Tag",
-  "issue.empty_content_tag.message": "<{tag}> has no content"
+  "issue.empty_content_tag.message": "<{tag}> has no content",
+  "issue.multiple_main.name": "Multiple Main",
+  "issue.multiple_main.message": "Page has {count} <main> elements; only one is recommended",
+  "issue.skip_link_missing.name": "Missing Skip Link",
+  "issue.skip_link_missing.message": "Page has no skip link pointing to the main content",
+  "issue.section_no_accessible_name.name": "Section Without Accessible Name",
+  "issue.section_no_accessible_name.message": "<section> has no accessible name",
+  "issue.form_no_accessible_name.name": "Form Without Accessible Name",
+  "issue.form_no_accessible_name.message": "<form> has no accessible name",
+  "issue.button_no_name.name": "Button Without Accessible Name",
+  "issue.button_no_name.message": "<button> has no text and no accessible name",
+  "issue.duplicate_id.name": "Duplicate ID",
+  "issue.duplicate_id.message": "Duplicate id attribute \"{id}\"",
+  "issue.aria_current_nav.name": "Missing aria-current in Navigation",
+  "issue.aria_current_nav.message": "Navigation has no aria-current indicator for the active page"
 }

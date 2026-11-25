@@ -35,6 +35,13 @@ const issueNames: Record<string, () => string> = {
   empty_heading: () => m['issue.empty_heading.name'](),
   empty_paragraph: () => m['issue.empty_paragraph.name'](),
   empty_content_tag: () => m['issue.empty_content_tag.name'](),
+  multiple_main: () => m['issue.multiple_main.name'](),
+  skip_link_missing: () => m['issue.skip_link_missing.name'](),
+  section_no_accessible_name: () => m['issue.section_no_accessible_name.name'](),
+  form_no_accessible_name: () => m['issue.form_no_accessible_name.name'](),
+  button_no_name: () => m['issue.button_no_name.name'](),
+  duplicate_id: () => m['issue.duplicate_id.name'](),
+  aria_current_nav: () => m['issue.aria_current_nav.name'](),
 };
 
 const issueMessages: Record<string, (params?: IssueParams) => string> = {
@@ -78,6 +85,13 @@ const issueMessages: Record<string, (params?: IssueParams) => string> = {
   empty_heading: (p) => m['issue.empty_heading.message']({ tag: String(p?.tag ?? '') }),
   empty_paragraph: () => m['issue.empty_paragraph.message'](),
   empty_content_tag: (p) => m['issue.empty_content_tag.message']({ tag: String(p?.tag ?? '') }),
+  multiple_main: (p) => m['issue.multiple_main.message']({ count: String(p?.count ?? 0) }),
+  skip_link_missing: () => m['issue.skip_link_missing.message'](),
+  section_no_accessible_name: () => m['issue.section_no_accessible_name.message'](),
+  form_no_accessible_name: () => m['issue.form_no_accessible_name.message'](),
+  button_no_name: () => m['issue.button_no_name.message'](),
+  duplicate_id: (p) => m['issue.duplicate_id.message']({ id: String(p?.id ?? '') }),
+  aria_current_nav: () => m['issue.aria_current_nav.message'](),
 };
 
 /**
@@ -483,6 +497,98 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
       expected: '<li>Elemento de lista con texto</li>',
     },
   },
+  multiple_main: {
+    en: {
+      why: 'Only one <main> landmark is allowed: with several, "skip to content" and landmark navigation lose their target and screen readers cannot tell where the unique page content starts.',
+      fix: 'Keep a single <main> per page and use <section> or <article> for the other regions.',
+      expected: '<body>\n  <header>…</header>\n  <main>Primary content</main>\n</body>',
+    },
+    es: {
+      why: 'Solo se permite un landmark <main>: con varios, "saltar al contenido" y la navegación por landmarks pierden su destino y los lectores de pantalla no saben dónde empieza el contenido único de la página.',
+      fix: 'Deja un único <main> por página y usa <section> o <article> para el resto de regiones.',
+      expected:
+        '<body>\n  <header>…</header>\n  <main>Contenido principal</main>\n</body>',
+    },
+  },
+  skip_link_missing: {
+    en: {
+      why: 'Without a skip link, keyboard and screen-reader users must tab through the whole navigation on every page before reaching the content.',
+      fix: 'Add a skip link as the first focusable element that points to the id of the main content.',
+      expected: '<a class="skip-link" href="#main">Skip to content</a>\n<main id="main">…</main>',
+    },
+    es: {
+      why: 'Sin enlace de salto, los usuarios de teclado y lectores de pantalla deben tabular por toda la navegación en cada página antes de llegar al contenido.',
+      fix: 'Añade un enlace de salto como primer elemento enfocable que apunte al id del contenido principal.',
+      expected:
+        '<a class="skip-link" href="#main">Saltar al contenido</a>\n<main id="main">…</main>',
+    },
+  },
+  section_no_accessible_name: {
+    en: {
+      why: 'A <section> only becomes a landmark when it has an accessible name; unnamed ones disappear from landmark navigation, so assistive tech users cannot jump to them.',
+      fix: 'Reference the section heading with aria-labelledby, or add a descriptive aria-label.',
+      expected:
+        '<section aria-labelledby="plans-title">\n  <h2 id="plans-title">Plans</h2>\n</section>',
+    },
+    es: {
+      why: 'Una <section> solo se convierte en landmark cuando tiene nombre accesible; sin él desaparece de la navegación por landmarks y los usuarios de tecnologías de asistencia no pueden saltar a ella.',
+      fix: 'Referencia el encabezado de la sección con aria-labelledby, o añade un aria-label descriptivo.',
+      expected:
+        '<section aria-labelledby="planes-titulo">\n  <h2 id="planes-titulo">Planes</h2>\n</section>',
+    },
+  },
+  form_no_accessible_name: {
+    en: {
+      why: 'Screen-reader users navigating by landmarks hear only "form"; with several forms on a page they cannot tell which one they entered.',
+      fix: 'Add aria-labelledby pointing at the form heading, or a descriptive aria-label.',
+      expected: '<form aria-labelledby="contact-title">\n  <h2 id="contact-title">Contact</h2>\n</form>',
+    },
+    es: {
+      why: 'Los usuarios de lectores de pantalla que navegan por landmarks solo oyen "formulario"; con varios en la página no saben en cuál han entrado.',
+      fix: 'Añade aria-labelledby apuntando al encabezado del formulario, o un aria-label descriptivo.',
+      expected:
+        '<form aria-labelledby="contacto-titulo">\n  <h2 id="contacto-titulo">Contacto</h2>\n</form>',
+    },
+  },
+  button_no_name: {
+    en: {
+      why: 'Icon-only buttons are announced as just "button", so screen-reader users cannot know what they do; search engines and AI extractors cannot read the action either.',
+      fix: 'Add visible text, an aria-label, or aria-labelledby pointing at a visible label.',
+      expected: '<button type="button" aria-label="Search"><svg aria-hidden="true">…</svg></button>',
+    },
+    es: {
+      why: 'Los botones que solo tienen icono se anuncian como "botón" y nada más, así que los usuarios de lectores de pantalla no saben qué hacen; los buscadores y extractores de IA tampoco pueden leer la acción.',
+      fix: 'Añade texto visible, un aria-label, o aria-labelledby apuntando a una etiqueta visible.',
+      expected:
+        '<button type="button" aria-label="Buscar"><svg aria-hidden="true">…</svg></button>',
+    },
+  },
+  duplicate_id: {
+    en: {
+      why: 'HTML ids must be unique: duplicated ones break anchor links, label association (for=), aria-labelledby and script lookups, and make assistive tech point at the wrong element.',
+      fix: 'Rename the duplicated id, or turn it into a class if it was only used for styling.',
+      expected:
+        '<section id="pricing">…</section>\n<section id="pricing-faq">…</section>',
+    },
+    es: {
+      why: 'Los id de HTML deben ser únicos: los duplicados rompen los enlaces ancla, la asociación de etiquetas (for=), aria-labelledby y las búsquedas por script, y hacen que las tecnologías de asistencia apunten al elemento equivocado.',
+      fix: 'Renombra el id duplicado, o conviértelo en clase si solo se usaba para estilos.',
+      expected:
+        '<section id="precios">…</section>\n<section id="precios-faq">…</section>',
+    },
+  },
+  aria_current_nav: {
+    en: {
+      why: 'aria-current="page" tells assistive technology which item of the navigation is the current page, so users know where they are without reading the whole menu.',
+      fix: 'Mark the link of the current page with aria-current="page" inside the <nav>.',
+      expected: '<nav>\n  <a href="/about" aria-current="page">About</a>\n</nav>',
+    },
+    es: {
+      why: 'aria-current="page" indica a las tecnologías de asistencia qué elemento de la navegación es la página actual, para que el usuario sepa dónde está sin leer todo el menú.',
+      fix: 'Marca el enlace de la página actual con aria-current="page" dentro del <nav>.',
+      expected: '<nav>\n  <a href="/nosotros" aria-current="page">Nosotros</a>\n</nav>',
+    },
+  },
 };
 
 export function translateIssueWhy(issueType: string): string {
@@ -519,6 +625,12 @@ export function parseIssueParams(message: string, issueType: string): IssueParam
   if (issueType === 'multiple_h1') {
     const m = message.match(/(\d+)\s*<h1>/i);
     if (m) params.count = m[1];
+  } else if (issueType === 'multiple_main') {
+    const m = message.match(/(\d+)\s*<main>/i);
+    if (m) params.count = m[1];
+  } else if (issueType === 'duplicate_id') {
+    const m = message.match(/Duplicate id attribute "([^"]+)"/i);
+    if (m) params.id = m[1];
   } else if (issueType === 'heading_skip') {
     const m = message.match(/h(\d+)\s+to\s+h(\d+)/);
     if (m) {
