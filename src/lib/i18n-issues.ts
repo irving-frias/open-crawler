@@ -506,8 +506,7 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     es: {
       why: 'Solo se permite un landmark <main>: con varios, "saltar al contenido" y la navegación por landmarks pierden su destino y los lectores de pantalla no saben dónde empieza el contenido único de la página.',
       fix: 'Deja un único <main> por página y usa <section> o <article> para el resto de regiones.',
-      expected:
-        '<body>\n  <header>…</header>\n  <main>Contenido principal</main>\n</body>',
+      expected: '<body>\n  <header>…</header>\n  <main>Contenido principal</main>\n</body>',
     },
   },
   skip_link_missing: {
@@ -541,7 +540,8 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     en: {
       why: 'Screen-reader users navigating by landmarks hear only "form"; with several forms on a page they cannot tell which one they entered.',
       fix: 'Add aria-labelledby pointing at the form heading, or a descriptive aria-label.',
-      expected: '<form aria-labelledby="contact-title">\n  <h2 id="contact-title">Contact</h2>\n</form>',
+      expected:
+        '<form aria-labelledby="contact-title">\n  <h2 id="contact-title">Contact</h2>\n</form>',
     },
     es: {
       why: 'Los usuarios de lectores de pantalla que navegan por landmarks solo oyen "formulario"; con varios en la página no saben en cuál han entrado.',
@@ -554,7 +554,8 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     en: {
       why: 'Icon-only buttons are announced as just "button", so screen-reader users cannot know what they do; search engines and AI extractors cannot read the action either.',
       fix: 'Add visible text, an aria-label, or aria-labelledby pointing at a visible label.',
-      expected: '<button type="button" aria-label="Search"><svg aria-hidden="true">…</svg></button>',
+      expected:
+        '<button type="button" aria-label="Search"><svg aria-hidden="true">…</svg></button>',
     },
     es: {
       why: 'Los botones que solo tienen icono se anuncian como "botón" y nada más, así que los usuarios de lectores de pantalla no saben qué hacen; los buscadores y extractores de IA tampoco pueden leer la acción.',
@@ -567,14 +568,12 @@ const ISSUE_FIXES: Record<string, IssueFixEntry> = {
     en: {
       why: 'HTML ids must be unique: duplicated ones break anchor links, label association (for=), aria-labelledby and script lookups, and make assistive tech point at the wrong element.',
       fix: 'Rename the duplicated id, or turn it into a class if it was only used for styling.',
-      expected:
-        '<section id="pricing">…</section>\n<section id="pricing-faq">…</section>',
+      expected: '<section id="pricing">…</section>\n<section id="pricing-faq">…</section>',
     },
     es: {
       why: 'Los id de HTML deben ser únicos: los duplicados rompen los enlaces ancla, la asociación de etiquetas (for=), aria-labelledby y las búsquedas por script, y hacen que las tecnologías de asistencia apunten al elemento equivocado.',
       fix: 'Renombra el id duplicado, o conviértelo en clase si solo se usaba para estilos.',
-      expected:
-        '<section id="precios">…</section>\n<section id="precios-faq">…</section>',
+      expected: '<section id="precios">…</section>\n<section id="precios-faq">…</section>',
     },
   },
   aria_current_nav: {
