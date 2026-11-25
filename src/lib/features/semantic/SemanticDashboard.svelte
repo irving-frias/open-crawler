@@ -24,6 +24,8 @@
   } from '@lucide/svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
+  import SeverityBadge from '#lib/components/SeverityBadge.svelte';
+  import { severityMeta } from '#lib/severity-ui.ts';
   import { cn } from '#lib/utils.js';
 
   let {
@@ -206,22 +208,13 @@
       </div>
       <div class="severity-legend">
         {#if severityTotals.error > 0}
-          <span class="legend-item">
-            <span class="legend-dot error"></span>
-            {m['dashboard.errors']({ count: severityTotals.error.toString() })}
-          </span>
+          <SeverityBadge severity="error" count={severityTotals.error} />
         {/if}
         {#if severityTotals.warning > 0}
-          <span class="legend-item">
-            <span class="legend-dot warning"></span>
-            {m['dashboard.warnings']({ count: severityTotals.warning.toString() })}
-          </span>
+          <SeverityBadge severity="warning" count={severityTotals.warning} />
         {/if}
         {#if severityTotals.info > 0}
-          <span class="legend-item">
-            <span class="legend-dot info"></span>
-            {m['dashboard.info']({ count: severityTotals.info.toString() })}
-          </span>
+          <SeverityBadge severity="info" count={severityTotals.info} />
         {/if}
         <span class="legend-total">
           {m['dashboard.total_issues']({ count: totalIssues.toString() })}
@@ -248,13 +241,16 @@
               <span class="card-type">{formatIssueType(item.issue_type)}</span>
               <span class="card-counts">
                 {#if item.error > 0}
-                  <span class="count-badge error">{item.error}</span>
+                  <span class="count-badge error">{severityMeta('error').icon} {item.error}</span>
                 {/if}
                 {#if item.warning > 0}
-                  <span class="count-badge warning">{item.warning}</span>
+                  <span class="count-badge warning">
+                    {severityMeta('warning').icon}
+                    {item.warning}
+                  </span>
                 {/if}
                 {#if item.info > 0}
-                  <span class="count-badge info">{item.info}</span>
+                  <span class="count-badge info">{severityMeta('info').icon} {item.info}</span>
                 {/if}
                 <span class="count-total">{item.total}</span>
               </span>
@@ -343,27 +339,6 @@
     font-size: 0.8rem;
     color: var(--text-secondary);
     flex-wrap: wrap;
-  }
-
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .legend-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-  }
-  .legend-dot.error {
-    background: var(--danger);
-  }
-  .legend-dot.warning {
-    background: var(--warning);
-  }
-  .legend-dot.info {
-    background: var(--info);
   }
 
   .legend-total {

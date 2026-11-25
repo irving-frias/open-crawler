@@ -9,6 +9,8 @@
 				secondary: "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80 neu-raised-sm",
 				destructive: "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20 neu-raised-sm",
 				warning: "bg-yellow-500/10 text-yellow-600 focus-visible:ring-yellow-500/20 dark:bg-yellow-500/20 dark:focus-visible:ring-yellow-500/40 [a]:hover:bg-yellow-500/20 neu-raised-sm",
+				info: "bg-blue-500/10 text-blue-600 focus-visible:ring-blue-500/20 dark:bg-blue-500/20 dark:focus-visible:ring-blue-500/40 [a]:hover:bg-blue-500/20 neu-raised-sm",
+				success: "bg-green-500/10 text-green-600 focus-visible:ring-green-500/20 dark:bg-green-500/20 dark:focus-visible:ring-green-500/40 [a]:hover:bg-green-500/20 neu-raised-sm",
 				outline: "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground neu-raised-sm",
 				ghost: "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
 				link: "text-primary underline-offset-4 hover:underline",

@@ -85,6 +85,14 @@ export interface CrawlProgress {
   current_url: string;
   errors: number;
   elapsed_secs: number;
+  /** Pages fetched with a 4xx status (T16, optional for older payloads). */
+  errors_4xx?: number;
+  /** Pages fetched with a 5xx status (T16, optional for older payloads). */
+  errors_5xx?: number;
+  /** Fetch attempts that failed with a timeout (T16). */
+  errors_timeout?: number;
+  /** Depth of the URL currently being dispatched (T16). */
+  current_depth?: number;
 }
 
 export interface PaginatedResults {

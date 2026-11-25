@@ -7,7 +7,8 @@
   import { localizeSeoCheck } from '#lib/seo-checks.ts';
   import { seoScoreColor } from '#lib/seo-ui.ts';
   import { cn } from '#lib/utils.js';
-  import { Badge } from '#lib/components/ui/badge/index.js';
+  import SeverityBadge from '#lib/components/SeverityBadge.svelte';
+  import SeoScoreRing from '#lib/features/seo/SeoScoreRing.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
@@ -46,10 +47,17 @@
     return CATEGORY_LABELS[category]?.() ?? category;
   }
 
-  function severityVariant(severity: string): 'default' | 'warning' | 'destructive' {
-    if (severity === 'error') return 'destructive';
-    if (severity === 'warning') return 'warning';
-    return 'default';
+  /** Category selected by clicking a category row; filters the top issues (T16). */
+  let selectedCategory = $state<string | null>(null);
+
+  const visibleIssues = $derived(
+    overview && selectedCategory
+      ? overview.top_issues.filter((issue) => issue.category === selectedCategory)
+      : (overview?.top_issues ?? [])
+  );
+
+  function toggleCategory(category: string): void {
+    selectedCategory = selectedCategory === category ? null : category;
   }
 
   function scoreColor(score: number): string {
@@ -291,17 +299,9 @@
           <p class="seo-site-empty">{m['seo.site.empty']()}</p>
         {:else}
           <div class="seo-site-grid">
-            <div class="seo-site-stat">
+            <div class="seo-site-stat seo-site-stat-ring">
               <span class="seo-site-stat-label">{m['seo.site.average']()}</span>
-              <span
-                class="seo-site-stat-value"
-                style="color: {scoreColor(overview.avg_score ?? 0)}"
-              >
-                {Math.round(overview.avg_score ?? 0)}
-                {#if overview.avg_grade}<span class="seo-site-grade">
-                    · {overview.avg_grade}
-                  </span>{/if}
-              </span>
+              <SeoScoreRing score={overview.avg_score ?? 0} grade={overview.avg_grade} size={110} />
             </div>
             <div class="seo-site-stat">
               <span class="seo-site-stat-label">{m['seo.site.audited']()}</span>
@@ -325,7 +325,14 @@
               <h4 class="seo-site-title">{m['seo.site.categories']()}</h4>
               <div class="seo-site-cats">
                 {#each overview.category_averages as cat (cat.category)}
-                  <div class="seo-site-cat">
+                  <button
+                    type="button"
+                    class="seo-site-cat"
+                    class:selected={selectedCategory === cat.category}
+                    onclick={() => toggleCategory(cat.category)}
+                    aria-pressed={selectedCategory === cat.category}
+                    title={m['seo.site.filter_category']({ category: categoryLabel(cat.category) })}
+                  >
                     <div class="seo-site-cat-head">
                       <span class="seo-site-cat-name">{categoryLabel(cat.category)}</span>
                       <span class="seo-site-cat-score" style="color: {scoreColor(cat.avg_score)}">
@@ -333,99 +340,122 @@
                       </span>
                     </div>
                     <Progress value={cat.avg_score} max={100} class="h-1.5" />
-                  </div>
+                  </button>
                 {/each}
               </div>
+              {#if selectedCategory}
+                <button
+                  type="button"
+                  class="seo-site-filter-clear"
+                  onclick={() => (selectedCategory = null)}
+                >
+                  {m['seo.site.clear_filter']({ category: categoryLabel(selectedCategory) })}
+                </button>
+              {/if}
             </div>
           {/if}
 
           {#if overview.top_issues.length > 0}
             <div class="seo-site-section">
               <h4 class="seo-site-title">{m['seo.site.top_issues']()}</h4>
-              <div class="seo-site-issues">
-                {#each overview.top_issues as issue (issue.id)}
-                  {@const localized = localizeSeoCheck(
-                    issue.id,
-                    issue.message,
-                    issue.guidance,
-                    issue.evidence
-                  )}
-                  {@const open = expandedIssues.has(issue.id)}
-                  <div class="seo-site-issue">
-                    <Badge variant={severityVariant(issue.severity)}>
-                      {issue.occurrences}
-                    </Badge>
-                    <div class="seo-site-issue-body">
-                      <span class="seo-site-issue-message">
-                        {localized.message}
-                        <span class="seo-site-issue-count">
-                          · {m['seo.site.occurrences']({ count: issue.occurrences })}
+              {#if visibleIssues.length === 0}
+                <p class="seo-site-empty">
+                  {m['seo.site.no_issues_in_category']({
+                    category: categoryLabel(selectedCategory ?? ''),
+                  })}
+                  <button
+                    type="button"
+                    class="seo-site-filter-clear"
+                    onclick={() => (selectedCategory = null)}
+                  >
+                    {m['seo.site.clear_filter_only']()}
+                  </button>
+                </p>
+              {:else}
+                <div class="seo-site-issues">
+                  {#each visibleIssues as issue (issue.id)}
+                    {@const localized = localizeSeoCheck(
+                      issue.id,
+                      issue.message,
+                      issue.guidance,
+                      issue.evidence
+                    )}
+                    {@const open = expandedIssues.has(issue.id)}
+                    <div class="seo-site-issue">
+                      <SeverityBadge severity={issue.severity} count={issue.occurrences} />
+                      <div class="seo-site-issue-body">
+                        <span class="seo-site-issue-message">
+                          {localized.message}
+                          <span class="seo-site-issue-count">
+                            · {m['seo.site.occurrences']({ count: issue.occurrences })}
+                          </span>
                         </span>
-                      </span>
-                      <span class="seo-site-issue-guidance">{localized.guidance}</span>
-                      <button
-                        type="button"
-                        class="seo-site-issue-toggle"
-                        onclick={() => toggleIssue(issue.id)}
-                        aria-expanded={open}
-                      >
-                        <ChevronDown
-                          class={cn(
-                            'size-3.5 transition-transform duration-200',
-                            open && 'rotate-180'
-                          )}
-                        />
-                        <span>{open ? m['seo.site.collapse']() : m['seo.site.expand']()}</span>
-                      </button>
-                      {#if open}
-                        <div class="seo-site-issue-detail">
-                          {#if localized.fix || localized.expected}
-                            <div class="seo-fix-block">
-                              {#if localized.fix}
-                                <div class="seo-fix-line">
-                                  <span class="seo-fix-label">{m['seo.fix']()}</span>
-                                  <span class="seo-fix-text">{localized.fix}</span>
-                                </div>
-                              {/if}
-                              {#if localized.expected}
-                                <div class="seo-fix-line">
-                                  <span class="seo-fix-label">{m['seo.expected']()}</span>
-                                  <pre class="seo-expected-code"><code>{localized.expected}</code
-                                    ></pre>
-                                </div>
-                              {/if}
-                            </div>
-                          {/if}
-                          {#if issue.examples?.length}
-                            <div class="seo-examples">
-                              {#each issue.examples.slice(0, 3) as ex, i (i)}
-                                <div class="seo-example">
-                                  {#if ex.element}
-                                    <code class="seo-example-element">{ex.element}</code>
-                                  {/if}
-                                  {#if ex.snippet}
-                                    <pre class="seo-example-snippet"><code>{ex.snippet}</code></pre>
-                                  {/if}
-                                  {#if ex.xpath}
-                                    <button
-                                      type="button"
-                                      class="seo-example-xpath"
-                                      onclick={() => copyToClipboard(ex.xpath ?? '')}
-                                    >
-                                      <Copy class="size-3" />
-                                      <code>{ex.xpath}</code>
-                                    </button>
-                                  {/if}
-                                </div>
-                              {/each}
-                            </div>
-                          {/if}
-                        </div>
-                      {/if}
+                        <span class="seo-site-issue-guidance">{localized.guidance}</span>
+                        <button
+                          type="button"
+                          class="seo-site-issue-toggle"
+                          onclick={() => toggleIssue(issue.id)}
+                          aria-expanded={open}
+                        >
+                          <ChevronDown
+                            class={cn(
+                              'size-3.5 transition-transform duration-200',
+                              open && 'rotate-180'
+                            )}
+                          />
+                          <span>{open ? m['seo.site.collapse']() : m['seo.site.expand']()}</span>
+                        </button>
+                        {#if open}
+                          <div class="seo-site-issue-detail">
+                            {#if localized.fix || localized.expected}
+                              <div class="seo-fix-block">
+                                {#if localized.fix}
+                                  <div class="seo-fix-line">
+                                    <span class="seo-fix-label">{m['seo.fix']()}</span>
+                                    <span class="seo-fix-text">{localized.fix}</span>
+                                  </div>
+                                {/if}
+                                {#if localized.expected}
+                                  <div class="seo-fix-line">
+                                    <span class="seo-fix-label">{m['seo.expected']()}</span>
+                                    <pre class="seo-expected-code"><code>{localized.expected}</code
+                                      ></pre>
+                                  </div>
+                                {/if}
+                              </div>
+                            {/if}
+                            {#if issue.examples?.length}
+                              <div class="seo-examples">
+                                {#each issue.examples.slice(0, 3) as ex, i (i)}
+                                  <div class="seo-example">
+                                    {#if ex.element}
+                                      <code class="seo-example-element">{ex.element}</code>
+                                    {/if}
+                                    {#if ex.snippet}
+                                      <pre class="seo-example-snippet"><code>{ex.snippet}</code
+                                        ></pre>
+                                    {/if}
+                                    {#if ex.xpath}
+                                      <button
+                                        type="button"
+                                        class="seo-example-xpath"
+                                        onclick={() => copyToClipboard(ex.xpath ?? '')}
+                                      >
+                                        <Copy class="size-3" />
+                                        <code>{ex.xpath}</code>
+                                      </button>
+                                    {/if}
+                                  </div>
+                                {/each}
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
+                      </div>
                     </div>
-                  </div>
-                {/each}
-              </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {:else}
             <p class="seo-site-empty">{m['seo.site.no_issues']()}</p>
@@ -569,12 +599,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .seo-site-grade {
-    font-size: 0.9rem;
-    font-weight: 600;
-    margin-left: 2px;
-  }
-
   .seo-site-section {
     margin-top: 4px;
   }
@@ -592,10 +616,45 @@
     gap: 12px;
   }
 
+  .seo-site-stat-ring {
+    align-items: flex-start;
+  }
+
   .seo-site-cat {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* The category row is a button (click filters the issues, T16). */
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin: -6px -8px;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+  }
+
+  .seo-site-cat:hover {
+    background: var(--bg-deep);
+  }
+
+  .seo-site-cat.selected {
+    border-color: var(--accent);
+    background: var(--bg-deep);
+  }
+
+  .seo-site-filter-clear {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-top: 10px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-decoration: underline;
   }
 
   .seo-site-cat-head {

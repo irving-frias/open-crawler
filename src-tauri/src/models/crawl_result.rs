@@ -97,6 +97,18 @@ pub struct CrawlProgress {
     pub current_url: String,
     pub errors: u32,
     pub elapsed_secs: u64,
+    /// Pages fetched with a 4xx status since the crawl started (T16).
+    #[serde(default)]
+    pub errors_4xx: u32,
+    /// Pages fetched with a 5xx status since the crawl started (T16).
+    #[serde(default)]
+    pub errors_5xx: u32,
+    /// Fetch attempts that failed with a timeout since the crawl started (T16).
+    #[serde(default)]
+    pub errors_timeout: u32,
+    /// Depth of the URL currently being dispatched (T16).
+    #[serde(default)]
+    pub current_depth: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

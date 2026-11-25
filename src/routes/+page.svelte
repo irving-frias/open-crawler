@@ -250,7 +250,12 @@
         />
 
         {#if app.status === 'running'}
-          <CrawlProgress progress={app.progress} streamedCount={app.streamedCount} />
+          <CrawlProgress
+            progress={app.progress}
+            streamedCount={app.streamedCount}
+            projectId={app.selectedProjectId ?? undefined}
+            onStop={app.stopCrawl}
+          />
         {/if}
 
         {#if app.sitemapInfo}

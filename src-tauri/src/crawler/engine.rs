@@ -368,6 +368,11 @@ impl CrawlEngine {
         let semaphore = Arc::new(Semaphore::new(concurrency as usize));
         let mut pages_crawled: u32 = 0;
         let mut errors: u32 = 0;
+        // Live error breakdown for the progress bar (T16): 4xx/5xx pages and
+        // timed-out fetches, counted in the spawned fetch tasks.
+        let errors_4xx = Arc::new(AtomicU32::new(0));
+        let errors_5xx = Arc::new(AtomicU32::new(0));
+        let errors_timeout = Arc::new(AtomicU32::new(0));
         let start_time = Instant::now();
 
         // Get config ID
@@ -531,6 +536,10 @@ impl CrawlEngine {
                                 current_url: url_str.clone(),
                                 errors,
                                 elapsed_secs: start_time.elapsed().as_secs(),
+                                errors_4xx: errors_4xx.load(Ordering::Relaxed),
+                                errors_5xx: errors_5xx.load(Ordering::Relaxed),
+                                errors_timeout: errors_timeout.load(Ordering::Relaxed),
+                                current_depth: entry.depth,
                             };
                         }
                     }
@@ -545,6 +554,10 @@ impl CrawlEngine {
                             current_url: url_str.clone(),
                             errors,
                             elapsed_secs: start_time.elapsed().as_secs(),
+                            errors_4xx: errors_4xx.load(Ordering::Relaxed),
+                            errors_5xx: errors_5xx.load(Ordering::Relaxed),
+                            errors_timeout: errors_timeout.load(Ordering::Relaxed),
+                            current_depth: entry.depth,
                         };
                         sink.emit("crawl-progress", &progress);
                     }
@@ -574,6 +587,10 @@ impl CrawlEngine {
                     let db_tx_error = db_tx.clone();
                     let site_client = self.client.clone();
                     let extractions_clone = extractions.clone();
+                    // Live error counters for the progress bar (T16).
+                    let errors_4xx_task = errors_4xx.clone();
+                    let errors_5xx_task = errors_5xx.clone();
+                    let errors_timeout_task = errors_timeout.clone();
 
                     tokio::spawn(async move {
                         let result = Self::fetch_and_parse(
@@ -597,11 +614,21 @@ impl CrawlEngine {
                         .await;
 
                         match result {
-                            Ok((_pages, new_urls)) => {
+                            Ok((_pages, new_urls, status)) => {
+                                // Classify the fetched status for the live
+                                // progress error breakdown (T16).
+                                if (400..500).contains(&status) {
+                                    errors_4xx_task.fetch_add(1, Ordering::Relaxed);
+                                } else if (500..600).contains(&status) {
+                                    errors_5xx_task.fetch_add(1, Ordering::Relaxed);
+                                }
                                 info!("  -> Completed {}: {} new links", url_clone, new_urls);
                             }
                             Err(e) => {
                                 warn!("  -> FAILED to fetch {}: {}", url_clone, e);
+                                if matches!(&e, AppError::Http(err) if err.is_timeout()) {
+                                    errors_timeout_task.fetch_add(1, Ordering::Relaxed);
+                                }
 
                                 // Send error to DbWriter
                                 let _ = db_tx_error
@@ -719,6 +746,10 @@ impl CrawlEngine {
             current_url: String::new(),
             errors,
             elapsed_secs: start_time.elapsed().as_secs(),
+            errors_4xx: errors_4xx.load(Ordering::Relaxed),
+            errors_5xx: errors_5xx.load(Ordering::Relaxed),
+            errors_timeout: errors_timeout.load(Ordering::Relaxed),
+            current_depth: 0,
         };
         sink.emit("crawl-progress", &progress);
 
@@ -883,7 +914,7 @@ impl CrawlEngine {
         site_client: Option<&reqwest::Client>,
         extractions: &[CustomExtraction],
         list_mode: bool,
-    ) -> Result<(u32, u32), AppError> {
+    ) -> Result<(u32, u32, u16), AppError> {
         let response = fetcher.fetch(url).await?;
 
         info!(
@@ -1134,7 +1165,7 @@ impl CrawlEngine {
             }
         }
 
-        Ok((1, new_urls))
+        Ok((1, new_urls, response.status))
     }
 }
 
@@ -1260,7 +1291,7 @@ mod tests {
         // Engine builds allowed origins without the port (see CrawlEngine::start).
         let allowed = vec!["http://127.0.0.1".to_string()];
 
-        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+        let (pages, new_urls, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,
@@ -1337,7 +1368,7 @@ mod tests {
             },
         ];
 
-        let (pages, _) = CrawlEngine::fetch_and_parse(
+        let (pages, _, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,
@@ -1388,7 +1419,7 @@ mod tests {
         let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
         let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
-        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+        let (pages, new_urls, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,
@@ -1420,7 +1451,7 @@ mod tests {
         let visited = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap())));
         let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
-        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+        let (pages, new_urls, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,
@@ -1467,7 +1498,7 @@ mod tests {
         let allowed = vec!["http://127.0.0.1".to_string()];
         let frontier = Arc::new(RwLock::new(Frontier::new(10, 100_000)));
 
-        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+        let (pages, new_urls, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,
@@ -1568,7 +1599,7 @@ mod tests {
         let (db_tx, _db_rx) = create_db_writer_channel(1000);
         let allowed = vec!["http://127.0.0.1".to_string()];
 
-        let (pages, new_urls) = CrawlEngine::fetch_and_parse(
+        let (pages, new_urls, _) = CrawlEngine::fetch_and_parse(
             &fetcher,
             &Url::parse(&seed).unwrap(),
             &parser,

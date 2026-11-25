@@ -5,6 +5,7 @@
   import { Copy, Check, RefreshCw, TriangleAlert, Files, ChevronDown } from '@lucide/svelte';
   import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
+  import { severityVariant, statusSeverity } from '#lib/severity-ui.ts';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Skeleton } from '#lib/components/ui/skeleton/index.js';
   import { cn } from '#lib/utils.js';
@@ -142,7 +143,12 @@
               {#each group.urls as u (u.url)}
                 <li class="dup-row">
                   {#if u.status_code != null}
-                    <Badge variant="secondary" class="shrink-0">{u.status_code}</Badge>
+                    <Badge
+                      variant={severityVariant(statusSeverity(u.status_code))}
+                      class="shrink-0"
+                    >
+                      {u.status_code}
+                    </Badge>
                   {/if}
                   <div class="dup-meta">
                     <span class="dup-title">{u.title || u.url}</span>
